@@ -1,15 +1,7 @@
 /**
- * Duffel API partner for flights. High-fidelity stub with hold + confirm
- * matching Duffel's "offer → order" two-phase model.
- *
- * When wiring up the real client:
- *   - POST /air/offer_requests with origin/destination/date/cabin/passengers
- *   - GET /air/offers/:id for the chosen offer
- *   - POST /air/orders (with type="hold_order" or "instant_order") for hold
- *   - PUT /air/orders/:id/payment for confirmation
- *   - DELETE /air/orders/:id to cancel
- *
- * Read DUFFEL_API_KEY from env. Use the official @duffel/api package.
+ * Duffel API partner for flights. Real search via Duffel REST API; hold +
+ * confirm still stubbed pending the booking flow being wired end-to-end
+ * (depends on a separate human-confirmation step before we ticket).
  */
 
 import { nanoid } from "nanoid";
@@ -18,6 +10,7 @@ import type {
   BookingQuote,
   BookingResult,
 } from "../types";
+import { searchFlights } from "./duffel-search";
 
 export const duffelPartner: BookingPartner = {
   provider: "DUFFEL",
@@ -29,12 +22,48 @@ export const duffelPartner: BookingPartner = {
     "Per airline. We surface the offer's fare conditions before charging.",
 
   async search(req) {
-    const base = req.budget ?? 60000;
+    // The booking executor currently passes generic request fields and not
+    // structured slice/passenger data. Until we wire the executor to feed
+    // origin/destination/dates, fall back to a sentinel quote so the rest of
+    // the pipeline doesn't break. Live chat flight queries go through the
+    // top-level `searchFlights` helper directly.
+    const origin = (req.metadata?.origin as string | undefined) ?? null;
+    const destination = (req.metadata?.destination as string | undefined) ?? null;
+    const departureDate =
+      (req.metadata?.departureDate as string | undefined) ??
+      req.startTime?.toISOString().slice(0, 10) ??
+      null;
+    const passengers = req.party ?? 1;
+
+    if (origin && destination && departureDate) {
+      const result = await searchFlights({
+        slices: [{ origin, destination, departureDate }],
+        passengers,
+        cabin: (req.metadata?.cabin as
+          | "economy"
+          | "premium_economy"
+          | "business"
+          | "first"
+          | undefined) ?? "economy",
+        maxOffers: 3,
+      });
+      if (result.ok && result.offers.length > 0) {
+        return result.offers.map((o) => ({
+          provider: "DUFFEL" as const,
+          providerReference: o.id,
+          cost: o.totalAmount,
+          currency: o.currency,
+          expiresAt: o.expiresAt ? new Date(o.expiresAt) : undefined,
+          raw: o,
+        }));
+      }
+    }
+
     return [
       {
         provider: "DUFFEL",
         providerReference: `df_offer_${nanoid(10)}`,
-        cost: base,
+        cost: req.budget ?? 60000,
         currency: "USD",
         expiresAt: new Date(Date.now() + 20 * 60 * 1000),
       },

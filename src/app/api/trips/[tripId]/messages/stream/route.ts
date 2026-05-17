@@ -84,8 +84,7 @@ export async function POST(
           system: CONCIERGE_VOICE,
           cacheSystem: true,
           history,
-          maxTokens: 600,
-          temperature: 0.55,
+          maxTokens: 1200,
         });
         // Iterate to capture the return value (full text)
         // eslint-disable-next-line no-constant-condition
