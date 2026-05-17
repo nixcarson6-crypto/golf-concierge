@@ -32,6 +32,33 @@ export async function processUserMessage(args: {
     data: { tripId: trip.id, userId, role: "USER", content: text },
   });
   nudge(trip.id);
+  return runExtractionAndAgents({ trip, text, persistAssistantReply: true });
+}
+
+/**
+ * Background variant: assumes the user message + a streamed assistant reply
+ * have ALREADY been persisted, and just runs the structured constraint
+ * extraction + downstream agents silently. Used by the streaming chat path.
+ */
+export async function processUserMessageBackground(args: {
+  trip: Trip;
+  userId: string;
+  text: string;
+  assistantTextAlreadyEmitted: string;
+}) {
+  return runExtractionAndAgents({
+    trip: args.trip,
+    text: args.text,
+    persistAssistantReply: false,
+  });
+}
+
+async function runExtractionAndAgents(args: {
+  trip: Trip;
+  text: string;
+  persistAssistantReply: boolean;
+}) {
+  const { trip, text, persistAssistantReply } = args;
 
   const recent = await db.chatMessage.findMany({
     where: { tripId: trip.id },
@@ -52,7 +79,7 @@ export async function processUserMessage(args: {
 
   const merged = mergeConstraints(current, output.constraints);
 
-  await db.$transaction([
+  const writes = [
     db.trip.update({
       where: { id: trip.id },
       data: {
@@ -71,18 +98,23 @@ export async function processUserMessage(args: {
         status: trip.status === "DRAFT" ? "PLANNING" : trip.status,
       },
     }),
-    db.chatMessage.create({
-      data: {
-        tripId: trip.id,
-        role: "ASSISTANT",
-        content: output.reply,
-        metadata: {
-          followUps: output.followUps,
-          readyToPlan: output.readyToPlan,
+  ];
+  if (persistAssistantReply) {
+    writes.push(
+      db.chatMessage.create({
+        data: {
+          tripId: trip.id,
+          role: "ASSISTANT",
+          content: output.reply,
+          metadata: {
+            followUps: output.followUps,
+            readyToPlan: output.readyToPlan,
+          },
         },
-      },
-    }),
-  ]);
+      }) as unknown as (typeof writes)[number],
+    );
+  }
+  await db.$transaction(writes);
   nudge(trip.id);
 
   // Kick downstream agents in the background — don't await them so the chat

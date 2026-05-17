@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
-import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
+import { DayTimeline } from "@/components/itinerary/day-timeline";
 import type { DisplayItineraryItem } from "@/components/itinerary/itinerary-item-card";
 import type { ItemAction } from "@/components/itinerary/item-actions-menu";
 
@@ -55,14 +55,11 @@ export function ItineraryView({
     });
 
   return (
-    <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {items.map((item) => (
-        <ItineraryItemCard
-          key={item.id}
-          item={item}
-          onAction={readOnly || pending ? undefined : (a) => apply(item.id, a)}
-        />
-      ))}
+    <div className="mt-8">
+      <DayTimeline
+        items={items}
+        onAction={readOnly || pending ? undefined : apply}
+      />
     </div>
   );
 }

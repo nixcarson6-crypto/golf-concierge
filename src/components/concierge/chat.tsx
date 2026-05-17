@@ -21,6 +21,7 @@ export function ConciergeChat({
   messages,
   onSend,
   sending,
+  streamingReply,
 }: {
   tripId: string;
   trip: WorkspaceTrip;
@@ -28,6 +29,7 @@ export function ConciergeChat({
   messages: WorkspaceMessage[];
   onSend: (text: string) => void;
   sending: boolean;
+  streamingReply?: string | null;
 }) {
   const [value, setValue] = React.useState("");
   const [listening, setListening] = React.useState(false);
@@ -42,7 +44,7 @@ export function ConciergeChat({
       "[data-radix-scroll-area-viewport]",
     ) as HTMLElement | null;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length]);
+  }, [messages.length, streamingReply]);
 
   const submit = () => {
     const text = value.trim();
@@ -106,7 +108,22 @@ export function ConciergeChat({
           {messages.map((m) => (
             <ChatMessageView key={m.id} message={m} meId={me.id} />
           ))}
-          {sending && (
+          {streamingReply !== undefined &&
+            streamingReply !== null &&
+            streamingReply.length > 0 && (
+              <ChatMessageView
+                meId={me.id}
+                message={{
+                  id: "streaming",
+                  role: "ASSISTANT",
+                  content: streamingReply,
+                  metadata: { streaming: true },
+                  createdAt: new Date().toISOString(),
+                  author: null,
+                }}
+              />
+            )}
+          {sending && (!streamingReply || streamingReply.length === 0) && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground pl-9">
               <span className="size-1.5 rounded-full bg-[hsl(var(--gold))] animate-pulse-soft" />
               <span className="size-1.5 rounded-full bg-[hsl(var(--gold))] animate-pulse-soft [animation-delay:120ms]" />

@@ -147,17 +147,15 @@ export function ConciergeWorkspace({ tripId }: Props) {
     return () => es.close();
   }, [tripId, qc]);
 
-  const sendMessage = useMutation({
-    mutationFn: async (text: string) => {
-      const res = await fetch(`/api/trips/${tripId}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onMutate: async (text) => {
+  const [streamingReply, setStreamingReply] = React.useState<string | null>(null);
+  const [sendingChat, setSendingChat] = React.useState(false);
+
+  const sendStreamingMessage = React.useCallback(
+    async (text: string) => {
+      setSendingChat(true);
+      setStreamingReply("");
+
+      // Optimistic user message
       await qc.cancelQueries({ queryKey: ["workspace", tripId] });
       const previous = qc.getQueryData<WorkspaceSnapshot>(["workspace", tripId]);
       const optimistic: WorkspaceMessage = {
@@ -167,33 +165,67 @@ export function ConciergeWorkspace({ tripId }: Props) {
         metadata: null,
         createdAt: new Date().toISOString(),
         author: previous?.me
-          ? { id: previous.me.id, name: previous.me.name, imageUrl: previous.me.imageUrl }
+          ? {
+              id: previous.me.id,
+              name: previous.me.name,
+              imageUrl: previous.me.imageUrl,
+            }
           : null,
       };
-      const thinking: WorkspaceAgentRun = {
-        id: `optimistic_run_${Date.now()}`,
-        agentType: "CONSTRAINT_EXTRACTOR" as AgentType,
-        status: "RUNNING" as AgentStatus,
-        progress: "Thinking…",
-        startedAt: new Date().toISOString(),
-        completedAt: null,
-      };
       qc.setQueryData<WorkspaceSnapshot>(["workspace", tripId], (prev) =>
-        prev
-          ? {
-              ...prev,
-              messages: [...prev.messages, optimistic],
-              agentRuns: [thinking, ...prev.agentRuns].slice(0, 8),
-            }
-          : prev,
+        prev ? { ...prev, messages: [...prev.messages, optimistic] } : prev,
       );
-      return { previous };
+
+      try {
+        const res = await fetch(`/api/trips/${tripId}/messages/stream`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: text }),
+        });
+        if (!res.ok || !res.body) throw new Error("stream failed");
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let full = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop() ?? "";
+          for (const block of events) {
+            const dataLine = block
+              .split("\n")
+              .find((l) => l.startsWith("data: "));
+            if (!dataLine) continue;
+            try {
+              const evt = JSON.parse(dataLine.slice(6));
+              if (evt.type === "delta") {
+                full += evt.text as string;
+                setStreamingReply(full);
+              } else if (evt.type === "done") {
+                full = evt.full as string;
+                setStreamingReply(null);
+              } else if (evt.type === "error") {
+                throw new Error(evt.message);
+              }
+            } catch {
+              // ignore malformed events
+            }
+          }
+        }
+      } catch (err) {
+        if (previous) qc.setQueryData(["workspace", tripId], previous);
+        console.error("[chat stream]", err);
+      } finally {
+        setSendingChat(false);
+        setStreamingReply(null);
+        qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+      }
     },
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(["workspace", tripId], ctx.previous);
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["workspace", tripId] }),
-  });
+    [qc, tripId],
+  );
 
   const itemAction = useMutation({
     mutationFn: async (args: {
@@ -228,7 +260,7 @@ export function ConciergeWorkspace({ tripId }: Props) {
     <>
       <CommandPalette
         snapshot={snapshot}
-        onSendMessage={(t) => sendMessage.mutate(t)}
+        onSendMessage={(t) => void sendStreamingMessage(t)}
         onApprove={async () => {
           if (!snapshot.itinerary) return;
           await fetch(`/api/trips/${tripId}/approvals`, {
@@ -252,8 +284,9 @@ export function ConciergeWorkspace({ tripId }: Props) {
               trip={snapshot.trip}
               me={snapshot.me}
               messages={snapshot.messages}
-              onSend={(text) => sendMessage.mutate(text)}
-              sending={sendMessage.isPending}
+              onSend={(text) => void sendStreamingMessage(text)}
+              sending={sendingChat}
+              streamingReply={streamingReply}
             />
           </section>
           <section className="col-span-4 xl:col-span-5 min-h-0">
@@ -295,8 +328,9 @@ export function ConciergeWorkspace({ tripId }: Props) {
                 trip={snapshot.trip}
                 me={snapshot.me}
                 messages={snapshot.messages}
-                onSend={(text) => sendMessage.mutate(text)}
-                sending={sendMessage.isPending}
+                onSend={(text) => void sendStreamingMessage(text)}
+                sending={sendingChat}
+                streamingReply={streamingReply}
               />
             </TabsContent>
             <TabsContent value="itinerary" className="h-[calc(100dvh-13rem)]">

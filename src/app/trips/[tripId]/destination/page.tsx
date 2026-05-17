@@ -6,6 +6,7 @@ import { requireTripAccess } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { SelectDestinationButton } from "./select-button";
+import { RegenerateDestinationsButton } from "./regenerate-button";
 
 export const dynamic = "force-dynamic";
 
@@ -31,19 +32,24 @@ export default async function DestinationsPage({
 
   return (
     <div className="container py-8">
-      <div className="max-w-2xl">
-        <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
-          Destinations
-        </p>
-        <h1 className="mt-1 text-display text-3xl tracking-tight">
-          {options.length === 0
-            ? "Awaiting your first brief"
-            : "Three honest options."}
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          Scored on golf quality, nightlife, and travel logistics. The strongest fit
-          is first — your concierge has reasons.
-        </p>
+      <div className="flex items-end justify-between gap-4 flex-wrap max-w-4xl">
+        <div className="max-w-2xl">
+          <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
+            Destinations
+          </p>
+          <h1 className="mt-1 text-display text-3xl tracking-tight">
+            {options.length === 0
+              ? "Awaiting your first brief"
+              : "Three honest options."}
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Scored on golf quality, nightlife, and travel logistics. The strongest fit
+            is first — your concierge has reasons.
+          </p>
+        </div>
+        {options.length > 0 && (
+          <RegenerateDestinationsButton tripId={trip.id} />
+        )}
       </div>
 
       {options.length === 0 ? (

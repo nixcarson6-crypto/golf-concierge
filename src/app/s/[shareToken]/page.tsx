@@ -3,6 +3,7 @@ import { Sparkles, Check } from "lucide-react";
 import { db } from "@/lib/db";
 import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
 import { formatCurrency, formatDateRange } from "@/lib/utils";
+import { PrintButton } from "./print-button";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +43,12 @@ export default async function SharedSummaryPage({
   return (
     <div className="min-h-dvh bg-background print:bg-white print:text-black">
       <div className="max-w-3xl mx-auto px-6 py-10 print:py-8">
-        <header className="flex items-center gap-2 text-sm text-muted-foreground print:text-neutral-600">
-          <Sparkles className="size-3.5 text-[hsl(var(--gold))] print:text-amber-700" />
-          <span>Golf Concierge · Trip dossier</span>
+        <header className="flex items-center justify-between gap-2 text-sm text-muted-foreground print:text-neutral-600">
+          <span className="flex items-center gap-2">
+            <Sparkles className="size-3.5 text-[hsl(var(--gold))] print:text-amber-700" />
+            Golf Concierge · Trip dossier
+          </span>
+          <PrintButton />
         </header>
 
         <h1 className="mt-4 text-display text-5xl tracking-tight print:text-black">
