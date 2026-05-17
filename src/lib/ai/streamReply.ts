@@ -9,16 +9,29 @@ import {
 /**
  * Streaming reply helper with tool support.
  *
- * The model may decide to call tools (currently: `search_flights`) mid-reply.
- * When it does, we pause streaming, execute the tool, append the result to
- * the conversation, and re-stream the continuation. The yielded tokens are
- * just the assistant's prose — tool-use rounds are invisible to the UI.
+ * Two tools are exposed:
+ *   - `search_flights` (client-side, Duffel): we execute, append the result
+ *     to the conversation, and re-stream the continuation.
+ *   - `web_search` (server-side, Anthropic): Anthropic executes the searches
+ *     transparently and inlines results into the model's response. We don't
+ *     need an executor for it; the events flow through the same stream and
+ *     non-text blocks are silently ignored.
+ *
+ * Yielded tokens are just the assistant's prose — tool-use rounds invisible.
  */
 export type StreamReplyOptions = {
   system: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   cacheSystem?: boolean;
   maxTokens?: number;
+};
+
+/** Anthropic-hosted web search. Server-side execution; no client executor. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const WEB_SEARCH_TOOL: any = {
+  type: "web_search_20250305",
+  name: "web_search",
+  max_uses: 5,
 };
 
 const FLIGHT_TOOL: Anthropic.Tool = {
@@ -101,7 +114,7 @@ export async function* streamReplyTokens(
       max_tokens: opts.maxTokens ?? 800,
       system: systemParam,
       messages: messages as Anthropic.MessageParam[],
-      tools: [FLIGHT_TOOL],
+      tools: [FLIGHT_TOOL, WEB_SEARCH_TOOL] as Anthropic.Tool[],
     });
 
     for await (const event of stream as unknown as AsyncIterable<Anthropic.MessageStreamEvent>) {
@@ -134,12 +147,20 @@ export async function* streamReplyTokens(
     }> = [];
     for (const block of finalMessage.content) {
       if (block.type !== "tool_use") continue;
+      // web_search is server-executed by Anthropic — skip; its results are
+      // already inlined in the assistant message we just appended above.
+      if (block.name === "web_search") continue;
       const result = await executeTool(block.name, block.input);
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
         content: result,
       });
+    }
+    if (toolResults.length === 0) {
+      // Stop reason was tool_use but only server-side tools fired — nothing
+      // for us to do, model will continue on its own next round.
+      return full;
     }
     messages.push({ role: "user", content: toolResults });
   }
