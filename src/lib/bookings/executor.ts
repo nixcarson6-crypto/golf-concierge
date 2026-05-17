@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import type { ItineraryItem } from "@prisma/client";
 import { partnerFor } from "./registry";
 import { runFallbackForItem } from "@/lib/ai/agents/fallback";
+import { nudge } from "@/lib/events";
 
 /**
  * Runs the booking flow for an approved itinerary. For each itinerary item
@@ -98,6 +99,7 @@ async function bookOne(
         status: result.status === "CONFIRMED" ? "Confirmed" : "Holding…",
       },
     });
+    nudge(tripId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await db.booking.update({
@@ -112,6 +114,7 @@ async function bookOne(
       where: { id: item.id },
       data: { confirmationState: "FAILED", status: "Re-optimizing…" },
     });
+    nudge(tripId);
     // Hand off to the fallback agent — fire-and-forget so other bookings
     // continue in parallel. The fallback produces a new itinerary version
     // which the executor can be re-run against.

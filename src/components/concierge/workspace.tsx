@@ -6,7 +6,19 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ConciergeChat } from "./chat";
 import { LivePreview } from "./live-preview";
 import { StatusRail } from "./status-rail";
-import type { ItineraryItemType, ConfirmationState, AgentType, AgentStatus, ChatRole, TripStatus } from "@prisma/client";
+import { CommandPalette } from "./command-palette";
+import type {
+  ItineraryItemType,
+  ConfirmationState,
+  AgentType,
+  AgentStatus,
+  ChatRole,
+  TripStatus,
+  TripRole,
+  ApprovalStatus,
+  PaymentStatus,
+  NotificationType,
+} from "@prisma/client";
 
 export type WorkspaceTrip = {
   id: string;
@@ -20,12 +32,33 @@ export type WorkspaceTrip = {
   status: TripStatus;
 };
 
+export type WorkspaceMe = {
+  id: string;
+  name: string | null;
+  imageUrl: string | null;
+  role: TripRole;
+  myApproval: ApprovalStatus | null;
+  myPayment: PaymentStatus | null;
+};
+
+export type WorkspaceMember = {
+  id: string;
+  userId: string | null;
+  name: string | null;
+  email: string;
+  imageUrl: string | null;
+  role: TripRole;
+  approvalStatus: ApprovalStatus;
+  paymentStatus: PaymentStatus;
+};
+
 export type WorkspaceMessage = {
   id: string;
   role: ChatRole;
   content: string;
   metadata: Record<string, unknown> | null;
   createdAt: string;
+  author: { id: string; name: string | null; imageUrl: string | null } | null;
 };
 
 export type WorkspaceItineraryItem = {
@@ -40,6 +73,7 @@ export type WorkspaceItineraryItem = {
   status: string | null;
   confirmationState: ConfirmationState;
   aiRationale: string | null;
+  locked: boolean;
 };
 
 export type WorkspaceItinerary = {
@@ -49,6 +83,7 @@ export type WorkspaceItinerary = {
   aiSummary: string | null;
   totalCost: number | null;
   perPersonCost: number | null;
+  changes: string[];
   items: WorkspaceItineraryItem[];
 };
 
@@ -61,31 +96,33 @@ export type WorkspaceAgentRun = {
   completedAt: string | null;
 };
 
-type Props = {
-  tripId: string;
-  initialTrip: WorkspaceTrip;
-  initialMessages: WorkspaceMessage[];
-  initialItinerary: WorkspaceItinerary | null;
-  initialAgentRuns: WorkspaceAgentRun[];
-  destinationCount: number;
-  memberCount: number;
+export type WorkspaceNotification = {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  readAt: string | null;
+  createdAt: string;
 };
+
+type Props = { tripId: string };
 
 type WorkspaceSnapshot = {
   trip: WorkspaceTrip;
+  me: WorkspaceMe;
   messages: WorkspaceMessage[];
   itinerary: WorkspaceItinerary | null;
   agentRuns: WorkspaceAgentRun[];
   destinationCount: number;
-  memberCount: number;
+  members: WorkspaceMember[];
+  approval: { approved: number; total: number; quorum: number };
+  notifications: WorkspaceNotification[];
+  summary: { shareToken: string | null; generatedAt: string } | null;
 };
 
-export function ConciergeWorkspace(props: Props) {
+export function ConciergeWorkspace({ tripId }: Props) {
   const qc = useQueryClient();
-  const tripId = props.tripId;
 
-  // Single canonical workspace snapshot, refetched on mutation + polled while
-  // agents are running so the live preview stays in sync without WebSockets.
   const { data } = useQuery<WorkspaceSnapshot>({
     queryKey: ["workspace", tripId],
     queryFn: async () => {
@@ -93,22 +130,22 @@ export function ConciergeWorkspace(props: Props) {
       if (!res.ok) throw new Error("Failed to load workspace");
       return res.json();
     },
-    initialData: {
-      trip: props.initialTrip,
-      messages: props.initialMessages,
-      itinerary: props.initialItinerary,
-      agentRuns: props.initialAgentRuns,
-      destinationCount: props.destinationCount,
-      memberCount: props.memberCount,
-    },
-    refetchInterval: (q) => {
-      const snap = q.state.data as WorkspaceSnapshot | undefined;
-      const hasActive = snap?.agentRuns.some(
-        (r) => r.status === "RUNNING" || r.status === "QUEUED",
-      );
-      return hasActive ? 1500 : false;
-    },
   });
+
+  // Live updates via Server-Sent Events. The server pings any time
+  // anything material changes — we just invalidate to refetch.
+  React.useEffect(() => {
+    const es = new EventSource(`/api/trips/${tripId}/stream`);
+    const refetch = () => qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    es.addEventListener("snapshot.changed", refetch);
+    es.addEventListener("agent.progress", refetch);
+    es.addEventListener("notification", refetch);
+    es.addEventListener("ready", refetch);
+    es.onerror = () => {
+      // Browser will auto-reconnect. Nothing to do.
+    };
+    return () => es.close();
+  }, [tripId, qc]);
 
   const sendMessage = useMutation({
     mutationFn: async (text: string) => {
@@ -129,6 +166,9 @@ export function ConciergeWorkspace(props: Props) {
         content: text,
         metadata: null,
         createdAt: new Date().toISOString(),
+        author: previous?.me
+          ? { id: previous.me.id, name: previous.me.name, imageUrl: previous.me.imageUrl }
+          : null,
       };
       const thinking: WorkspaceAgentRun = {
         id: `optimistic_run_${Date.now()}`,
@@ -155,74 +195,136 @@ export function ConciergeWorkspace(props: Props) {
     onSettled: () => qc.invalidateQueries({ queryKey: ["workspace", tripId] }),
   });
 
-  const snapshot: WorkspaceSnapshot = data!;
+  const itemAction = useMutation({
+    mutationFn: async (args: {
+      itemId: string;
+      body: { action: "swap" | "upgrade" | "downgrade" | "regenerate" | "lock"; instruction?: string; locked?: boolean };
+    }) => {
+      const res = await fetch(
+        `/api/trips/${tripId}/itinerary-items/${args.itemId}/action`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(args.body),
+        },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["workspace", tripId] }),
+  });
+
+  if (!data) {
+    return (
+      <div className="container py-20 text-center text-muted-foreground text-sm">
+        Loading concierge…
+      </div>
+    );
+  }
+
+  const snapshot = data;
 
   return (
-    <div className="container py-5">
-      {/* Desktop: three-panel command center */}
-      <div className="hidden lg:grid grid-cols-12 gap-5 h-[calc(100dvh-9.5rem)]">
-        <section className="col-span-5 xl:col-span-4 min-h-0">
-          <ConciergeChat
-            tripId={tripId}
-            trip={snapshot.trip}
-            messages={snapshot.messages}
-            onSend={(text) => sendMessage.mutate(text)}
-            sending={sendMessage.isPending}
-          />
-        </section>
-        <section className="col-span-4 xl:col-span-5 min-h-0">
-          <LivePreview
-            tripId={tripId}
-            trip={snapshot.trip}
-            itinerary={snapshot.itinerary}
-          />
-        </section>
-        <section className="col-span-3 min-h-0">
-          <StatusRail
-            trip={snapshot.trip}
-            itinerary={snapshot.itinerary}
-            agentRuns={snapshot.agentRuns}
-            destinationCount={snapshot.destinationCount}
-            memberCount={snapshot.memberCount}
-          />
-        </section>
-      </div>
+    <>
+      <CommandPalette
+        snapshot={snapshot}
+        onSendMessage={(t) => sendMessage.mutate(t)}
+        onApprove={async () => {
+          if (!snapshot.itinerary) return;
+          await fetch(`/api/trips/${tripId}/approvals`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              decision: "APPROVED",
+              itineraryId: snapshot.itinerary.id,
+            }),
+          });
+          qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+        }}
+      />
 
-      {/* Mobile: tabbed view */}
-      <div className="lg:hidden">
-        <Tabs defaultValue="chat" className="w-full">
-          <TabsList className="w-full justify-start overflow-x-auto no-scrollbar">
-            <TabsTrigger value="chat">Concierge</TabsTrigger>
-            <TabsTrigger value="itinerary">Itinerary</TabsTrigger>
-            <TabsTrigger value="status">Status</TabsTrigger>
-          </TabsList>
-          <TabsContent value="chat" className="h-[calc(100dvh-13rem)]">
+      <div className="container py-5">
+        {/* Desktop: three-panel command center */}
+        <div className="hidden lg:grid grid-cols-12 gap-5 h-[calc(100dvh-9.5rem)]">
+          <section className="col-span-5 xl:col-span-4 min-h-0">
             <ConciergeChat
               tripId={tripId}
               trip={snapshot.trip}
+              me={snapshot.me}
               messages={snapshot.messages}
               onSend={(text) => sendMessage.mutate(text)}
               sending={sendMessage.isPending}
             />
-          </TabsContent>
-          <TabsContent value="itinerary" className="h-[calc(100dvh-13rem)]">
+          </section>
+          <section className="col-span-4 xl:col-span-5 min-h-0">
             <LivePreview
               tripId={tripId}
               trip={snapshot.trip}
               itinerary={snapshot.itinerary}
+              me={snapshot.me}
+              approval={snapshot.approval}
+              onItemAction={(args) => itemAction.mutate(args)}
             />
-          </TabsContent>
-          <TabsContent value="status" className="h-[calc(100dvh-13rem)]">
+          </section>
+          <section className="col-span-3 min-h-0">
             <StatusRail
+              tripId={tripId}
               trip={snapshot.trip}
               itinerary={snapshot.itinerary}
               agentRuns={snapshot.agentRuns}
               destinationCount={snapshot.destinationCount}
-              memberCount={snapshot.memberCount}
+              members={snapshot.members}
+              notifications={snapshot.notifications}
+              approval={snapshot.approval}
+              summary={snapshot.summary}
             />
-          </TabsContent>
-        </Tabs>
+          </section>
+        </div>
+
+        {/* Mobile: tabbed view */}
+        <div className="lg:hidden">
+          <Tabs defaultValue="chat" className="w-full">
+            <TabsList className="w-full justify-start overflow-x-auto no-scrollbar">
+              <TabsTrigger value="chat">Concierge</TabsTrigger>
+              <TabsTrigger value="itinerary">Itinerary</TabsTrigger>
+              <TabsTrigger value="status">Status</TabsTrigger>
+            </TabsList>
+            <TabsContent value="chat" className="h-[calc(100dvh-13rem)]">
+              <ConciergeChat
+                tripId={tripId}
+                trip={snapshot.trip}
+                me={snapshot.me}
+                messages={snapshot.messages}
+                onSend={(text) => sendMessage.mutate(text)}
+                sending={sendMessage.isPending}
+              />
+            </TabsContent>
+            <TabsContent value="itinerary" className="h-[calc(100dvh-13rem)]">
+              <LivePreview
+                tripId={tripId}
+                trip={snapshot.trip}
+                itinerary={snapshot.itinerary}
+                me={snapshot.me}
+                approval={snapshot.approval}
+                onItemAction={(args) => itemAction.mutate(args)}
+              />
+            </TabsContent>
+            <TabsContent value="status" className="h-[calc(100dvh-13rem)]">
+              <StatusRail
+                tripId={tripId}
+                trip={snapshot.trip}
+                itinerary={snapshot.itinerary}
+                agentRuns={snapshot.agentRuns}
+                destinationCount={snapshot.destinationCount}
+                members={snapshot.members}
+                notifications={snapshot.notifications}
+                approval={snapshot.approval}
+                summary={snapshot.summary}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

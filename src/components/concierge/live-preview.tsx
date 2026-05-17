@@ -1,29 +1,66 @@
 "use client";
 
-import Link from "next/link";
+import * as React from "react";
 import {
   CalendarRange,
   CircleDollarSign,
   Compass,
   Sparkles,
   ArrowRight,
+  Check,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
 import { formatCurrency, formatDateRange } from "@/lib/utils";
-import type { WorkspaceItinerary, WorkspaceTrip } from "./workspace";
+import type {
+  WorkspaceItinerary,
+  WorkspaceMe,
+  WorkspaceTrip,
+} from "./workspace";
+import type { ItemAction } from "@/components/itinerary/item-actions-menu";
 
 export function LivePreview({
   tripId,
   trip,
   itinerary,
+  me,
+  approval,
+  onItemAction,
 }: {
   tripId: string;
   trip: WorkspaceTrip;
   itinerary: WorkspaceItinerary | null;
+  me: WorkspaceMe;
+  approval: { approved: number; total: number; quorum: number };
+  onItemAction: (args: { itemId: string; body: ItemAction }) => void;
 }) {
+  const qc = useQueryClient();
+  const itineraryIsDraft = itinerary?.status === "CURRENT";
+
+  const recordApproval = async (decision: "APPROVED" | "DECLINED") => {
+    if (!itinerary) return;
+    const res = await fetch(`/api/trips/${tripId}/approvals`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, itineraryId: itinerary.id }),
+    });
+    if (!res.ok) {
+      toast.error("Could not record your decision");
+      return;
+    }
+    toast.success(
+      decision === "APPROVED"
+        ? "You approved. Group quorum will trigger booking."
+        : "Declined — concierge will revise.",
+    );
+    qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+  };
+
   return (
     <div className="h-full flex flex-col rounded-3xl glass overflow-hidden">
       <header className="px-5 py-4 border-b border-border/60">
@@ -87,25 +124,85 @@ export function LivePreview({
                 </div>
               </div>
             )}
+            {itinerary.changes && itinerary.changes.length > 0 && (
+              <div className="rounded-2xl border border-[hsl(var(--gold)/0.3)] bg-[hsl(var(--gold)/0.05)] px-4 py-3 text-xs space-y-1.5">
+                <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--gold))]">
+                  What changed in v{itinerary.version}
+                </p>
+                {itinerary.changes.map((c, i) => (
+                  <p key={i} className="text-muted-foreground leading-relaxed">
+                    · {c}
+                  </p>
+                ))}
+              </div>
+            )}
             {itinerary.items.map((item) => (
-              <ItineraryItemCard key={item.id} item={item} />
+              <ItineraryItemCard
+                key={item.id}
+                item={item}
+                onAction={(action) =>
+                  onItemAction({ itemId: item.id, body: action })
+                }
+              />
             ))}
           </div>
         )}
       </ScrollArea>
 
-      {itinerary && itinerary.status === "CURRENT" && (
-        <footer className="p-3 border-t border-border/60 bg-surface/40 flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
-            {itinerary.totalCost
-              ? `Total ${formatCurrency(itinerary.totalCost / 100)}`
-              : "Estimating cost…"}
-          </p>
-          <Button asChild variant="gold" size="sm">
-            <Link href={`/trips/${tripId}/itinerary`}>
-              Review & approve <ArrowRight />
-            </Link>
-          </Button>
+      {itinerary && itineraryIsDraft && (
+        <footer className="p-3 border-t border-border/60 bg-surface/40 space-y-2">
+          {approval.total > 1 && (
+            <div className="flex items-center justify-between text-xs px-1">
+              <span className="text-muted-foreground">
+                Group approval · {approval.approved}/{approval.total}
+                {approval.quorum < approval.total &&
+                  ` (need ${approval.quorum})`}
+              </span>
+              <span className="num-tabular text-muted-foreground">
+                {itinerary.totalCost
+                  ? `Total ${formatCurrency(itinerary.totalCost / 100)}`
+                  : null}
+              </span>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            {me.role === "OWNER" && (
+              <Button
+                variant="gold"
+                size="sm"
+                onClick={() => recordApproval("APPROVED")}
+                className="flex-1"
+              >
+                <Check className="size-4" />
+                {approval.total > 1 ? "Approve as owner" : "Approve & book"}
+                <ArrowRight className="size-4" />
+              </Button>
+            )}
+            {me.role !== "OWNER" && me.myApproval !== "APPROVED" && (
+              <>
+                <Button
+                  variant="gold"
+                  size="sm"
+                  onClick={() => recordApproval("APPROVED")}
+                  className="flex-1"
+                >
+                  <Check className="size-4" /> I approve
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => recordApproval("DECLINED")}
+                >
+                  <X className="size-4" /> Decline
+                </Button>
+              </>
+            )}
+            {me.role !== "OWNER" && me.myApproval === "APPROVED" && (
+              <Badge variant="emerald" size="sm" className="px-3 py-1.5">
+                <Check className="size-3" /> You approved — waiting on the group
+              </Badge>
+            )}
+          </div>
         </footer>
       )}
     </div>

@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireTripAccess } from "@/lib/auth";
-import { executeItineraryBookings } from "@/lib/bookings/executor";
+import { requireTripAccess, requireUser } from "@/lib/auth";
+import { approveItinerary } from "@/lib/workflow";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/**
+ * Owner-only fast approve. Skips quorum and triggers the full workflow.
+ * Useful when the owner is acting on the group's behalf.
+ */
 export async function POST(
   _req: Request,
   {
@@ -15,6 +19,7 @@ export async function POST(
     params: Promise<{ tripId: string; itineraryId: string }>;
   },
 ) {
+  const user = await requireUser();
   const { tripId, itineraryId } = await params;
   let access;
   try {
@@ -31,25 +36,13 @@ export async function POST(
     return NextResponse.json({ error: "no current itinerary" }, { status: 404 });
   }
 
-  await db.$transaction([
-    db.itinerary.update({
-      where: { id: itinerary.id },
-      data: { status: "APPROVED" },
-    }),
-    db.trip.update({
-      where: { id: tripId },
-      data: { status: "BOOKING" },
-    }),
-  ]);
+  // Mark all group members APPROVED on the owner's say-so.
+  await db.tripMember.updateMany({
+    where: { tripId },
+    data: { approvalStatus: "APPROVED" },
+  });
 
-  // Fire-and-forget booking executor. In production this is also reachable
-  // via the Inngest 'trip/itinerary.approved' event; running it here too means
-  // the demo works without Inngest credentials.
-  void executeItineraryBookings(itinerary.id)
-    .then(() =>
-      db.trip.update({ where: { id: tripId }, data: { status: "BOOKED" } }),
-    )
-    .catch((err) => console.error("[approve → book]", err));
+  await approveItinerary({ tripId, itineraryId, userId: user.id });
 
   return NextResponse.json({ ok: true });
 }

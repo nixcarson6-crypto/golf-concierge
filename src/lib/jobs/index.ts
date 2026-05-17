@@ -3,6 +3,8 @@ import { executeItineraryBookings } from "../bookings/executor";
 import { db } from "../db";
 import { runItineraryAgent } from "../ai/agents/itinerary";
 import { runSummaryAgent } from "../ai/agents/summary";
+import { runWeatherWatchForAllTrips } from "../ai/agents/weatherWatch";
+import { runCostWatchdog } from "../ai/agents/costWatchdog";
 import type { ItineraryAI, TripConstraints } from "../ai/schemas";
 
 /**
@@ -132,8 +134,39 @@ export const onSummaryRequested = inngest.createFunction(
   },
 );
 
+export const weatherWatchDaily = inngest.createFunction(
+  { id: "weather-watch-daily" },
+  { cron: "0 13 * * *" }, // 13:00 UTC daily — early afternoon US
+  async () => {
+    return runWeatherWatchForAllTrips();
+  },
+);
+
+export const costWatchdogDaily = inngest.createFunction(
+  { id: "cost-watchdog-daily" },
+  { cron: "0 15 * * *" },
+  async () => {
+    const trips = await db.trip.findMany({
+      where: {
+        status: { in: ["PLANNING", "AWAITING_APPROVAL"] },
+      },
+      select: { id: true },
+    });
+    for (const t of trips) {
+      try {
+        await runCostWatchdog(t.id);
+      } catch (err) {
+        console.error("[cost watchdog]", t.id, err);
+      }
+    }
+    return { scanned: trips.length };
+  },
+);
+
 export const functions = [
   onItineraryApproved,
   onRefineRequested,
   onSummaryRequested,
+  weatherWatchDaily,
+  costWatchdogDaily,
 ];

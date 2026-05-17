@@ -14,6 +14,7 @@ import { anthropic, modelFor, type ModelTier } from "./client";
 import { db } from "@/lib/db";
 import type { AgentType } from "@prisma/client";
 import { Prisma } from "@prisma/client";
+import { emitTripEvent, nudge } from "@/lib/events";
 
 export type AgentMessage =
   | { role: "user"; content: string }
@@ -31,6 +32,9 @@ export type RunStructuredOptions<T extends z.ZodTypeAny> = {
   /** Optional reasoning/effort budget (forwarded to Anthropic where supported). */
   thinking?: { enabled: boolean; budgetTokens?: number };
   temperature?: number;
+  /** When true, mark the system prompt as cacheable. Reduces cost + latency
+   * for prompts that are stable across many turns (most of ours). */
+  cacheSystem?: boolean;
 };
 
 const STRUCTURED_TOOL_DEFAULT = "emit_result";
@@ -51,11 +55,21 @@ export async function runStructured<T extends z.ZodTypeAny>(
 
   const jsonSchema = zodToJsonSchema(opts.schema);
 
+  const systemParam = opts.cacheSystem
+    ? [
+        {
+          type: "text" as const,
+          text: opts.system,
+          cache_control: { type: "ephemeral" as const },
+        },
+      ]
+    : opts.system;
+
   const response = await client.messages.create({
     model,
     max_tokens: opts.maxTokens ?? 4096,
     temperature: opts.temperature ?? 0.5,
-    system: opts.system,
+    system: systemParam,
     messages: opts.messages.map((m) => ({
       role: m.role,
       content: m.content,
@@ -157,8 +171,16 @@ export async function withAgentRun<TOutput>(args: {
     },
   });
 
+  nudge(args.tripId);
+
   const updateProgress = async (p: string) => {
     await db.agentRun.update({ where: { id: run.id }, data: { progress: p } });
+    emitTripEvent({
+      kind: "agent.progress",
+      tripId: args.tripId,
+      runId: run.id,
+      progress: p,
+    });
   };
 
   try {
@@ -171,6 +193,7 @@ export async function withAgentRun<TOutput>(args: {
         completedAt: new Date(),
       },
     });
+    nudge(args.tripId);
     return { runId: run.id, output };
   } catch (err) {
     await db.agentRun.update({
@@ -181,6 +204,7 @@ export async function withAgentRun<TOutput>(args: {
         completedAt: new Date(),
       },
     });
+    nudge(args.tripId);
     throw err;
   }
 }

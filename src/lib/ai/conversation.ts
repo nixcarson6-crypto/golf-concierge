@@ -5,6 +5,7 @@ import { runDestinationAgent } from "./agents/destination";
 import { runItineraryAgent } from "./agents/itinerary";
 import type { AgentMessage } from "./orchestrator";
 import type { ItineraryAI, TripConstraints } from "./schemas";
+import { nudge } from "@/lib/events";
 
 /**
  * Drives one turn of the concierge conversation:
@@ -30,6 +31,7 @@ export async function processUserMessage(args: {
   await db.chatMessage.create({
     data: { tripId: trip.id, userId, role: "USER", content: text },
   });
+  nudge(trip.id);
 
   const recent = await db.chatMessage.findMany({
     where: { tripId: trip.id },
@@ -81,6 +83,7 @@ export async function processUserMessage(args: {
       },
     }),
   ]);
+  nudge(trip.id);
 
   // Kick downstream agents in the background — don't await them so the chat
   // returns promptly. Errors are captured into AgentRun by withAgentRun().

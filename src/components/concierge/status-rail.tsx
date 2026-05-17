@@ -1,6 +1,8 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles,
   Compass,
@@ -11,42 +13,77 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  Bell,
+  Share2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { cn, relativeTime } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn, initials, relativeTime } from "@/lib/utils";
 import { tripStatusLabel } from "@/lib/trip-status";
 import type {
   WorkspaceAgentRun,
   WorkspaceItinerary,
+  WorkspaceMember,
+  WorkspaceNotification,
   WorkspaceTrip,
 } from "./workspace";
 import type { AgentType } from "@prisma/client";
 
 export function StatusRail({
+  tripId,
   trip,
   itinerary,
   agentRuns,
   destinationCount,
-  memberCount,
+  members,
+  notifications,
+  approval,
+  summary,
 }: {
+  tripId: string;
   trip: WorkspaceTrip;
   itinerary: WorkspaceItinerary | null;
   agentRuns: WorkspaceAgentRun[];
   destinationCount: number;
-  memberCount: number;
+  members: WorkspaceMember[];
+  notifications: WorkspaceNotification[];
+  approval: { approved: number; total: number; quorum: number };
+  summary: { shareToken: string | null; generatedAt: string } | null;
 }) {
+  const qc = useQueryClient();
+  const unreadCount = notifications.filter((n) => !n.readAt).length;
+
+  const markAllRead = async () => {
+    if (unreadCount === 0) return;
+    await fetch(`/api/trips/${tripId}/notifications/read`, { method: "POST" });
+    qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+  };
+
   return (
     <aside className="h-full flex flex-col rounded-3xl glass overflow-hidden">
       <header className="px-5 py-4 border-b border-border/60">
-        <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
-          Status
-        </p>
-        <div className="mt-1 flex items-center justify-between">
-          <h2 className="text-display text-lg tracking-tight">
-            {tripStatusLabel(trip.status)}
-          </h2>
-          <Sparkles className="size-4 text-[hsl(var(--gold))]" />
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
+              Status
+            </p>
+            <h2 className="text-display text-lg tracking-tight">
+              {tripStatusLabel(trip.status)}
+            </h2>
+          </div>
+          <button
+            onClick={markAllRead}
+            className="relative size-9 grid place-items-center rounded-lg border border-border/70 bg-surface-raised/40 text-muted-foreground hover:text-foreground transition"
+            aria-label="Notifications"
+          >
+            <Bell className="size-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 size-4 rounded-full bg-[hsl(var(--gold))] text-[10px] text-[hsl(var(--primary-foreground))] font-medium grid place-items-center">
+                {unreadCount}
+              </span>
+            )}
+          </button>
         </div>
       </header>
 
@@ -71,7 +108,7 @@ export function StatusRail({
                     ? `${destinationCount} options ready`
                     : "Awaiting input")
                 }
-                href={`/trips/${trip.id}/destination`}
+                href={`/trips/${tripId}/destination`}
               />
               <ProgressRow
                 icon={<CalendarRange className="size-3.5" />}
@@ -88,24 +125,78 @@ export function StatusRail({
                     ? `v${itinerary.version} · ${itinerary.items.length} items`
                     : "Not yet drafted"
                 }
-                href={`/trips/${trip.id}/itinerary`}
+                href={`/trips/${tripId}/itinerary`}
               />
               <ProgressRow
                 icon={<Users className="size-3.5" />}
                 label="Group"
-                state={memberCount > 1 ? "done" : "pending"}
-                detail={`${memberCount} ${memberCount === 1 ? "member" : "members"}`}
-                href={`/trips/${trip.id}/group`}
+                state={
+                  approval.approved === approval.total && approval.total > 0
+                    ? "done"
+                    : approval.approved > 0
+                      ? "active"
+                      : "pending"
+                }
+                detail={
+                  members.length > 0
+                    ? `${approval.approved}/${approval.total} approved`
+                    : "No members yet"
+                }
+                href={`/trips/${tripId}/group`}
               />
               <ProgressRow
                 icon={<CreditCard className="size-3.5" />}
                 label="Payments"
-                state={trip.status === "BOOKED" ? "done" : "pending"}
-                detail="Awaiting approval"
-                href={`/trips/${trip.id}/payments`}
+                state={
+                  members.every((m) => m.paymentStatus === "PAID") &&
+                  members.length > 0
+                    ? "done"
+                    : members.some((m) => m.paymentStatus !== "UNPAID")
+                      ? "active"
+                      : "pending"
+                }
+                detail={
+                  members.length > 0
+                    ? `${members.filter((m) => m.paymentStatus === "PAID").length}/${members.length} paid`
+                    : "Awaiting members"
+                }
+                href={`/trips/${tripId}/payments`}
               />
             </ul>
           </section>
+
+          {members.length > 0 && (
+            <section>
+              <SectionHeading>
+                <Users className="size-3" /> Group
+              </SectionHeading>
+              <div className="mt-3 flex flex-wrap -space-x-1.5">
+                {members.slice(0, 7).map((m) => (
+                  <Avatar
+                    key={m.id}
+                    className={cn(
+                      "size-7 ring-2 ring-card",
+                      m.approvalStatus === "APPROVED" &&
+                        "ring-[hsl(var(--emerald)/0.6)]",
+                    )}
+                    title={`${m.name ?? m.email} · ${m.approvalStatus.replace("_", " ").toLowerCase()}`}
+                  >
+                    {m.imageUrl && (
+                      <AvatarImage src={m.imageUrl} alt={m.name ?? m.email} />
+                    )}
+                    <AvatarFallback className="text-[10px]">
+                      {initials(m.name ?? m.email)}
+                    </AvatarFallback>
+                  </Avatar>
+                ))}
+                {members.length > 7 && (
+                  <div className="size-7 ring-2 ring-card rounded-full bg-surface-raised border border-border grid place-items-center text-[10px] text-muted-foreground">
+                    +{members.length - 7}
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
           <section>
             <SectionHeading>
@@ -114,13 +205,58 @@ export function StatusRail({
             <ul className="mt-3 space-y-2">
               {agentRuns.length === 0 ? (
                 <li className="text-xs text-muted-foreground/80">
-                  No agents have run yet. Send a message to get started.
+                  No agents have run yet.
                 </li>
               ) : (
                 agentRuns.map((r) => <AgentRunRow key={r.id} run={r} />)
               )}
             </ul>
           </section>
+
+          {notifications.length > 0 && (
+            <section>
+              <SectionHeading>
+                <Bell className="size-3" /> Recent activity
+              </SectionHeading>
+              <ul className="mt-3 space-y-2">
+                {notifications.slice(0, 5).map((n) => (
+                  <li
+                    key={n.id}
+                    className={cn(
+                      "rounded-xl border px-3 py-2.5",
+                      n.readAt
+                        ? "border-border/40 bg-surface-raised/20"
+                        : "border-[hsl(var(--gold)/0.3)] bg-[hsl(var(--gold)/0.05)]",
+                    )}
+                  >
+                    <p className="text-xs font-medium leading-tight">{n.title}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {n.message}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/60 mt-1">
+                      {relativeTime(n.createdAt)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {summary?.shareToken && (
+            <section>
+              <SectionHeading>
+                <Share2 className="size-3" /> Share
+              </SectionHeading>
+              <Link
+                href={`/s/${summary.shareToken}`}
+                target="_blank"
+                className="mt-3 inline-flex items-center gap-2 text-xs rounded-xl border border-border/70 bg-surface-raised/40 px-3 py-2 hover:bg-surface-raised hover:border-foreground/20 transition"
+              >
+                <Sparkles className="size-3 text-[hsl(var(--gold))]" />
+                Open shareable summary
+              </Link>
+            </section>
+          )}
         </div>
       </ScrollArea>
     </aside>
@@ -250,5 +386,3 @@ function agentLabel(t: AgentType) {
 function statusText(s: WorkspaceAgentRun["status"]) {
   return s.charAt(0) + s.slice(1).toLowerCase().replace("_", " ");
 }
-
-export { Badge };

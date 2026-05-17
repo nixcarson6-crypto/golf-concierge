@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Flag,
   BedDouble,
@@ -11,10 +13,15 @@ import {
   Sparkles,
   Clock,
   MapPin,
+  Lock,
 } from "lucide-react";
 import type { ConfirmationState, ItineraryItemType } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatCurrency } from "@/lib/utils";
+import {
+  ItemActionsMenu,
+  type ItemAction,
+} from "@/components/itinerary/item-actions-menu";
 
 export type DisplayItineraryItem = {
   id: string;
@@ -28,12 +35,28 @@ export type DisplayItineraryItem = {
   status: string | null;
   confirmationState: ConfirmationState;
   aiRationale: string | null;
+  locked?: boolean;
 };
 
-export function ItineraryItemCard({ item }: { item: DisplayItineraryItem }) {
+export function ItineraryItemCard({
+  item,
+  onAction,
+  compact = false,
+}: {
+  item: DisplayItineraryItem;
+  onAction?: (a: ItemAction) => void;
+  compact?: boolean;
+}) {
   const Icon = iconFor(item.type);
   return (
-    <article className="rounded-2xl border border-border/70 bg-card/60 p-4 hover:border-foreground/15 transition group">
+    <article
+      className={cn(
+        "group rounded-2xl border bg-card/60 p-4 transition",
+        item.locked
+          ? "border-[hsl(var(--gold)/0.35)] bg-[hsl(var(--gold)/0.04)]"
+          : "border-border/70 hover:border-foreground/15",
+      )}
+    >
       <div className="flex items-start gap-3">
         <div
           className={cn(
@@ -46,14 +69,22 @@ export function ItineraryItemCard({ item }: { item: DisplayItineraryItem }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                {labelFor(item.type)}
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                  {labelFor(item.type)}
+                </p>
+                {item.locked && (
+                  <Lock className="size-2.5 text-[hsl(var(--gold))]" />
+                )}
+              </div>
               <h3 className="text-sm font-medium leading-tight mt-0.5 truncate">
                 {item.title}
               </h3>
             </div>
-            <ConfirmationBadge state={item.confirmationState} />
+            <div className="flex items-center gap-1.5">
+              <ConfirmationBadge state={item.confirmationState} />
+              {onAction && <ItemActionsMenu locked={Boolean(item.locked)} onAction={onAction} />}
+            </div>
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -76,7 +107,7 @@ export function ItineraryItemCard({ item }: { item: DisplayItineraryItem }) {
             )}
           </div>
 
-          {item.aiRationale && (
+          {!compact && item.aiRationale && (
             <div className="mt-3 rounded-xl bg-surface-raised/40 border border-border/50 px-3 py-2 text-xs text-muted-foreground flex gap-2 items-start">
               <Sparkles className="size-3 mt-0.5 text-[hsl(var(--gold))] shrink-0" />
               <span>{item.aiRationale}</span>

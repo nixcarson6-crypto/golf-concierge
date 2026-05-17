@@ -5,6 +5,10 @@ import {
   type ItineraryAI,
   type TripConstraints,
 } from "../schemas";
+import {
+  destinationBriefForAI,
+  findDestination,
+} from "@/lib/data/destinations";
 
 export type ItineraryAgentInput = {
   tripId: string;
@@ -31,17 +35,23 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
       ? "Re-tuning your itinerary…"
       : "Drafting the itinerary…",
     fn: async () => {
+      const kb = findDestination(input.destination);
+      const brief = kb ? destinationBriefForAI(kb) : null;
+      const briefSection = brief
+        ? `DESTINATION_BRIEF (authoritative — use these real venues):\n${JSON.stringify(brief, null, 2)}\n\n`
+        : `(No curated brief for "${input.destination}" — draw on what you know about this market and admit uncertainty.)\n\n`;
+
       const userMessage = isRefine
-        ? `Destination: ${input.destination}\n\nConstraints:\n${JSON.stringify(
+        ? `${briefSection}Constraints:\n${JSON.stringify(
             input.constraints,
             null,
             2,
-          )}\n\nPrior itinerary (JSON):\n${JSON.stringify(
+          )}\n\nPrior itinerary (JSON; respect locked items):\n${JSON.stringify(
             input.priorItinerary,
             null,
             2,
           )}\n\nRefinement instruction:\n${input.refinementInstruction ?? "(none — adapt to updated constraints)"}\n\nProduce the new full itinerary now. List substitutions in 'changes'.`
-        : `Destination: ${input.destination}\n\nConstraints:\n${JSON.stringify(
+        : `${briefSection}Constraints:\n${JSON.stringify(
             input.constraints,
             null,
             2,
@@ -50,6 +60,7 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
       const result = await runStructured({
         tier: "orchestrator",
         system: ITINERARY_SYSTEM,
+        cacheSystem: true,
         schema: itinerarySchema,
         toolName: "emit_itinerary",
         toolDescription: "Emit the full itinerary as structured data.",

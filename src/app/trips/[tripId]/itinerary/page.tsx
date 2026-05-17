@@ -2,10 +2,9 @@ import { notFound } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
 import { requireTripAccess } from "@/lib/auth";
-import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
-import { ApproveItineraryButton } from "./approve-button";
+import { ItineraryView } from "./itinerary-view";
 
 export const dynamic = "force-dynamic";
 
@@ -72,11 +71,8 @@ export default async function ItineraryPage({
               </p>
             </div>
           )}
-          {itinerary.status === "CURRENT" && (
-            <ApproveItineraryButton tripId={tripId} itineraryId={itinerary.id} />
-          )}
           {itinerary.status === "APPROVED" && (
-            <Badge variant="emerald">Approved · booking in progress</Badge>
+            <Badge variant="emerald">Approved · booking</Badge>
           )}
         </div>
       </div>
@@ -104,26 +100,24 @@ export default async function ItineraryPage({
         </div>
       )}
 
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {itinerary.items.map((item) => (
-          <ItineraryItemCard
-            key={item.id}
-            item={{
-              id: item.id,
-              type: item.type,
-              title: item.title,
-              description: item.description,
-              location: item.location,
-              startTime: item.startTime?.toISOString() ?? null,
-              endTime: item.endTime?.toISOString() ?? null,
-              cost: item.cost,
-              status: item.status,
-              confirmationState: item.confirmationState,
-              aiRationale: item.aiRationale,
-            }}
-          />
-        ))}
-      </div>
+      <ItineraryView
+        tripId={tripId}
+        readOnly={itinerary.status !== "CURRENT"}
+        items={itinerary.items.map((i) => ({
+          id: i.id,
+          type: i.type,
+          title: i.title,
+          description: i.description,
+          location: i.location,
+          startTime: i.startTime?.toISOString() ?? null,
+          endTime: i.endTime?.toISOString() ?? null,
+          cost: i.cost,
+          status: i.status,
+          confirmationState: i.confirmationState,
+          aiRationale: i.aiRationale,
+          locked: Boolean((i.metadata as { locked?: boolean } | null)?.locked),
+        }))}
+      />
     </div>
   );
 }

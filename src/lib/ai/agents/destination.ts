@@ -6,6 +6,7 @@ import {
   type TripConstraints,
 } from "../schemas";
 import { unsplashUrlFor } from "@/lib/data/imagery";
+import { allDestinationsBriefForAI, monthFromDate } from "@/lib/data/destinations";
 
 export type DestinationAgentInput = {
   tripId: string;
@@ -19,23 +20,35 @@ export async function runDestinationAgent(input: DestinationAgentInput) {
     input: input.constraints as Record<string, unknown>,
     progress: "Comparing premium golf markets…",
     fn: async () => {
+      const kb = allDestinationsBriefForAI();
+      const month =
+        monthFromDate(input.constraints.startDate) ??
+        monthFromDate(input.constraints.endDate);
+
       const raw: DestinationListAI = await runStructured({
         tier: "orchestrator",
         system: DESTINATION_SYSTEM,
+        cacheSystem: true,
         schema: destinationListSchema,
         toolName: "emit_destinations",
         toolDescription: "Emit 3 ranked destination recommendations.",
         messages: [
           {
             role: "user",
-            content: `Group constraints:\n${JSON.stringify(
-              input.constraints,
-              null,
-              2,
-            )}\n\nPropose 3 destinations now.`,
+            content: [
+              `KNOWLEDGE_BASE (authoritative for these markets):`,
+              JSON.stringify(kb, null, 2),
+              ``,
+              `Travel month signal: ${month ?? "unknown"} — consult the weather table for each candidate.`,
+              ``,
+              `Group constraints:`,
+              JSON.stringify(input.constraints, null, 2),
+              ``,
+              `Propose 3 destinations now, ranked, strongest fit first.`,
+            ].join("\n"),
           },
         ],
-        maxTokens: 3000,
+        maxTokens: 4000,
         temperature: 0.55,
       });
 
