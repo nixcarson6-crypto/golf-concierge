@@ -16,10 +16,16 @@ import { optionalEnv } from "@/lib/env";
 const HOTELBEDS_BASE = "https://api.test.hotelbeds.com";
 
 export type HotelSearchInput = {
-  /** Lat/lng of the target city or area. */
-  latitude: number;
-  longitude: number;
-  /** Search radius in km. Default 20km. */
+  /**
+   * Hotelbeds destination code (e.g. "MAD" Madrid, "PMI" Palma, "NYC" New York).
+   * If provided, this is used instead of lat/lng. More reliable in test
+   * sandbox which has incomplete geolocation indexing.
+   */
+  destinationCode?: string;
+  /** Lat/lng of the target city. Required if destinationCode not provided. */
+  latitude?: number;
+  longitude?: number;
+  /** Search radius in km. Default 20km. Ignored if destinationCode set. */
   radiusKm?: number;
   checkIn: string; // YYYY-MM-DD
   checkOut: string; // YYYY-MM-DD
@@ -67,31 +73,55 @@ export async function searchHotels(
     return { ok: false, error: "adults and rooms must be >= 1" };
   }
 
-  const body = {
-    stay: { checkIn: input.checkIn, checkOut: input.checkOut },
-    occupancies: [
-      {
-        rooms: input.rooms,
-        adults: input.adults,
-        children: input.children ?? 0,
-      },
-    ],
-    geolocation: {
-      latitude: input.latitude,
-      longitude: input.longitude,
-      radius: input.radiusKm ?? 20,
-      unit: "km",
+  const occupancies = [
+    {
+      rooms: input.rooms,
+      adults: input.adults,
+      children: input.children ?? 0,
     },
-  };
+  ];
+  const stay = { checkIn: input.checkIn, checkOut: input.checkOut };
+  const useDestination = Boolean(input.destinationCode);
+  if (!useDestination && (input.latitude == null || input.longitude == null)) {
+    return {
+      ok: false,
+      error: "either destinationCode OR (latitude+longitude) is required",
+    };
+  }
+  const body = useDestination
+    ? {
+        stay,
+        occupancies,
+        destination: { code: input.destinationCode!.toUpperCase() },
+      }
+    : {
+        stay,
+        occupancies,
+        geolocation: {
+          latitude: input.latitude!,
+          longitude: input.longitude!,
+          radius: input.radiusKm ?? 20,
+          unit: "km",
+        },
+      };
 
   const url = `${HOTELBEDS_BASE}/hotel-api/1.0/hotels`;
+  const sig = signature(apiKey, secret);
+  console.log("[hotelbeds] request →", {
+    url,
+    apiKeyPrefix: apiKey.slice(0, 6) + "...",
+    secretPrefix: secret.slice(0, 4) + "...",
+    secretLength: secret.length,
+    signaturePrefix: sig.slice(0, 12) + "...",
+    body,
+  });
   let res: Response;
   try {
     res = await fetch(url, {
       method: "POST",
       headers: {
         "Api-key": apiKey,
-        "X-Signature": signature(apiKey, secret),
+        "X-Signature": sig,
         "Content-Type": "application/json",
         Accept: "application/json",
         "Accept-Encoding": "gzip",
@@ -99,6 +129,7 @@ export async function searchHotels(
       body: JSON.stringify(body),
     });
   } catch (err) {
+    console.error("[hotelbeds] network error", err);
     return {
       ok: false,
       error: `network error: ${err instanceof Error ? err.message : String(err)}`,
@@ -118,18 +149,17 @@ export async function searchHotels(
   if (!res.ok) {
     const msg =
       json.error?.message ?? `Hotelbeds ${res.status} ${res.statusText}`;
-    // Log the full failure to the dev server console so the actual error
-    // surfaces in `pnpm dev` output instead of being swallowed.
-    console.error("[hotelbeds]", {
+    console.error("[hotelbeds] error response ←", {
       status: res.status,
       statusText: res.statusText,
-      url,
-      apiKeyPrefix: apiKey.slice(0, 6) + "...",
-      requestBody: body,
       responseBody: rawText.slice(0, 2000),
     });
     return { ok: false, error: msg };
   }
+  console.log("[hotelbeds] success ←", {
+    status: res.status,
+    hotelCount: json.hotels?.hotels?.length ?? 0,
+  });
   if (!json.hotels?.hotels) {
     return { ok: true, hotels: [] };
   }

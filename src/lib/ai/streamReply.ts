@@ -84,17 +84,22 @@ const FLIGHT_TOOL: Anthropic.Tool = {
 const HOTEL_TOOL: Anthropic.Tool = {
   name: "search_hotels",
   description:
-    "Search live hotel availability and rates via Hotelbeds. Use this whenever the user asks for hotel prices, availability, or wants you to book lodging. Geolocation-based: you provide lat/lng of the target area and a radius. You know coordinates for major destinations (Colorado Springs: 38.83/-104.82, Scottsdale: 33.50/-111.92, Pinehurst: 35.19/-79.47, etc.). Default radius 20km works for most cities. Returns hotels sorted cheapest first with category (stars), per-night/per-room rate, total stay cost, board (breakfast/etc.), and refundability. Use this INSTEAD OF web_search when the user wants bookable hotel rates. Use web_search only for things Hotelbeds doesn't have: dress codes, course details, hotel amenities not in the API response.",
+    "Search live hotel availability and rates via Hotelbeds. Use whenever the user asks for hotel prices, availability, or to book lodging. Two ways to specify location: destinationCode (3-letter Hotelbeds code like 'MAD' Madrid, 'NYC' New York, 'PMI' Palma, 'LON' London — most reliable, especially in sandbox), OR latitude+longitude+radius. Prefer destinationCode if you know it. You know codes for major markets from training; if uncertain, use lat/lng. Returns hotels sorted cheapest first with category (stars), per-night/per-room rate, total stay cost, board, refundability. Use this INSTEAD OF web_search for bookable hotel rates.",
   input_schema: {
     type: "object",
     properties: {
+      destinationCode: {
+        type: "string",
+        description:
+          "Hotelbeds 3-letter destination code, e.g. MAD, NYC, LON, PMI. Prefer this over lat/lng when you're confident in the code.",
+      },
       latitude: {
         type: "number",
-        description: "Latitude of search center (decimal degrees, e.g. 38.8339).",
+        description: "Latitude of search center (decimal degrees). Only used if destinationCode is omitted.",
       },
       longitude: {
         type: "number",
-        description: "Longitude of search center (decimal degrees, e.g. -104.8214).",
+        description: "Longitude of search center (decimal degrees). Only used if destinationCode is omitted.",
       },
       radiusKm: {
         type: "number",
@@ -126,7 +131,7 @@ const HOTEL_TOOL: Anthropic.Tool = {
         minimum: 0,
       },
     },
-    required: ["latitude", "longitude", "checkIn", "checkOut", "rooms", "adults"],
+    required: ["checkIn", "checkOut", "rooms", "adults"],
   },
 };
 
@@ -278,20 +283,28 @@ async function executeHotelSearch(input: unknown): Promise<string> {
   const parsed = input as Partial<HotelSearchInput> | null;
   if (
     !parsed ||
-    typeof parsed.latitude !== "number" ||
-    typeof parsed.longitude !== "number" ||
     typeof parsed.checkIn !== "string" ||
     typeof parsed.checkOut !== "string" ||
     typeof parsed.rooms !== "number" ||
     typeof parsed.adults !== "number"
   ) {
     return JSON.stringify({
+      error: "invalid input — need checkIn, checkOut, rooms, adults",
+    });
+  }
+  if (
+    !parsed.destinationCode &&
+    (typeof parsed.latitude !== "number" ||
+      typeof parsed.longitude !== "number")
+  ) {
+    return JSON.stringify({
       error:
-        "invalid input — need latitude, longitude, checkIn, checkOut, rooms, adults",
+        "either destinationCode OR (latitude + longitude) is required",
     });
   }
 
   const result = await searchHotels({
+    destinationCode: parsed.destinationCode,
     latitude: parsed.latitude,
     longitude: parsed.longitude,
     radiusKm: parsed.radiusKm,

@@ -94,8 +94,6 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
         toolDescription: "Emit the full itinerary as structured data.",
         messages: [{ role: "user", content: userMessage }],
         maxTokens: 6000,
-        temperature: 0.55,
-        thinking: { enabled: true, budgetTokens: 4000 },
       });
       return result;
     },
