@@ -94,6 +94,7 @@ export async function searchHotels(
         "X-Signature": signature(apiKey, secret),
         "Content-Type": "application/json",
         Accept: "application/json",
+        "Accept-Encoding": "gzip",
       },
       body: JSON.stringify(body),
     });
@@ -104,10 +105,29 @@ export async function searchHotels(
     };
   }
 
-  const json = (await res.json().catch(() => ({}))) as HotelbedsResponse;
+  // Capture body as text first so we can log the raw error response even if
+  // Hotelbeds returns non-JSON (which they sometimes do on auth failures).
+  const rawText = await res.text();
+  let json: HotelbedsResponse = {};
+  try {
+    json = rawText ? (JSON.parse(rawText) as HotelbedsResponse) : {};
+  } catch {
+    // not JSON
+  }
+
   if (!res.ok) {
     const msg =
-      json.error?.message ?? `Hotelbeds returned ${res.status}`;
+      json.error?.message ?? `Hotelbeds ${res.status} ${res.statusText}`;
+    // Log the full failure to the dev server console so the actual error
+    // surfaces in `pnpm dev` output instead of being swallowed.
+    console.error("[hotelbeds]", {
+      status: res.status,
+      statusText: res.statusText,
+      url,
+      apiKeyPrefix: apiKey.slice(0, 6) + "...",
+      requestBody: body,
+      responseBody: rawText.slice(0, 2000),
+    });
     return { ok: false, error: msg };
   }
   if (!json.hotels?.hotels) {
