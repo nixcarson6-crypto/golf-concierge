@@ -47,6 +47,8 @@ const definitions = {
   GOLFNOW_API_KEY: { required: false },
   EXPEDIA_RAPID_API_KEY: { required: false },
   DUFFEL_API_KEY: { required: false },
+  HOTELBEDS_API_KEY: { required: false },
+  HOTELBEDS_SECRET: { required: false },
   OPENTABLE_API_KEY: { required: false },
   UBER_FOR_BUSINESS_TOKEN: { required: false },
 

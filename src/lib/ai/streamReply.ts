@@ -5,6 +5,11 @@ import {
   formatOfferOneLine,
   type FlightSearchInput,
 } from "@/lib/bookings/providers/duffel-search";
+import {
+  searchHotels,
+  formatHotelOneLine,
+  type HotelSearchInput,
+} from "@/lib/bookings/providers/hotelbeds-search";
 
 /**
  * Streaming reply helper with tool support.
@@ -76,6 +81,55 @@ const FLIGHT_TOOL: Anthropic.Tool = {
   },
 };
 
+const HOTEL_TOOL: Anthropic.Tool = {
+  name: "search_hotels",
+  description:
+    "Search live hotel availability and rates via Hotelbeds. Use this whenever the user asks for hotel prices, availability, or wants you to book lodging. Geolocation-based: you provide lat/lng of the target area and a radius. You know coordinates for major destinations (Colorado Springs: 38.83/-104.82, Scottsdale: 33.50/-111.92, Pinehurst: 35.19/-79.47, etc.). Default radius 20km works for most cities. Returns hotels sorted cheapest first with category (stars), per-night/per-room rate, total stay cost, board (breakfast/etc.), and refundability. Use this INSTEAD OF web_search when the user wants bookable hotel rates. Use web_search only for things Hotelbeds doesn't have: dress codes, course details, hotel amenities not in the API response.",
+  input_schema: {
+    type: "object",
+    properties: {
+      latitude: {
+        type: "number",
+        description: "Latitude of search center (decimal degrees, e.g. 38.8339).",
+      },
+      longitude: {
+        type: "number",
+        description: "Longitude of search center (decimal degrees, e.g. -104.8214).",
+      },
+      radiusKm: {
+        type: "number",
+        description: "Search radius in kilometers (default 20).",
+      },
+      checkIn: {
+        type: "string",
+        description: "Check-in date, ISO YYYY-MM-DD.",
+      },
+      checkOut: {
+        type: "string",
+        description: "Check-out date, ISO YYYY-MM-DD.",
+      },
+      rooms: {
+        type: "integer",
+        description: "Number of rooms.",
+        minimum: 1,
+        maximum: 8,
+      },
+      adults: {
+        type: "integer",
+        description: "Total adults across all rooms.",
+        minimum: 1,
+        maximum: 16,
+      },
+      children: {
+        type: "integer",
+        description: "Total children. Default 0.",
+        minimum: 0,
+      },
+    },
+    required: ["latitude", "longitude", "checkIn", "checkOut", "rooms", "adults"],
+  },
+};
+
 type AnthropicMessage = {
   role: "user" | "assistant";
   content:
@@ -114,7 +168,7 @@ export async function* streamReplyTokens(
       max_tokens: opts.maxTokens ?? 800,
       system: systemParam,
       messages: messages as Anthropic.MessageParam[],
-      tools: [FLIGHT_TOOL, WEB_SEARCH_TOOL] as Anthropic.Tool[],
+      tools: [FLIGHT_TOOL, HOTEL_TOOL, WEB_SEARCH_TOOL] as Anthropic.Tool[],
     });
 
     for await (const event of stream as unknown as AsyncIterable<Anthropic.MessageStreamEvent>) {
@@ -169,6 +223,7 @@ export async function* streamReplyTokens(
 }
 
 async function executeTool(name: string, input: unknown): Promise<string> {
+  if (name === "search_hotels") return executeHotelSearch(input);
   if (name !== "search_flights") {
     return JSON.stringify({ error: `unknown tool: ${name}` });
   }
@@ -212,6 +267,60 @@ async function executeTool(name: string, input: unknown): Promise<string> {
         arrive: s.arriving,
         durationMin: s.durationMinutes,
         stops: s.stops,
+      })),
+    })),
+  });
+}
+
+async function executeHotelSearch(input: unknown): Promise<string> {
+  const parsed = input as Partial<HotelSearchInput> | null;
+  if (
+    !parsed ||
+    typeof parsed.latitude !== "number" ||
+    typeof parsed.longitude !== "number" ||
+    typeof parsed.checkIn !== "string" ||
+    typeof parsed.checkOut !== "string" ||
+    typeof parsed.rooms !== "number" ||
+    typeof parsed.adults !== "number"
+  ) {
+    return JSON.stringify({
+      error:
+        "invalid input — need latitude, longitude, checkIn, checkOut, rooms, adults",
+    });
+  }
+
+  const result = await searchHotels({
+    latitude: parsed.latitude,
+    longitude: parsed.longitude,
+    radiusKm: parsed.radiusKm,
+    checkIn: parsed.checkIn,
+    checkOut: parsed.checkOut,
+    rooms: parsed.rooms,
+    adults: parsed.adults,
+    children: parsed.children,
+    maxResults: 8,
+  });
+
+  if (!result.ok) return JSON.stringify({ error: result.error });
+
+  return JSON.stringify({
+    hotelCount: result.hotels.length,
+    hotels: result.hotels.map((h) => ({
+      hotelCode: h.hotelCode,
+      summary: formatHotelOneLine(h),
+      name: h.name,
+      category: h.categoryName,
+      zone: h.zoneName,
+      destination: h.destinationName,
+      currency: h.currency,
+      totalUSD: Math.round(h.minTotalAmount / 100),
+      perNightPerRoomUSD: Math.round(h.perNightPerRoomAmount / 100),
+      refundable: h.refundable,
+      sampleRooms: h.rooms.map((r) => ({
+        name: r.name,
+        rateType: r.rateType,
+        totalUSD: Math.round(r.totalAmount / 100),
+        board: r.boardName,
       })),
     })),
   });
