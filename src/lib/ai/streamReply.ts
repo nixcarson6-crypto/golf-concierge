@@ -257,6 +257,8 @@ async function executeTool(name: string, input: unknown): Promise<string> {
       id: o.id,
       summary: formatOfferOneLine(o),
       airline: o.airlineName,
+      airlineWebsite: o.airlineWebsite,
+      bookingSearchUrl: o.bookingSearchUrl,
       totalUSD: Math.round(o.totalAmount / 100),
       perPaxUSD: Math.round(o.perPassengerAmount / 100),
       cabin: o.slices[0]?.cabin ?? "",

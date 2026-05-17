@@ -40,6 +40,10 @@ export type FlightOfferSummary = {
   perPassengerAmount: number; // cents
   airlineName: string;
   airlineIataCode: string;
+  /** Airline's home website (e.g. "https://www.aa.com"). Best-effort map. */
+  airlineWebsite: string | null;
+  /** Pre-filled Google Flights search URL for this exact route + date. */
+  bookingSearchUrl: string;
   slices: Array<{
     origin: string;
     destination: string;
@@ -146,13 +150,29 @@ function summarizeOffer(o: DuffelOffer): FlightOfferSummary | null {
   const totalCents = Math.round(totalDollars * 100);
   const paxCount = o.passengers?.length || 1;
 
+  const iata = o.owner?.iata_code ?? "";
+  const firstLeg = o.slices[0];
+  const lastLeg = o.slices[o.slices.length - 1];
+  const firstSegDep =
+    firstLeg.segments?.[0]?.departing_at?.slice(0, 10) ?? "";
+  const firstSegOrigin = firstLeg.origin?.iata_code ?? "";
+  const firstSegDest = firstLeg.destination?.iata_code ?? "";
+  const lastSegDep = lastLeg.segments?.[0]?.departing_at?.slice(0, 10) ?? "";
   return {
     id: o.id,
     totalAmount: totalCents,
     currency: o.total_currency || "USD",
     perPassengerAmount: Math.round(totalCents / paxCount),
     airlineName: o.owner?.name ?? "Unknown",
-    airlineIataCode: o.owner?.iata_code ?? "",
+    airlineIataCode: iata,
+    airlineWebsite: airlineSite(iata),
+    bookingSearchUrl: googleFlightsUrl({
+      origin: firstSegOrigin,
+      destination: firstSegDest,
+      departDate: firstSegDep,
+      returnDate: o.slices.length > 1 ? lastSegDep : undefined,
+      passengers: paxCount,
+    }),
     expiresAt: o.expires_at ?? null,
     slices: o.slices.map((s) => ({
       origin: s.origin?.iata_code ?? "",
@@ -225,4 +245,51 @@ export function formatOfferOneLine(o: FlightOfferSummary): string {
   const stops = slice0.stops === 0 ? "nonstop" : `${slice0.stops} stop`;
   const dur = `${Math.floor(slice0.durationMinutes / 60)}h ${slice0.durationMinutes % 60}m`;
   return `${o.airlineName} ${slice0.origin}-${slice0.destination} ${stops}, ${dur} · $${dollars}/pax (${o.slices[0].cabin})`;
+}
+
+/** Best-effort IATA carrier code → homepage. Falls back to null. */
+function airlineSite(iata: string): string | null {
+  const map: Record<string, string> = {
+    AA: "https://www.aa.com",
+    UA: "https://www.united.com",
+    DL: "https://www.delta.com",
+    B6: "https://www.jetblue.com",
+    WN: "https://www.southwest.com",
+    AS: "https://www.alaskaair.com",
+    NK: "https://www.spirit.com",
+    F9: "https://www.flyfrontier.com",
+    HA: "https://www.hawaiianairlines.com",
+    AC: "https://www.aircanada.com",
+    BA: "https://www.britishairways.com",
+    AF: "https://www.airfrance.com",
+    KL: "https://www.klm.com",
+    LH: "https://www.lufthansa.com",
+    IB: "https://www.iberia.com",
+    EI: "https://www.aerlingus.com",
+    VS: "https://www.virginatlantic.com",
+    EK: "https://www.emirates.com",
+    QR: "https://www.qatarairways.com",
+    SQ: "https://www.singaporeair.com",
+    CX: "https://www.cathaypacific.com",
+    JL: "https://www.jal.co.jp",
+    NH: "https://www.ana.co.jp",
+    QF: "https://www.qantas.com",
+  };
+  return map[iata.toUpperCase()] ?? null;
+}
+
+function googleFlightsUrl(opts: {
+  origin: string;
+  destination: string;
+  departDate: string;
+  returnDate?: string;
+  passengers: number;
+}): string {
+  const parts = [
+    `Flights from ${opts.origin} to ${opts.destination}`,
+    `on ${opts.departDate}`,
+  ];
+  if (opts.returnDate) parts.push(`returning ${opts.returnDate}`);
+  if (opts.passengers > 1) parts.push(`for ${opts.passengers} passengers`);
+  return `https://www.google.com/travel/flights?q=${encodeURIComponent(parts.join(" "))}`;
 }
