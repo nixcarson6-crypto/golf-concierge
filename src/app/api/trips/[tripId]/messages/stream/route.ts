@@ -5,6 +5,7 @@ import { streamReplyTokens } from "@/lib/ai/streamReply";
 import { CONCIERGE_VOICE } from "@/lib/ai/prompts";
 import { processUserMessageBackground } from "@/lib/ai/conversation";
 import { nudge } from "@/lib/events";
+import { checkChatRate } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,10 @@ export async function POST(
   }
   const trip = access.trip;
   if (!trip) return new Response("not found", { status: 404 });
+
+  if (!checkChatRate(user.id)) {
+    return new Response("Too many messages — slow down a bit.", { status: 429 });
+  }
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new Response("invalid body", { status: 400 });

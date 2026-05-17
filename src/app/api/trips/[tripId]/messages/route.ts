@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireTripAccess, requireUser } from "@/lib/auth";
 import { processUserMessage } from "@/lib/ai/conversation";
+import { checkChatRate } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,13 @@ export async function POST(
   }
   const trip = access.trip;
   if (!trip) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  if (!checkChatRate(user.id)) {
+    return NextResponse.json(
+      { error: "rate_limited", message: "Too many messages — slow down a bit." },
+      { status: 429 },
+    );
+  }
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {

@@ -21,10 +21,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, initials, relativeTime } from "@/lib/utils";
 import { tripStatusLabel } from "@/lib/trip-status";
+import { computeNextAction } from "@/lib/next-action";
 import type {
   WorkspaceAgentRun,
   WorkspaceAuditEvent,
   WorkspaceItinerary,
+  WorkspaceMe,
   WorkspaceMember,
   WorkspaceNotification,
   WorkspaceTrip,
@@ -43,6 +45,7 @@ export function StatusRail({
   approval,
   summary,
   auditEvents,
+  me,
 }: {
   tripId: string;
   trip: WorkspaceTrip;
@@ -54,7 +57,18 @@ export function StatusRail({
   approval: { approved: number; total: number; quorum: number };
   summary: { shareToken: string | null; generatedAt: string } | null;
   auditEvents: WorkspaceAuditEvent[];
+  me: WorkspaceMe;
 }) {
+  const nextAction = computeNextAction({
+    tripId,
+    trip,
+    itinerary,
+    destinationCount,
+    memberCount: members.length,
+    me,
+    approval,
+    summary,
+  });
   const qc = useQueryClient();
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 
@@ -93,6 +107,26 @@ export function StatusRail({
 
       <ScrollArea className="flex-1">
         <div className="px-5 py-5 space-y-6">
+          <Link
+            href={nextAction.href}
+            className={cn(
+              "block rounded-2xl border p-3.5 transition group",
+              nextAction.prominent
+                ? "border-[hsl(var(--gold)/0.4)] bg-[hsl(var(--gold)/0.06)] hover:bg-[hsl(var(--gold)/0.1)]"
+                : "border-border/70 bg-surface-raised/40 hover:bg-surface-raised/60",
+            )}
+          >
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+              {nextAction.prominent ? "What's next" : "Status"}
+            </p>
+            <p className="mt-1 text-sm font-medium leading-tight">
+              {nextAction.title}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {nextAction.detail}
+            </p>
+          </Link>
+
           <section>
             <SectionHeading>Progress</SectionHeading>
             <ul className="mt-3 space-y-2">

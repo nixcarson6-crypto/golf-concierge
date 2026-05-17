@@ -2,6 +2,7 @@ import { runStructured, type AgentMessage, withAgentRun } from "../orchestrator"
 import { CONSTRAINT_EXTRACTOR_SYSTEM } from "../prompts";
 import { extractionResponseSchema, type ExtractionResponse, type TripConstraints } from "../schemas";
 import { DESTINATIONS } from "@/lib/data/destinations";
+import { db } from "@/lib/db";
 
 export type ConstraintExtractorInput = {
   tripId: string;
@@ -26,6 +27,37 @@ export async function runConstraintExtractor(input: ConstraintExtractorInput) {
         (d) => `- ${d.name} (slug: ${d.slug}) — golf ${d.golfScore}, nightlife ${d.nightlifeScore}, logistics ${d.logisticsScore}`,
       ).join("\n");
 
+      // Cross-trip memory: pull a one-line summary of this owner's most
+      // recent completed or booked trips so they don't have to re-describe
+      // their group's preferences from scratch.
+      const trip = await db.trip.findUnique({
+        where: { id: input.tripId },
+        select: { ownerId: true },
+      });
+      let priorTripsSection = "";
+      if (trip) {
+        const priors = await db.trip.findMany({
+          where: {
+            ownerId: trip.ownerId,
+            id: { not: input.tripId },
+            status: { in: ["BOOKED", "COMPLETED"] },
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 3,
+          include: { summary: true },
+        });
+        if (priors.length > 0) {
+          const lines = priors.map(
+            (t) =>
+              `- ${t.destination ?? t.title} for ${t.groupSize ?? "?"} players · ${
+                t.summary?.content?.slice(0, 200).replace(/\s+/g, " ").trim() ??
+                "no summary"
+              }`,
+          );
+          priorTripsSection = `\nPRIOR TRIPS BY THIS OWNER (use as taste hints, don't reference unsolicited):\n${lines.join("\n")}\n`;
+        }
+      }
+
       const seed: AgentMessage[] = [
         {
           role: "user",
@@ -33,7 +65,7 @@ export async function runConstraintExtractor(input: ConstraintExtractorInput) {
             `MARKETS YOU CAN CONFIDENTLY PLAN (have full curated knowledge for):`,
             marketCues,
             `For any other destination, you can still plan but should signal uncertainty.`,
-            ``,
+            priorTripsSection,
             `Current known constraints (JSON):`,
             JSON.stringify(input.current, null, 2),
             ``,

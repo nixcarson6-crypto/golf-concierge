@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
 import { formatCurrency, formatDateRange } from "@/lib/utils";
 import { PrintButton } from "./print-button";
+import { renderMarkdownBlock } from "@/lib/markdown";
 
 export const dynamic = "force-dynamic";
 
@@ -68,9 +69,12 @@ export default async function SharedSummaryPage({
           {trip.groupSize ? ` · ${trip.groupSize} players` : ""}
         </p>
 
-        <article className="mt-10 leading-relaxed text-[15px] whitespace-pre-wrap print:text-black">
-          {summary.content}
-        </article>
+        <article
+          className="mt-10 leading-relaxed text-[15px] print:text-black [&_ul]:my-3 [&_ol]:my-3 [&_ul]:pl-5 [&_ol]:pl-6 [&_li]:list-disc [&_ol_li]:list-decimal"
+          dangerouslySetInnerHTML={{
+            __html: renderMarkdownBlock(summary.content),
+          }}
+        />
 
         {highlights.length > 0 && (
           <section className="mt-10">

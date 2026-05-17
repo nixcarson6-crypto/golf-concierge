@@ -348,6 +348,7 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
               approval={snapshot.approval}
               summary={snapshot.summary}
               auditEvents={snapshot.auditEvents}
+              me={snapshot.me}
             />
           </section>
         </div>
@@ -393,6 +394,7 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
                 approval={snapshot.approval}
                 summary={snapshot.summary}
                 auditEvents={snapshot.auditEvents}
+                me={snapshot.me}
               />
             </TabsContent>
           </Tabs>
