@@ -1,0 +1,189 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Default to dark — the product is dark-first */
+    --background: 222 16% 5%;
+    --foreground: 36 22% 94%;
+
+    --surface: 220 14% 8%;
+    --surface-raised: 220 13% 11%;
+    --surface-sunken: 222 18% 4%;
+
+    --card: 220 14% 8%;
+    --card-foreground: 36 22% 94%;
+
+    --popover: 220 16% 7%;
+    --popover-foreground: 36 22% 94%;
+
+    --primary: 42 38% 64%;          /* muted gold */
+    --primary-foreground: 222 18% 6%;
+
+    --secondary: 158 36% 38%;       /* soft emerald */
+    --secondary-foreground: 36 22% 96%;
+
+    --muted: 220 10% 18%;
+    --muted-foreground: 220 10% 65%;
+
+    --accent: 42 32% 55%;
+    --accent-foreground: 222 18% 6%;
+
+    --destructive: 0 60% 52%;
+    --destructive-foreground: 36 22% 96%;
+
+    --border: 220 10% 16%;
+    --input: 220 10% 14%;
+    --ring: 42 38% 64%;
+
+    --gold: 42 70% 62%;
+    --gold-muted: 42 32% 48%;
+    --emerald: 158 50% 48%;
+    --emerald-muted: 158 30% 36%;
+    --warning: 38 92% 58%;
+    --success: 158 60% 48%;
+
+    --radius: 0.875rem;
+
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-display: "Fraunces", "Cormorant Garamond", Georgia, serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+
+  /* Explicit dark class for next-themes; same as :root for now */
+  .dark {
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    height: 100%;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(1200px 600px at 18% -10%, hsl(var(--gold) / 0.06), transparent 60%),
+      radial-gradient(900px 500px at 100% 8%, hsl(var(--emerald) / 0.05), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background-color: hsl(var(--gold) / 0.35);
+    color: hsl(var(--foreground));
+  }
+
+  /* Refined scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+}
+
+@layer components {
+  .glass {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--surface-raised) / 0.85),
+      hsl(var(--surface) / 0.7)
+    );
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid hsl(var(--border) / 0.7);
+  }
+
+  .glass-strong {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--surface-raised) / 0.95),
+      hsl(var(--surface) / 0.85)
+    );
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid hsl(var(--border));
+  }
+
+  .gold-border {
+    border: 1px solid hsl(var(--gold) / 0.35);
+    box-shadow:
+      0 0 0 1px hsl(var(--gold) / 0.04) inset,
+      0 6px 30px -12px hsl(var(--gold) / 0.25);
+  }
+
+  .text-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  .num-tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on, "lnum" on;
+  }
+
+  .hairline {
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--border)) 20%,
+      hsl(var(--border)) 80%,
+      transparent
+    );
+    height: 1px;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted) / 0.2) 0%,
+      hsl(var(--muted) / 0.5) 50%,
+      hsl(var(--muted) / 0.2) 100%
+    );
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
