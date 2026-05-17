@@ -35,7 +35,6 @@ export async function* streamReplyTokens(
   const stream = client.messages.stream({
     model: modelFor("orchestrator"),
     max_tokens: opts.maxTokens ?? 800,
-    temperature: opts.temperature ?? 0.55,
     system: systemParam,
     messages: opts.history.map((m) => ({
       role: m.role,

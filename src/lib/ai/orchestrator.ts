@@ -68,7 +68,6 @@ export async function runStructured<T extends z.ZodTypeAny>(
   const response = await client.messages.create({
     model,
     max_tokens: opts.maxTokens ?? 4096,
-    temperature: opts.temperature ?? 0.5,
     system: systemParam,
     messages: opts.messages.map((m) => ({
       role: m.role,
@@ -130,7 +129,6 @@ export async function runText(opts: RunTextOptions): Promise<string> {
   const response = await client.messages.create({
     model,
     max_tokens: opts.maxTokens ?? 1024,
-    temperature: opts.temperature ?? 0.6,
     system: opts.system,
     messages: opts.messages.map((m) => ({
       role: m.role,
