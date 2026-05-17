@@ -28,7 +28,16 @@ export async function runConstraintExtractor(input: ConstraintExtractorInput) {
       const firstUserIdx = input.messages.findIndex((m) => m.role === "user");
       const fromFirstUser =
         firstUserIdx === -1 ? [] : input.messages.slice(firstUserIdx);
-      const recent = fromFirstUser.slice(-CONTEXT_TURNS);
+      // Also drop any trailing assistant turns — Opus 4.7 rejects requests
+      // where the conversation doesn't end with a user message ("does not
+      // support assistant message prefill"). The streaming chat persists
+      // the assistant reply before background extraction runs, so without
+      // this trim the last message would be the just-streamed assistant turn.
+      let trimmed = fromFirstUser;
+      while (trimmed.length > 0 && trimmed[trimmed.length - 1].role === "assistant") {
+        trimmed = trimmed.slice(0, -1);
+      }
+      const recent = trimmed.slice(-CONTEXT_TURNS);
 
       const marketCues = DESTINATIONS.map(
         (d) => `- ${d.name} (slug: ${d.slug}) — golf ${d.golfScore}, nightlife ${d.nightlifeScore}, logistics ${d.logisticsScore}`,
