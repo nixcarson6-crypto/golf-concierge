@@ -21,7 +21,14 @@ export async function runConstraintExtractor(input: ConstraintExtractorInput) {
     input: { current: input.current as Record<string, unknown> },
     progress: "Listening…",
     fn: async () => {
-      const recent = input.messages.slice(-CONTEXT_TURNS);
+      // Skip any leading assistant turns so the trailing slice starts with a
+      // user role — keeps consecutive messages alternating after the seed
+      // user/assistant pair we prepend below (Anthropic rejects two assistant
+      // messages in a row).
+      const firstUserIdx = input.messages.findIndex((m) => m.role === "user");
+      const fromFirstUser =
+        firstUserIdx === -1 ? [] : input.messages.slice(firstUserIdx);
+      const recent = fromFirstUser.slice(-CONTEXT_TURNS);
 
       const marketCues = DESTINATIONS.map(
         (d) => `- ${d.name} (slug: ${d.slug}) — golf ${d.golfScore}, nightlife ${d.nightlifeScore}, logistics ${d.logisticsScore}`,

@@ -52,7 +52,7 @@ export async function POST(
   });
   nudge(tripId);
 
-  const history = (
+  const rawHistory = (
     await db.chatMessage.findMany({
       where: { tripId },
       orderBy: { createdAt: "asc" },
@@ -62,6 +62,10 @@ export async function POST(
     role: (m.role === "ASSISTANT" ? "assistant" : "user") as "user" | "assistant",
     content: m.content,
   }));
+  // Anthropic requires the first message to be role "user". The trip is seeded
+  // with an assistant welcome message, so drop any leading assistant turns.
+  const firstUserIdx = rawHistory.findIndex((m) => m.role === "user");
+  const history = firstUserIdx === -1 ? [] : rawHistory.slice(firstUserIdx);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
