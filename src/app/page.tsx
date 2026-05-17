@@ -20,7 +20,7 @@ export default async function LandingPage() {
           </Link>
           <div className="flex items-center gap-2">
             {userId ? (
-              <Button asChild variant="gold" size="sm">
+              <Button asChild variant="navy" size="sm">
                 <Link href="/dashboard">
                   Dashboard <ArrowRight className="ml-1" />
                 </Link>
@@ -30,7 +30,7 @@ export default async function LandingPage() {
                 <Button asChild variant="ghost" size="sm">
                   <Link href="/sign-in">Sign in</Link>
                 </Button>
-                <Button asChild variant="gold" size="sm">
+                <Button asChild variant="navy" size="sm">
                   <Link href="/sign-up">Get started</Link>
                 </Button>
               </>
@@ -40,7 +40,7 @@ export default async function LandingPage() {
       </header>
 
       <section className="container relative z-10 pt-16 pb-24 sm:pt-24">
-        <Badge variant="gold" className="mb-6">
+        <Badge variant="navy" className="mb-6">
           <Sparkles className="size-3" /> AI concierge · invite-only beta
         </Badge>
         <h1 className="text-display text-5xl sm:text-7xl leading-[1.02] tracking-[-0.025em] max-w-4xl">
@@ -53,7 +53,7 @@ export default async function LandingPage() {
           and bookings — and quietly re-plans the moment anything changes.
         </p>
         <div className="mt-10 flex flex-wrap items-center gap-3">
-          <Button asChild variant="gold" size="lg">
+          <Button asChild variant="navy" size="lg">
             <Link href={primaryHref}>
               Start a trip <ArrowRight />
             </Link>
@@ -88,7 +88,7 @@ export default async function LandingPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {FEATURES.map((f) => (
             <div key={f.title} className="glass rounded-2xl p-6">
-              <div className="size-10 rounded-xl border border-[hsl(var(--gold)/0.3)] bg-[hsl(var(--gold)/0.08)] flex items-center justify-center text-[hsl(var(--gold))]">
+              <div className="size-10 rounded-xl border border-[hsl(var(--navy)/0.3)] bg-[hsl(var(--navy)/0.08)] flex items-center justify-center text-[hsl(var(--navy))]">
                 {f.icon}
               </div>
               <h3 className="mt-5 text-base font-medium">{f.title}</h3>
@@ -152,7 +152,7 @@ const FEATURES = [
 
 function Logo() {
   return (
-    <span className="size-8 rounded-xl bg-gradient-to-br from-[hsl(var(--gold))] to-[hsl(var(--gold-muted))] grid place-items-center">
+    <span className="size-8 rounded-xl bg-gradient-to-br from-[hsl(var(--navy))] to-[hsl(var(--navy-muted))] grid place-items-center">
       <svg viewBox="0 0 24 24" className="size-4 text-[hsl(var(--primary-foreground))]" fill="currentColor">
         <path d="M12 2c1.5 4 4 6.5 8 8-4 1.5-6.5 4-8 8-1.5-4-4-6.5-8-8 4-1.5 6.5-4 8-8Z" />
       </svg>

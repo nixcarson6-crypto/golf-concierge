@@ -14,7 +14,7 @@ export default function NotFound() {
         <p className="mt-3 text-muted-foreground">
           The page may have moved, or you may not have access.
         </p>
-        <Button asChild variant="gold" className="mt-6">
+        <Button asChild variant="navy" className="mt-6">
           <Link href="/dashboard">Back to dashboard</Link>
         </Button>
       </div>

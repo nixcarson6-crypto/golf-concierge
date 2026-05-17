@@ -1,17 +1,35 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUp, Sparkles, Mic, MicOff } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  ArrowUp,
+  Sparkles,
+  Mic,
+  MicOff,
+  Check,
+  CreditCard,
+  ChevronRight,
+  Mail,
+  Loader2,
+} from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn, initials, relativeTime } from "@/lib/utils";
+import { cn, formatCurrency, initials, relativeTime } from "@/lib/utils";
 import { renderMarkdownBlock } from "@/lib/markdown";
-import type { WorkspaceMessage, WorkspaceMe, WorkspaceTrip } from "./workspace";
+import type {
+  WorkspaceMessage,
+  WorkspaceMe,
+  WorkspaceTrip,
+  WorkspaceDestinationOption,
+} from "./workspace";
 
 const SUGGESTIONS_FRESH = [
-  "Plan a luxury golf trip for 8 guys in Scottsdale in October.",
+  "Plan a luxury golf trip for 8 in Scottsdale in October.",
   "Optimize for top courses and nightlife, $3,000 per person.",
   "We're flexible — recommend a destination for early November.",
 ];
@@ -37,9 +55,13 @@ function pickSuggestions(args: {
 }
 
 export function ConciergeChat({
+  tripId,
   trip,
   me,
   messages,
+  destinations,
+  approval,
+  currentItineraryId,
   onSend,
   sending,
   streamingReply,
@@ -48,6 +70,9 @@ export function ConciergeChat({
   trip: WorkspaceTrip;
   me: WorkspaceMe;
   messages: WorkspaceMessage[];
+  destinations: WorkspaceDestinationOption[];
+  approval: { approved: number; total: number; quorum: number };
+  currentItineraryId: string | null;
   onSend: (text: string) => void;
   sending: boolean;
   streamingReply?: string | null;
@@ -74,7 +99,6 @@ export function ConciergeChat({
     setValue("");
   };
 
-  // Browser voice input — premium hands-free feel when supported.
   const toggleVoice = () => {
     if (typeof window === "undefined") return;
     const SR =
@@ -108,9 +132,6 @@ export function ConciergeChat({
     typeof window !== "undefined" &&
     ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
-  // Adaptive suggestion chips — chosen from a different set depending on
-  // where the trip is in its lifecycle. Visible when chat is quiet (no
-  // message in the last 5 turns from the user) and trip is not booked.
   const lastUserMsgIndex = (() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i].role === "USER") return i;
@@ -127,10 +148,17 @@ export function ConciergeChat({
   const showSuggestions =
     !tripIsBooked && (turnsSinceLastUser >= 1 || messages.length <= 1);
 
+  const latestAssistantId = React.useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "ASSISTANT") return messages[i].id;
+    }
+    return null;
+  }, [messages]);
+
   return (
     <div className="h-full flex flex-col rounded-3xl glass overflow-hidden">
       <div className="px-5 py-4 border-b border-border/60 flex items-center gap-2.5">
-        <div className="size-7 rounded-lg bg-gradient-to-br from-[hsl(var(--gold))] to-[hsl(var(--gold-muted))] grid place-items-center text-[hsl(var(--primary-foreground))]">
+        <div className="size-7 rounded-lg bg-[hsl(var(--navy))] grid place-items-center text-[hsl(var(--primary-foreground))]">
           <Sparkles className="size-3.5" />
         </div>
         <div className="min-w-0">
@@ -148,13 +176,31 @@ export function ConciergeChat({
           aria-busy={sending}
         >
           {messages.map((m) => (
-            <ChatMessageView key={m.id} message={m} meId={me.id} />
+            <ChatMessageView
+              key={m.id}
+              message={m}
+              meId={me.id}
+              isLatestAssistant={m.id === latestAssistantId}
+              tripId={tripId}
+              trip={trip}
+              me={me}
+              destinations={destinations}
+              approval={approval}
+              currentItineraryId={currentItineraryId}
+            />
           ))}
           {streamingReply !== undefined &&
             streamingReply !== null &&
             streamingReply.length > 0 && (
               <ChatMessageView
                 meId={me.id}
+                tripId={tripId}
+                trip={trip}
+                me={me}
+                destinations={destinations}
+                approval={approval}
+                currentItineraryId={currentItineraryId}
+                isLatestAssistant={false}
                 message={{
                   id: "streaming",
                   role: "ASSISTANT",
@@ -167,9 +213,9 @@ export function ConciergeChat({
             )}
           {sending && (!streamingReply || streamingReply.length === 0) && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground pl-9">
-              <span className="size-1.5 rounded-full bg-[hsl(var(--gold))] animate-pulse-soft" />
-              <span className="size-1.5 rounded-full bg-[hsl(var(--gold))] animate-pulse-soft [animation-delay:120ms]" />
-              <span className="size-1.5 rounded-full bg-[hsl(var(--gold))] animate-pulse-soft [animation-delay:240ms]" />
+              <span className="size-1.5 rounded-full bg-[hsl(var(--copper))] animate-pulse-soft" />
+              <span className="size-1.5 rounded-full bg-[hsl(var(--copper))] animate-pulse-soft [animation-delay:120ms]" />
+              <span className="size-1.5 rounded-full bg-[hsl(var(--copper))] animate-pulse-soft [animation-delay:240ms]" />
             </div>
           )}
           {showSuggestions && suggestions.length > 0 && (
@@ -207,9 +253,7 @@ export function ConciergeChat({
             disabled={sending}
           />
           <div className="flex items-center justify-between px-3 pb-2.5">
-            <p className="text-[11px] text-muted-foreground">
-              Enter to send · ⌘K for commands
-            </p>
+            <p className="text-[11px] text-muted-foreground">Enter to send</p>
             <div className="flex items-center gap-2">
               {voiceSupported && (
                 <Button
@@ -224,7 +268,7 @@ export function ConciergeChat({
                 </Button>
               )}
               <Button
-                variant="gold"
+                variant="navy"
                 size="sm"
                 onClick={submit}
                 disabled={!value.trim() || sending}
@@ -243,9 +287,23 @@ export function ConciergeChat({
 function ChatMessageView({
   message,
   meId,
+  isLatestAssistant,
+  tripId,
+  trip,
+  me,
+  destinations,
+  approval,
+  currentItineraryId,
 }: {
   message: WorkspaceMessage;
   meId: string;
+  isLatestAssistant: boolean;
+  tripId: string;
+  trip: WorkspaceTrip;
+  me: WorkspaceMe;
+  destinations: WorkspaceDestinationOption[];
+  approval: { approved: number; total: number; quorum: number };
+  currentItineraryId: string | null;
 }) {
   const isAssistant = message.role === "ASSISTANT";
   const isMe = message.author?.id === meId;
@@ -259,7 +317,7 @@ function ChatMessageView({
   return (
     <div className={cn("flex gap-3", isMe && "flex-row-reverse")}>
       {isAssistant ? (
-        <div className="size-7 rounded-lg shrink-0 grid place-items-center bg-gradient-to-br from-[hsl(var(--gold))] to-[hsl(var(--gold-muted))] text-[hsl(var(--primary-foreground))]">
+        <div className="size-7 rounded-lg shrink-0 grid place-items-center bg-[hsl(var(--navy))] text-[hsl(var(--primary-foreground))]">
           <Sparkles className="size-3.5" />
         </div>
       ) : (
@@ -283,11 +341,11 @@ function ChatMessageView({
         )}
         <div
           className={cn(
-            "inline-block rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words",
+            "inline-block rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words text-left",
             isMe
               ? "bg-surface-raised text-foreground border border-border"
               : isAssistant
-                ? "bg-card/80 border border-border/70 text-foreground gold-border"
+                ? "bg-card/80 border border-border/70 text-foreground navy-border"
                 : "bg-surface-sunken text-foreground border border-border/60",
           )}
         >
@@ -301,22 +359,24 @@ function ChatMessageView({
           ) : (
             <span className="whitespace-pre-wrap">{message.content}</span>
           )}
-          {kind === "itinerary" && (
-            <p className="mt-2 text-[11px] uppercase tracking-wide text-[hsl(var(--gold))]">
-              Itinerary drafted →
-            </p>
-          )}
-          {kind === "item_update" && (
-            <p className="mt-2 text-[11px] uppercase tracking-wide text-[hsl(var(--gold))]">
-              Item updated →
-            </p>
-          )}
-          {kind === "destination_options" && (
-            <p className="mt-2 text-[11px] uppercase tracking-wide text-[hsl(var(--gold))]">
-              Destinations proposed →
-            </p>
-          )}
         </div>
+
+        {isAssistant && (
+          <InlineActions
+            kind={kind}
+            isLatestAssistant={isLatestAssistant}
+            tripId={tripId}
+            trip={trip}
+            me={me}
+            destinations={destinations}
+            approval={approval}
+            currentItineraryId={currentItineraryId}
+            messageItineraryId={
+              (message.metadata?.itineraryId as string | undefined) ?? null
+            }
+          />
+        )}
+
         {followUps && followUps.length > 0 && (
           <div className={cn("flex flex-wrap gap-1.5", isMe && "justify-end")}>
             {followUps.map((q, i) => (
@@ -338,6 +398,251 @@ function ChatMessageView({
           {relativeTime(message.createdAt)}
         </p>
       </div>
+    </div>
+  );
+}
+
+function InlineActions({
+  kind,
+  isLatestAssistant,
+  tripId,
+  trip,
+  me,
+  destinations,
+  approval,
+  currentItineraryId,
+  messageItineraryId,
+}: {
+  kind: string | undefined;
+  isLatestAssistant: boolean;
+  tripId: string;
+  trip: WorkspaceTrip;
+  me: WorkspaceMe;
+  destinations: WorkspaceDestinationOption[];
+  approval: { approved: number; total: number; quorum: number };
+  currentItineraryId: string | null;
+  messageItineraryId: string | null;
+}) {
+  if (kind === "destination_options" && !trip.destination) {
+    return <DestinationActions tripId={tripId} destinations={destinations} />;
+  }
+
+  if (!isLatestAssistant) return null;
+
+  const itineraryId = messageItineraryId ?? currentItineraryId;
+
+  if (
+    kind === "itinerary" &&
+    itineraryId &&
+    trip.status !== "APPROVED" &&
+    trip.status !== "BOOKING" &&
+    trip.status !== "BOOKED"
+  ) {
+    return (
+      <ApprovalAction
+        tripId={tripId}
+        itineraryId={itineraryId}
+        me={me}
+        approval={approval}
+      />
+    );
+  }
+
+  if (
+    (trip.status === "APPROVED" || trip.status === "BOOKING") &&
+    me.myPayment !== "PAID"
+  ) {
+    return <PayAction tripId={tripId} />;
+  }
+
+  return null;
+}
+
+function DestinationActions({
+  tripId,
+  destinations,
+}: {
+  tripId: string;
+  destinations: WorkspaceDestinationOption[];
+}) {
+  const qc = useQueryClient();
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
+
+  if (destinations.length === 0) return null;
+
+  const choose = async (id: string) => {
+    setPendingId(id);
+    try {
+      const res = await fetch(
+        `/api/trips/${tripId}/destinations/${id}/select`,
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error(await res.text());
+      toast.success("Destination locked in. Building the itinerary…");
+      qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    } catch {
+      toast.error("Couldn't select that destination.");
+    } finally {
+      setPendingId(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5 pt-1">
+      {destinations.map((d) => (
+        <button
+          key={d.id}
+          type="button"
+          onClick={() => choose(d.id)}
+          disabled={pendingId !== null}
+          className="group flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-raised/60 px-3.5 py-2.5 text-left text-sm hover:border-[hsl(var(--navy)/0.5)] hover:bg-surface-raised transition disabled:opacity-50"
+        >
+          <span className="min-w-0 truncate font-medium">{d.name}</span>
+          <span className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+            {d.estimatedPerPersonCost
+              ? `${formatCurrency(d.estimatedPerPersonCost / 100)}/pax`
+              : null}
+            {pendingId === d.id ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <ChevronRight className="size-3.5 transition group-hover:translate-x-0.5" />
+            )}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ApprovalAction({
+  tripId,
+  itineraryId,
+  me,
+  approval,
+}: {
+  tripId: string;
+  itineraryId: string;
+  me: WorkspaceMe;
+  approval: { approved: number; total: number; quorum: number };
+}) {
+  const qc = useQueryClient();
+  const [submitting, setSubmitting] = React.useState(false);
+
+  if (me.myApproval === "APPROVED") {
+    return (
+      <p className="text-[11px] text-muted-foreground pt-1">
+        <Check className="inline size-3 mr-1 text-[hsl(var(--emerald))]" />
+        You approved — waiting on {approval.total - approval.approved} more.
+      </p>
+    );
+  }
+
+  const submit = async () => {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/approvals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "APPROVED", itineraryId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success("Approved.");
+      qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    } catch {
+      toast.error("Couldn't record approval.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="pt-1">
+      <Button variant="navy" size="sm" onClick={submit} disabled={submitting}>
+        {submitting ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <Check className="size-3.5" />
+        )}
+        Approve trip
+      </Button>
+    </div>
+  );
+}
+
+function PayAction({ tripId }: { tripId: string }) {
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const pay = async () => {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/payments/payment-link`, {
+        method: "POST",
+      });
+      const json = (await res.json()) as { url?: string };
+      if (!res.ok || !json.url) throw new Error("no link");
+      window.location.href = json.url;
+    } catch {
+      toast.error("Couldn't open the payment page.");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="pt-1">
+      <Button variant="copper" size="sm" onClick={pay} disabled={submitting}>
+        {submitting ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <CreditCard className="size-3.5" />
+        )}
+        Pay my share
+      </Button>
+    </div>
+  );
+}
+
+export function InlineInviteForm({ tripId }: { tripId: string }) {
+  const qc = useQueryClient();
+  const [email, setEmail] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const submit = async () => {
+    if (!email.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/invites`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(`Invite sent to ${email}.`);
+      setEmail("");
+      qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    } catch {
+      toast.error("Couldn't send invite.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <Input
+        type="email"
+        placeholder="friend@email.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className="h-8 text-sm"
+      />
+      <Button variant="navy" size="sm" onClick={submit} disabled={submitting}>
+        {submitting ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <Mail className="size-3.5" />
+        )}
+        Invite
+      </Button>
     </div>
   );
 }

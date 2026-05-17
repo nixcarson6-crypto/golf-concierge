@@ -81,7 +81,7 @@ function MapFallback({
   if (fallback.length === 0) {
     return (
       <div className="glass rounded-3xl p-12 text-center">
-        <Sparkles className="mx-auto size-5 text-[hsl(var(--gold))]" />
+        <Sparkles className="mx-auto size-5 text-[hsl(var(--navy))]" />
         <p className="mt-3 text-sm text-muted-foreground">
           Once the itinerary is drafted, locations appear here.
         </p>

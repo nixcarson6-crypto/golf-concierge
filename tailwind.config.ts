@@ -54,9 +54,13 @@ export default {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
         },
-        gold: {
-          DEFAULT: "hsl(var(--gold))",
-          muted: "hsl(var(--gold-muted))",
+        navy: {
+          DEFAULT: "hsl(var(--navy))",
+          muted: "hsl(var(--navy-muted))",
+        },
+        copper: {
+          DEFAULT: "hsl(var(--copper))",
+          muted: "hsl(var(--copper-muted))",
         },
         emerald: {
           DEFAULT: "hsl(var(--emerald))",
@@ -71,10 +75,8 @@ export default {
         sm: "calc(var(--radius) - 8px)",
       },
       backgroundImage: {
-        "gold-shimmer":
-          "linear-gradient(120deg, hsl(var(--gold-muted) / 0.0) 0%, hsl(var(--gold) / 0.35) 50%, hsl(var(--gold-muted) / 0.0) 100%)",
         "concierge-radial":
-          "radial-gradient(1200px 600px at 20% -10%, hsl(var(--gold) / 0.10), transparent 60%), radial-gradient(900px 500px at 100% 10%, hsl(var(--emerald) / 0.08), transparent 55%)",
+          "radial-gradient(1200px 600px at 20% -10%, hsl(var(--navy) / 0.06), transparent 60%), radial-gradient(900px 500px at 100% 10%, hsl(var(--copper) / 0.04), transparent 55%)",
       },
       keyframes: {
         "accordion-down": {

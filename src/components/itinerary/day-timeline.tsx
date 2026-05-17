@@ -4,24 +4,18 @@ import * as React from "react";
 import { GripVertical } from "lucide-react";
 import { ItineraryItemCard } from "./itinerary-item-card";
 import type { DisplayItineraryItem } from "./itinerary-item-card";
-import type { ItemAction } from "./item-actions-menu";
 import { cn } from "@/lib/utils";
 
 /**
  * Group an itinerary into day buckets and render as a vertical timeline.
  * Items without a startTime fall under "Unscheduled" at the end.
- *
- * Supports HTML5 drag-and-drop reorder. Drop emits the new full sequence of
- * IDs to onReorder so the server can persist + re-validate the schedule.
  */
 export function DayTimeline({
   items,
-  onAction,
   onReorder,
   compact = false,
 }: {
   items: DisplayItineraryItem[];
-  onAction?: (itemId: string, a: ItemAction) => void;
   onReorder?: (orderedIds: string[]) => void;
   compact?: boolean;
 }) {
@@ -86,7 +80,7 @@ export function DayTimeline({
                   dragId === item.id && "opacity-50",
                   dropTargetId === item.id &&
                     dragId !== item.id &&
-                    "ring-2 ring-[hsl(var(--gold))] rounded-2xl",
+                    "ring-2 ring-[hsl(var(--navy))] rounded-2xl",
                 )}
               >
                 {onReorder && (
@@ -97,11 +91,7 @@ export function DayTimeline({
                     <GripVertical className="size-3.5" />
                   </span>
                 )}
-                <ItineraryItemCard
-                  item={item}
-                  compact={compact}
-                  onAction={onAction ? (a) => onAction(item.id, a) : undefined}
-                />
+                <ItineraryItemCard item={item} compact={compact} />
               </div>
             ))}
           </div>

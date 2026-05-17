@@ -46,7 +46,7 @@ export default async function SharedSummaryPage({
       <div className="max-w-3xl mx-auto px-6 py-10 print:py-8">
         <header className="flex items-center justify-between gap-2 text-sm text-muted-foreground print:text-neutral-600">
           <span className="flex items-center gap-2">
-            <Sparkles className="size-3.5 text-[hsl(var(--gold))] print:text-amber-700" />
+            <Sparkles className="size-3.5 text-[hsl(var(--navy))] print:text-amber-700" />
             Golf Concierge · Trip dossier
           </span>
           <PrintButton />

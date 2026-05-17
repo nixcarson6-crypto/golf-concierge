@@ -19,7 +19,7 @@ export default async function CheckoutSuccessPage({
           The group dashboard updates in real time. You can close this tab.
         </p>
         {trip && (
-          <Button asChild className="mt-6" variant="gold">
+          <Button asChild className="mt-6" variant="navy">
             <Link href={`/trips/${trip}`}>Back to the trip</Link>
           </Button>
         )}

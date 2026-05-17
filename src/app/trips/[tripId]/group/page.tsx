@@ -110,7 +110,7 @@ export default async function GroupPage({
                     className="flex items-center justify-between rounded-xl border border-border/60 bg-surface-raised/30 px-3 py-2"
                   >
                     <span className="text-sm">{inv.email}</span>
-                    <Badge variant="gold" size="sm">
+                    <Badge variant="navy" size="sm">
                       Pending
                     </Badge>
                   </li>
@@ -141,7 +141,7 @@ export default async function GroupPage({
 }
 
 function RoleBadge({ role }: { role: "OWNER" | "MEMBER" | "ADMIN" }) {
-  if (role === "OWNER") return <Badge variant="gold" size="sm">Owner</Badge>;
+  if (role === "OWNER") return <Badge variant="navy" size="sm">Owner</Badge>;
   if (role === "ADMIN") return <Badge variant="muted" size="sm">Admin</Badge>;
   return <Badge variant="muted" size="sm">Member</Badge>;
 }
@@ -176,7 +176,7 @@ function PaymentBadge({
   status: "UNPAID" | "DEPOSIT_PAID" | "PAID" | "REFUNDED" | "FAILED";
 }) {
   if (status === "PAID") return <Badge variant="emerald" size="sm">Paid</Badge>;
-  if (status === "DEPOSIT_PAID") return <Badge variant="gold" size="sm">Deposit</Badge>;
+  if (status === "DEPOSIT_PAID") return <Badge variant="navy" size="sm">Deposit</Badge>;
   if (status === "FAILED") return <Badge variant="destructive" size="sm">Failed</Badge>;
   return <Badge variant="muted" size="sm">Unpaid</Badge>;
 }

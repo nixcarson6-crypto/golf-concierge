@@ -12,7 +12,7 @@ export function renderInlineMarkdown(input: string): string {
   // Inline code: `…`
   text = text.replace(
     /`([^`\n]+?)`/g,
-    '<code class="px-1 py-0.5 rounded bg-surface-raised text-[hsl(var(--gold))] text-[0.85em]">$1</code>',
+    '<code class="px-1 py-0.5 rounded bg-surface-raised text-[hsl(var(--navy))] text-[0.85em]">$1</code>',
   );
   // Bold: **…**
   text = text.replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>");

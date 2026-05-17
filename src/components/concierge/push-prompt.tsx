@@ -62,9 +62,9 @@ export function PushPrompt({ vapidKey }: { vapidKey: string | null }) {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 max-w-sm glass-strong rounded-2xl p-4 shadow-2xl border border-[hsl(var(--gold)/0.3)] animate-in fade-in slide-in-from-bottom-2">
+    <div className="fixed bottom-5 right-5 z-50 max-w-sm glass-strong rounded-2xl p-4 shadow-2xl border border-[hsl(var(--navy)/0.3)] animate-in fade-in slide-in-from-bottom-2">
       <div className="flex items-start gap-3">
-        <div className="size-9 rounded-xl bg-[hsl(var(--gold)/0.12)] grid place-items-center text-[hsl(var(--gold))]">
+        <div className="size-9 rounded-xl bg-[hsl(var(--navy)/0.12)] grid place-items-center text-[hsl(var(--navy))]">
           <Bell className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
@@ -73,7 +73,7 @@ export function PushPrompt({ vapidKey }: { vapidKey: string | null }) {
             Bookings, payments, and re-optimizations — pinged the moment they happen.
           </p>
           <div className="flex items-center gap-2 mt-3">
-            <Button variant="gold" size="sm" onClick={enable} disabled={busy}>
+            <Button variant="navy" size="sm" onClick={enable} disabled={busy}>
               <Bell className="size-3.5" /> {busy ? "Turning on…" : "Enable"}
             </Button>
             <Button variant="ghost" size="sm" onClick={dismiss}>

@@ -96,7 +96,7 @@ export function SettingsClient({
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium">Push notifications</h2>
         <Button
-          variant="gold"
+          variant="navy"
           size="sm"
           onClick={enable}
           disabled={busy || !vapidKey}

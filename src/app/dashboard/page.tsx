@@ -42,7 +42,7 @@ export default async function DashboardPage() {
             </p>
             <h1 className="text-display text-4xl tracking-tight">Your trips</h1>
           </div>
-          <Button asChild variant="gold" size="lg">
+          <Button asChild variant="navy" size="lg">
             <Link href="/trips/new">
               <Plus className="size-4" /> New trip
             </Link>
@@ -83,7 +83,7 @@ export default async function DashboardPage() {
 function EmptyState() {
   return (
     <div className="mt-12 glass rounded-3xl p-12 text-center max-w-xl mx-auto">
-      <div className="mx-auto size-12 grid place-items-center rounded-2xl border border-[hsl(var(--gold)/0.3)] bg-[hsl(var(--gold)/0.08)] text-[hsl(var(--gold))]">
+      <div className="mx-auto size-12 grid place-items-center rounded-2xl border border-[hsl(var(--navy)/0.3)] bg-[hsl(var(--navy)/0.08)] text-[hsl(var(--navy))]">
         <Sparkles className="size-5" />
       </div>
       <h2 className="mt-6 text-display text-2xl tracking-tight">
@@ -93,7 +93,7 @@ function EmptyState() {
         Describe the trip you want — group, dates, budget, vibe — and your
         concierge takes it from there.
       </p>
-      <Button asChild variant="gold" size="lg" className="mt-8">
+      <Button asChild variant="navy" size="lg" className="mt-8">
         <Link href="/trips/new">Start your first trip</Link>
       </Button>
     </div>

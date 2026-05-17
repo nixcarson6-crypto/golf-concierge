@@ -43,7 +43,7 @@ export function SelectDestinationButton({
   }
 
   return (
-    <Button variant="gold" size="sm" onClick={select} disabled={pending}>
+    <Button variant="navy" size="sm" onClick={select} disabled={pending}>
       {pending ? "Selecting…" : (<>Select <ArrowRight className="size-4" /></>)}
     </Button>
   );

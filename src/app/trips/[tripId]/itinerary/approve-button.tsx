@@ -17,7 +17,7 @@ export function ApproveItineraryButton({
   const [pending, start] = useTransition();
   return (
     <Button
-      variant="gold"
+      variant="navy"
       size="lg"
       disabled={pending}
       onClick={() =>

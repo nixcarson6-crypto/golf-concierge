@@ -34,7 +34,7 @@ export default async function SummaryPage({
   if (!itinerary) {
     return (
       <div className="container py-16 text-center max-w-xl mx-auto">
-        <ScrollText className="mx-auto size-5 text-[hsl(var(--gold))]" />
+        <ScrollText className="mx-auto size-5 text-[hsl(var(--navy))]" />
         <h1 className="mt-4 text-display text-2xl tracking-tight">
           Summary unlocks after approval.
         </h1>
@@ -80,7 +80,7 @@ export default async function SummaryPage({
       {summary && (
         <article className="mt-8 glass rounded-3xl p-7 max-w-3xl">
           <div className="flex items-start gap-3">
-            <Sparkles className="size-4 text-[hsl(var(--gold))] mt-1 shrink-0" />
+            <Sparkles className="size-4 text-[hsl(var(--navy))] mt-1 shrink-0" />
             <p className="text-base leading-relaxed whitespace-pre-wrap">
               {summary.content}
             </p>
@@ -93,7 +93,7 @@ export default async function SummaryPage({
               <ul className="mt-2 space-y-1.5 text-sm">
                 {highlights.map((h, i) => (
                   <li key={i} className="flex gap-2">
-                    <span className="text-[hsl(var(--gold))]">·</span>
+                    <span className="text-[hsl(var(--navy))]">·</span>
                     <span>{h}</span>
                   </li>
                 ))}

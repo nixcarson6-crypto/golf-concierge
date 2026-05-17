@@ -8,8 +8,9 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: "border-transparent bg-surface-raised text-foreground",
-        gold: "border-[hsl(var(--gold)/0.35)] bg-[hsl(var(--gold)/0.08)] text-[hsl(var(--gold))]",
-        emerald: "border-[hsl(var(--emerald)/0.35)] bg-[hsl(var(--emerald)/0.08)] text-[hsl(var(--emerald))]",
+        navy: "border-[hsl(var(--navy)/0.25)] bg-[hsl(var(--navy)/0.06)] text-[hsl(var(--navy))]",
+        copper: "border-[hsl(var(--copper)/0.35)] bg-[hsl(var(--copper)/0.08)] text-[hsl(var(--copper))]",
+        emerald: "border-[hsl(var(--emerald)/0.3)] bg-[hsl(var(--emerald)/0.07)] text-[hsl(var(--emerald))]",
         muted: "border-border bg-transparent text-muted-foreground",
         warning: "border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.08)] text-[hsl(var(--warning))]",
         destructive: "border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.08)] text-[hsl(var(--destructive))]",

@@ -1,13 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConciergeChat } from "./chat";
 import { LivePreview } from "./live-preview";
-import { StatusRail } from "./status-rail";
-import { CommandPalette } from "./command-palette";
 import { PushPrompt } from "./push-prompt";
+import { Button } from "@/components/ui/button";
+import { Eye, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import type {
   ItineraryItemType,
@@ -20,7 +19,6 @@ import type {
   ApprovalStatus,
   PaymentStatus,
   NotificationType,
-  AuditAction,
 } from "@prisma/client";
 
 export type WorkspaceTrip = {
@@ -108,29 +106,26 @@ export type WorkspaceNotification = {
   createdAt: string;
 };
 
+export type WorkspaceDestinationOption = {
+  id: string;
+  name: string;
+  description: string | null;
+  estimatedPerPersonCost: number | null;
+};
+
 type Props = { tripId: string; vapidPublicKey?: string | null };
 
 function WorkspaceSkeleton() {
   return (
     <div className="container py-5">
-      <div className="hidden lg:grid grid-cols-12 gap-5 h-[calc(100dvh-9.5rem)]">
-        <div className="col-span-5 xl:col-span-4 rounded-3xl glass shimmer" />
-        <div className="col-span-4 xl:col-span-5 rounded-3xl glass shimmer" />
-        <div className="col-span-3 rounded-3xl glass shimmer" />
+      <div className="hidden lg:grid grid-cols-12 gap-5 h-[calc(100dvh-7rem)]">
+        <div className="col-span-7 rounded-3xl glass shimmer" />
+        <div className="col-span-5 rounded-3xl glass shimmer" />
       </div>
-      <div className="lg:hidden h-[calc(100dvh-13rem)] rounded-3xl glass shimmer" />
+      <div className="lg:hidden h-[calc(100dvh-10rem)] rounded-3xl glass shimmer" />
     </div>
   );
 }
-
-export type WorkspaceAuditEvent = {
-  id: string;
-  action: AuditAction;
-  title: string;
-  detail: string | null;
-  actorKind: string;
-  createdAt: string;
-};
 
 type WorkspaceSnapshot = {
   trip: WorkspaceTrip;
@@ -139,16 +134,16 @@ type WorkspaceSnapshot = {
   itinerary: WorkspaceItinerary | null;
   agentRuns: WorkspaceAgentRun[];
   destinationCount: number;
+  destinations: WorkspaceDestinationOption[];
   members: WorkspaceMember[];
   approval: { approved: number; total: number; quorum: number };
   notifications: WorkspaceNotification[];
-  summary: { shareToken: string | null; generatedAt: string } | null;
-  auditEvents: WorkspaceAuditEvent[];
 };
 
 export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
   const qc = useQueryClient();
   const seenNotifications = React.useRef<Set<string>>(new Set());
+  const [mobileView, setMobileView] = React.useState<"chat" | "preview">("chat");
 
   const { data } = useQuery<WorkspaceSnapshot>({
     queryKey: ["workspace", tripId],
@@ -159,8 +154,6 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     },
   });
 
-  // Live updates via Server-Sent Events. The server pings any time
-  // anything material changes — we just invalidate to refetch.
   React.useEffect(() => {
     const es = new EventSource(`/api/trips/${tripId}/stream`);
     const refetch = () => qc.invalidateQueries({ queryKey: ["workspace", tripId] });
@@ -168,14 +161,10 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     es.addEventListener("agent.progress", refetch);
     es.addEventListener("notification", refetch);
     es.addEventListener("ready", refetch);
-    es.onerror = () => {
-      // Browser will auto-reconnect. Nothing to do.
-    };
+    es.onerror = () => {};
     return () => es.close();
   }, [tripId, qc]);
 
-  // Pop a Sonner toast for any newly-arrived notification. Initial set is
-  // marked seen so we don't flood on first load.
   React.useEffect(() => {
     if (!data) return;
     const initialLoad = seenNotifications.current.size === 0;
@@ -195,7 +184,6 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       setSendingChat(true);
       setStreamingReply("");
 
-      // Optimistic user message
       await qc.cancelQueries({ queryKey: ["workspace", tripId] });
       const previous = qc.getQueryData<WorkspaceSnapshot>(["workspace", tripId]);
       const optimistic: WorkspaceMessage = {
@@ -272,137 +260,59 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     [qc, tripId],
   );
 
-  const itemAction = useMutation({
-    mutationFn: async (args: {
-      itemId: string;
-      body: { action: "swap" | "upgrade" | "downgrade" | "regenerate" | "lock"; instruction?: string; locked?: boolean };
-    }) => {
-      const res = await fetch(
-        `/api/trips/${tripId}/itinerary-items/${args.itemId}/action`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(args.body),
-        },
-      );
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["workspace", tripId] }),
-  });
-
   if (!data) {
     return <WorkspaceSkeleton />;
   }
 
   const snapshot = data;
+  const chat = (
+    <ConciergeChat
+      tripId={tripId}
+      trip={snapshot.trip}
+      me={snapshot.me}
+      messages={snapshot.messages}
+      destinations={snapshot.destinations}
+      approval={snapshot.approval}
+      currentItineraryId={snapshot.itinerary?.id ?? null}
+      onSend={(text) => void sendStreamingMessage(text)}
+      sending={sendingChat}
+      streamingReply={streamingReply}
+    />
+  );
+  const preview = <LivePreview trip={snapshot.trip} itinerary={snapshot.itinerary} />;
 
   return (
     <>
       <PushPrompt vapidKey={vapidPublicKey ?? null} />
-      <CommandPalette
-        snapshot={snapshot}
-        onSendMessage={(t) => void sendStreamingMessage(t)}
-        onApprove={async () => {
-          if (!snapshot.itinerary) return;
-          await fetch(`/api/trips/${tripId}/approvals`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              decision: "APPROVED",
-              itineraryId: snapshot.itinerary.id,
-            }),
-          });
-          qc.invalidateQueries({ queryKey: ["workspace", tripId] });
-        }}
-      />
 
       <div className="container py-5">
-        {/* Desktop: three-panel command center */}
-        <div className="hidden lg:grid grid-cols-12 gap-5 h-[calc(100dvh-9.5rem)]">
-          <section className="col-span-5 xl:col-span-4 min-h-0">
-            <ConciergeChat
-              tripId={tripId}
-              trip={snapshot.trip}
-              me={snapshot.me}
-              messages={snapshot.messages}
-              onSend={(text) => void sendStreamingMessage(text)}
-              sending={sendingChat}
-              streamingReply={streamingReply}
-            />
-          </section>
-          <section className="col-span-4 xl:col-span-5 min-h-0">
-            <LivePreview
-              tripId={tripId}
-              trip={snapshot.trip}
-              itinerary={snapshot.itinerary}
-              me={snapshot.me}
-              approval={snapshot.approval}
-              onItemAction={(args) => itemAction.mutate(args)}
-            />
-          </section>
-          <section className="col-span-3 min-h-0">
-            <StatusRail
-              tripId={tripId}
-              trip={snapshot.trip}
-              itinerary={snapshot.itinerary}
-              agentRuns={snapshot.agentRuns}
-              destinationCount={snapshot.destinationCount}
-              members={snapshot.members}
-              notifications={snapshot.notifications}
-              approval={snapshot.approval}
-              summary={snapshot.summary}
-              auditEvents={snapshot.auditEvents}
-              me={snapshot.me}
-            />
-          </section>
+        {/* Desktop: chat + quiet preview */}
+        <div className="hidden lg:grid grid-cols-12 gap-5 h-[calc(100dvh-7rem)]">
+          <section className="col-span-7 min-h-0">{chat}</section>
+          <section className="col-span-5 min-h-0">{preview}</section>
         </div>
 
-        {/* Mobile: tabbed view */}
-        <div className="lg:hidden">
-          <Tabs defaultValue="chat" className="w-full">
-            <TabsList className="w-full justify-start overflow-x-auto no-scrollbar">
-              <TabsTrigger value="chat">Concierge</TabsTrigger>
-              <TabsTrigger value="itinerary">Itinerary</TabsTrigger>
-              <TabsTrigger value="status">Status</TabsTrigger>
-            </TabsList>
-            <TabsContent value="chat" className="h-[calc(100dvh-13rem)]">
-              <ConciergeChat
-                tripId={tripId}
-                trip={snapshot.trip}
-                me={snapshot.me}
-                messages={snapshot.messages}
-                onSend={(text) => void sendStreamingMessage(text)}
-                sending={sendingChat}
-                streamingReply={streamingReply}
-              />
-            </TabsContent>
-            <TabsContent value="itinerary" className="h-[calc(100dvh-13rem)]">
-              <LivePreview
-                tripId={tripId}
-                trip={snapshot.trip}
-                itinerary={snapshot.itinerary}
-                me={snapshot.me}
-                approval={snapshot.approval}
-                onItemAction={(args) => itemAction.mutate(args)}
-              />
-            </TabsContent>
-            <TabsContent value="status" className="h-[calc(100dvh-13rem)]">
-              <StatusRail
-                tripId={tripId}
-                trip={snapshot.trip}
-                itinerary={snapshot.itinerary}
-                agentRuns={snapshot.agentRuns}
-                destinationCount={snapshot.destinationCount}
-                members={snapshot.members}
-                notifications={snapshot.notifications}
-                approval={snapshot.approval}
-                summary={snapshot.summary}
-                auditEvents={snapshot.auditEvents}
-                me={snapshot.me}
-              />
-            </TabsContent>
-          </Tabs>
+        {/* Mobile: chat full-width, single toggle button swaps to preview */}
+        <div className="lg:hidden h-[calc(100dvh-10rem)] relative">
+          {mobileView === "chat" ? chat : preview}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setMobileView((v) => (v === "chat" ? "preview" : "chat"))
+            }
+            className="absolute top-3 right-3 z-10 bg-surface-raised/85 backdrop-blur"
+          >
+            {mobileView === "chat" ? (
+              <>
+                <Eye className="size-4" /> Preview
+              </>
+            ) : (
+              <>
+                <MessageSquare className="size-4" /> Chat
+              </>
+            )}
+          </Button>
         </div>
       </div>
     </>

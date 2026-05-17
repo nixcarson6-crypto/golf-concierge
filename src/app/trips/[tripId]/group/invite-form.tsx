@@ -47,7 +47,7 @@ export function InviteForm({ tripId }: { tripId: string }) {
           onChange={(e) => setEmail(e.target.value)}
         />
       </div>
-      <Button type="submit" variant="gold" size="md" disabled={pending} className="w-full">
+      <Button type="submit" variant="navy" size="md" disabled={pending} className="w-full">
         <Send className="size-4" /> {pending ? "Sending…" : "Send invite"}
       </Button>
     </form>

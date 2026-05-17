@@ -17,7 +17,7 @@ export function GenerateSummaryButton({
   const [pending, start] = useTransition();
   return (
     <Button
-      variant={hasSummary ? "outline" : "gold"}
+      variant={hasSummary ? "outline" : "navy"}
       size="sm"
       disabled={pending}
       onClick={() =>

@@ -125,10 +125,10 @@ export function DashboardClient({
         <div className="glass rounded-2xl p-5 sticky top-6">
           <div className="flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-sm font-medium">
-              <Bell className="size-4 text-[hsl(var(--gold))]" />
+              <Bell className="size-4 text-[hsl(var(--navy))]" />
               Activity
               {unread.length > 0 && (
-                <span className="text-[10px] rounded-full bg-[hsl(var(--gold)/0.15)] border border-[hsl(var(--gold)/0.3)] text-[hsl(var(--gold))] px-1.5 py-0.5">
+                <span className="text-[10px] rounded-full bg-[hsl(var(--navy)/0.15)] border border-[hsl(var(--navy)/0.3)] text-[hsl(var(--navy))] px-1.5 py-0.5">
                   {unread.length}
                 </span>
               )}
@@ -148,7 +148,7 @@ export function DashboardClient({
                       "block rounded-xl border px-3 py-2.5 transition",
                       n.readAt
                         ? "border-border/40 bg-surface-raised/20 hover:bg-surface-raised/40"
-                        : "border-[hsl(var(--gold)/0.3)] bg-[hsl(var(--gold)/0.05)] hover:bg-[hsl(var(--gold)/0.08)]",
+                        : "border-[hsl(var(--navy)/0.3)] bg-[hsl(var(--navy)/0.05)] hover:bg-[hsl(var(--navy)/0.08)]",
                     )}
                   >
                     <p className="text-xs font-medium leading-tight">{n.title}</p>

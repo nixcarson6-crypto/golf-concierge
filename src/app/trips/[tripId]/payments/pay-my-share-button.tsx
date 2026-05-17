@@ -40,7 +40,7 @@ export function PayMyShareButton({
 
   if (!open) {
     return (
-      <Button variant="gold" size="md" onClick={() => setOpen(true)}>
+      <Button variant="navy" size="md" onClick={() => setOpen(true)}>
         <CreditCard className="size-4" /> Pay my share
       </Button>
     );
@@ -55,7 +55,7 @@ export function PayMyShareButton({
       >
         Deposit · {formatCurrency(depositCents / 100)}
       </Button>
-      <Button variant="gold" size="sm" disabled={pending} onClick={() => pay("FULL")}>
+      <Button variant="navy" size="sm" disabled={pending} onClick={() => pay("FULL")}>
         Full · {formatCurrency(fullCents / 100)}
       </Button>
     </div>

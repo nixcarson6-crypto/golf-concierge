@@ -54,7 +54,7 @@ export default async function DestinationsPage({
 
       {options.length === 0 ? (
         <div className="mt-12 glass rounded-3xl p-12 text-center max-w-xl mx-auto">
-          <Sparkles className="mx-auto size-5 text-[hsl(var(--gold))]" />
+          <Sparkles className="mx-auto size-5 text-[hsl(var(--navy))]" />
           <p className="mt-4 text-sm text-muted-foreground">
             Once we know your group, dates, and budget, destinations appear here.
           </p>
@@ -80,7 +80,7 @@ export default async function DestinationsPage({
                 <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
                 <div className="absolute top-3 left-3 flex gap-1.5">
                   {i === 0 && (
-                    <Badge variant="gold" size="sm">
+                    <Badge variant="navy" size="sm">
                       <Sparkles className="size-3" /> Top pick
                     </Badge>
                   )}
@@ -103,7 +103,7 @@ export default async function DestinationsPage({
 
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <ScoreCell label="Golf" value={d.golfScore} accent="emerald" />
-                  <ScoreCell label="Nightlife" value={d.nightlifeScore} accent="gold" />
+                  <ScoreCell label="Nightlife" value={d.nightlifeScore} accent="navy" />
                   <ScoreCell label="Logistics" value={d.logisticsScore} accent="muted" />
                 </div>
 
@@ -115,7 +115,7 @@ export default async function DestinationsPage({
                 </div>
 
                 <div className="rounded-xl border border-border/60 bg-surface-raised/40 p-3 text-xs leading-relaxed text-muted-foreground flex gap-2 items-start">
-                  <Sparkles className="size-3 mt-0.5 text-[hsl(var(--gold))] shrink-0" />
+                  <Sparkles className="size-3 mt-0.5 text-[hsl(var(--navy))] shrink-0" />
                   <span>{d.aiExplanation}</span>
                 </div>
 
@@ -150,11 +150,11 @@ function ScoreCell({
 }: {
   label: string;
   value: number;
-  accent: "gold" | "emerald" | "muted";
+  accent: "navy" | "emerald" | "muted";
 }) {
   const colour =
-    accent === "gold"
-      ? "text-[hsl(var(--gold))]"
+    accent === "navy"
+      ? "text-[hsl(var(--navy))]"
       : accent === "emerald"
         ? "text-[hsl(var(--emerald))]"
         : "text-foreground";

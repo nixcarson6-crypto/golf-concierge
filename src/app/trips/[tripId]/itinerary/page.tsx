@@ -36,7 +36,7 @@ export default async function ItineraryPage({
   if (!itinerary) {
     return (
       <div className="container py-16 text-center max-w-xl mx-auto">
-        <Sparkles className="mx-auto size-5 text-[hsl(var(--gold))]" />
+        <Sparkles className="mx-auto size-5 text-[hsl(var(--navy))]" />
         <h1 className="mt-4 text-display text-2xl tracking-tight">
           Your itinerary is forming.
         </h1>
@@ -79,7 +79,7 @@ export default async function ItineraryPage({
 
       {itinerary.aiSummary && (
         <div className="mt-6 glass rounded-2xl p-5 flex gap-3 items-start max-w-3xl">
-          <Sparkles className="size-4 mt-0.5 text-[hsl(var(--gold))] shrink-0" />
+          <Sparkles className="size-4 mt-0.5 text-[hsl(var(--navy))] shrink-0" />
           <p className="text-sm leading-relaxed">{itinerary.aiSummary}</p>
         </div>
       )}
@@ -92,7 +92,7 @@ export default async function ItineraryPage({
           <ul className="mt-2 space-y-1.5 text-sm text-muted-foreground">
             {changes.map((c, i) => (
               <li key={i} className="flex gap-2">
-                <span className="text-[hsl(var(--gold))]">·</span>
+                <span className="text-[hsl(var(--navy))]">·</span>
                 <span>{c}</span>
               </li>
             ))}

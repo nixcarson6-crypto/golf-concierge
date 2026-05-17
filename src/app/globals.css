@@ -4,45 +4,48 @@
 
 @layer base {
   :root {
-    /* Default to dark — the product is dark-first */
-    --background: 222 16% 5%;
-    --foreground: 36 22% 94%;
+    /* Light, editorial palette — bone white background, deep navy accent,
+     * sparing copper micro-accent. Inspired by yacht-luxury / quiet print. */
+    --background: 36 28% 94%;       /* #F5F1EA bone white */
+    --foreground: 210 51% 8%;       /* #0B1620 ink */
 
-    --surface: 220 14% 8%;
-    --surface-raised: 220 13% 11%;
-    --surface-sunken: 222 18% 4%;
+    --surface: 34 22% 97%;
+    --surface-raised: 34 14% 99%;
+    --surface-sunken: 36 28% 91%;
 
-    --card: 220 14% 8%;
-    --card-foreground: 36 22% 94%;
+    --card: 34 22% 97%;
+    --card-foreground: 210 51% 8%;
 
-    --popover: 220 16% 7%;
-    --popover-foreground: 36 22% 94%;
+    --popover: 34 14% 99%;
+    --popover-foreground: 210 51% 8%;
 
-    --primary: 42 38% 64%;          /* muted gold */
-    --primary-foreground: 222 18% 6%;
+    --primary: 215 41% 18%;         /* deep navy */
+    --primary-foreground: 36 28% 96%;
 
-    --secondary: 158 36% 38%;       /* soft emerald */
-    --secondary-foreground: 36 22% 96%;
+    --secondary: 215 24% 28%;
+    --secondary-foreground: 36 28% 96%;
 
-    --muted: 220 10% 18%;
-    --muted-foreground: 220 10% 65%;
+    --muted: 36 16% 88%;
+    --muted-foreground: 215 12% 38%;
 
-    --accent: 42 32% 55%;
-    --accent-foreground: 222 18% 6%;
+    --accent: 24 49% 56%;           /* copper — for sparing micro-accents */
+    --accent-foreground: 36 28% 96%;
 
-    --destructive: 0 60% 52%;
-    --destructive-foreground: 36 22% 96%;
+    --destructive: 4 64% 48%;
+    --destructive-foreground: 36 28% 96%;
 
-    --border: 220 10% 16%;
-    --input: 220 10% 14%;
-    --ring: 42 38% 64%;
+    --border: 215 14% 82%;
+    --input: 215 14% 86%;
+    --ring: 215 41% 28%;
 
-    --gold: 42 70% 62%;
-    --gold-muted: 42 32% 48%;
-    --emerald: 158 50% 48%;
-    --emerald-muted: 158 30% 36%;
-    --warning: 38 92% 58%;
-    --success: 158 60% 48%;
+    --navy: 215 41% 18%;            /* #1B2A41 primary accent */
+    --navy-muted: 215 28% 32%;
+    --copper: 24 49% 56%;           /* #C18F5C micro-accent, sparing */
+    --copper-muted: 24 32% 44%;
+    --emerald: 158 38% 32%;         /* darker green that reads on light bg */
+    --emerald-muted: 158 24% 26%;
+    --warning: 32 78% 44%;
+    --success: 158 44% 32%;
 
     --radius: 0.875rem;
 
@@ -51,9 +54,8 @@
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   }
 
-  /* Explicit dark class for next-themes; same as :root for now */
   .dark {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   * {
@@ -73,17 +75,16 @@
   body {
     @apply bg-background text-foreground;
     background-image:
-      radial-gradient(1200px 600px at 18% -10%, hsl(var(--gold) / 0.06), transparent 60%),
-      radial-gradient(900px 500px at 100% 8%, hsl(var(--emerald) / 0.05), transparent 55%);
+      radial-gradient(1200px 600px at 18% -10%, hsl(var(--navy) / 0.05), transparent 60%),
+      radial-gradient(900px 500px at 100% 8%, hsl(var(--copper) / 0.04), transparent 55%);
     background-attachment: fixed;
   }
 
   ::selection {
-    background-color: hsl(var(--gold) / 0.35);
+    background-color: hsl(var(--navy) / 0.18);
     color: hsl(var(--foreground));
   }
 
-  /* Refined scrollbar */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -108,8 +109,8 @@
   .glass {
     background: linear-gradient(
       180deg,
-      hsl(var(--surface-raised) / 0.85),
-      hsl(var(--surface) / 0.7)
+      hsl(var(--surface-raised) / 0.92),
+      hsl(var(--surface) / 0.82)
     );
     backdrop-filter: blur(18px) saturate(140%);
     -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -119,19 +120,19 @@
   .glass-strong {
     background: linear-gradient(
       180deg,
-      hsl(var(--surface-raised) / 0.95),
-      hsl(var(--surface) / 0.85)
+      hsl(var(--surface-raised) / 0.98),
+      hsl(var(--surface) / 0.9)
     );
     backdrop-filter: blur(28px) saturate(160%);
     -webkit-backdrop-filter: blur(28px) saturate(160%);
     border: 1px solid hsl(var(--border));
   }
 
-  .gold-border {
-    border: 1px solid hsl(var(--gold) / 0.35);
+  .navy-border {
+    border: 1px solid hsl(var(--navy) / 0.25);
     box-shadow:
-      0 0 0 1px hsl(var(--gold) / 0.04) inset,
-      0 6px 30px -12px hsl(var(--gold) / 0.25);
+      0 0 0 1px hsl(var(--navy) / 0.04) inset,
+      0 6px 30px -16px hsl(var(--navy) / 0.18);
   }
 
   .text-display {
@@ -158,9 +159,9 @@
   .shimmer {
     background: linear-gradient(
       90deg,
-      hsl(var(--muted) / 0.2) 0%,
-      hsl(var(--muted) / 0.5) 50%,
-      hsl(var(--muted) / 0.2) 100%
+      hsl(var(--muted) / 0.3) 0%,
+      hsl(var(--muted) / 0.6) 50%,
+      hsl(var(--muted) / 0.3) 100%
     );
     background-size: 200% 100%;
     @apply animate-shimmer;

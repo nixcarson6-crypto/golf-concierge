@@ -160,7 +160,7 @@ function Metric({
         {label}
       </p>
       <p
-        className={`mt-1 text-display text-2xl num-tabular ${accent ? "text-[hsl(var(--gold))]" : ""}`}
+        className={`mt-1 text-display text-2xl num-tabular ${accent ? "text-[hsl(var(--navy))]" : ""}`}
       >
         {value}
       </p>

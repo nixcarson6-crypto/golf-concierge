@@ -23,7 +23,7 @@ export function CreatePaymentLinksButton({
         <span className="text-[11px] text-muted-foreground">{reason}</span>
       )}
       <Button
-        variant="gold"
+        variant="navy"
         size="sm"
         disabled={disabled || pending}
         onClick={() =>

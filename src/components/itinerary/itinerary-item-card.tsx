@@ -13,15 +13,10 @@ import {
   Sparkles,
   Clock,
   MapPin,
-  Lock,
 } from "lucide-react";
 import type { ConfirmationState, ItineraryItemType } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatCurrency } from "@/lib/utils";
-import {
-  ItemActionsMenu,
-  type ItemAction,
-} from "@/components/itinerary/item-actions-menu";
 
 export type DisplayItineraryItem = {
   id: string;
@@ -40,23 +35,14 @@ export type DisplayItineraryItem = {
 
 export function ItineraryItemCard({
   item,
-  onAction,
   compact = false,
 }: {
   item: DisplayItineraryItem;
-  onAction?: (a: ItemAction) => void;
   compact?: boolean;
 }) {
   const Icon = iconFor(item.type);
   return (
-    <article
-      className={cn(
-        "group rounded-2xl border bg-card/60 p-4 transition",
-        item.locked
-          ? "border-[hsl(var(--gold)/0.35)] bg-[hsl(var(--gold)/0.04)]"
-          : "border-border/70 hover:border-foreground/15",
-      )}
-    >
+    <article className="group rounded-2xl border border-border/70 bg-card/60 p-4 transition hover:border-foreground/15">
       <div className="flex items-start gap-3">
         <div
           className={cn(
@@ -69,22 +55,14 @@ export function ItineraryItemCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-                  {labelFor(item.type)}
-                </p>
-                {item.locked && (
-                  <Lock className="size-2.5 text-[hsl(var(--gold))]" />
-                )}
-              </div>
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                {labelFor(item.type)}
+              </p>
               <h3 className="text-sm font-medium leading-tight mt-0.5 truncate">
                 {item.title}
               </h3>
             </div>
-            <div className="flex items-center gap-1.5">
-              <ConfirmationBadge state={item.confirmationState} />
-              {onAction && <ItemActionsMenu locked={Boolean(item.locked)} onAction={onAction} />}
-            </div>
+            <ConfirmationBadge state={item.confirmationState} />
           </div>
 
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -109,7 +87,7 @@ export function ItineraryItemCard({
 
           {!compact && item.aiRationale && (
             <div className="mt-3 rounded-xl bg-surface-raised/40 border border-border/50 px-3 py-2 text-xs text-muted-foreground flex gap-2 items-start">
-              <Sparkles className="size-3 mt-0.5 text-[hsl(var(--gold))] shrink-0" />
+              <Sparkles className="size-3 mt-0.5 text-[hsl(var(--copper))] shrink-0" />
               <span>{item.aiRationale}</span>
             </div>
           )}
@@ -129,15 +107,15 @@ function ConfirmationBadge({ state }: { state: ConfirmationState }) {
       );
     case "HOLDING":
       return (
-        <Badge variant="gold" size="sm">
+        <Badge variant="navy" size="sm">
           Holding
         </Badge>
       );
     case "SEARCHING":
     case "BOOKING":
       return (
-        <Badge variant="gold" size="sm">
-          <span className="size-1.5 rounded-full bg-[hsl(var(--gold))] animate-pulse-soft" />
+        <Badge variant="navy" size="sm">
+          <span className="size-1.5 rounded-full bg-[hsl(var(--navy))] animate-pulse-soft" />
           {state === "BOOKING" ? "Booking" : "Searching"}
         </Badge>
       );
@@ -194,12 +172,12 @@ function iconFor(type: ItineraryItemType) {
 function tintFor(type: ItineraryItemType) {
   switch (type) {
     case "TEE_TIME":
-      return "bg-[hsl(var(--emerald)/0.12)] text-[hsl(var(--emerald))] border border-[hsl(var(--emerald)/0.25)]";
+      return "bg-[hsl(var(--emerald)/0.1)] text-[hsl(var(--emerald))] border border-[hsl(var(--emerald)/0.22)]";
     case "LODGING":
-      return "bg-[hsl(var(--gold)/0.12)] text-[hsl(var(--gold))] border border-[hsl(var(--gold)/0.25)]";
+      return "bg-[hsl(var(--navy)/0.08)] text-[hsl(var(--navy))] border border-[hsl(var(--navy)/0.2)]";
     case "DINING":
     case "NIGHTLIFE":
-      return "bg-[hsl(var(--gold)/0.08)] text-[hsl(var(--gold))] border border-[hsl(var(--gold)/0.18)]";
+      return "bg-[hsl(var(--copper)/0.1)] text-[hsl(var(--copper))] border border-[hsl(var(--copper)/0.2)]";
     default:
       return "bg-surface-raised text-muted-foreground border border-border";
   }

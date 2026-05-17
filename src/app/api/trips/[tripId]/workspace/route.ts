@@ -24,7 +24,7 @@ export async function GET(
     messages,
     itinerary,
     agentRuns,
-    destinationCount,
+    destinations,
     members,
     notifications,
     summary,
@@ -46,7 +46,10 @@ export async function GET(
       orderBy: { createdAt: "desc" },
       take: 8,
     }),
-    db.destinationOption.count({ where: { tripId: trip.id } }),
+    db.destinationOption.findMany({
+      where: { tripId: trip.id },
+      orderBy: { rank: "asc" },
+    }),
     db.tripMember.findMany({
       where: { tripId: trip.id },
       include: { user: { select: { id: true, name: true, imageUrl: true } } },
@@ -136,7 +139,13 @@ export async function GET(
       startedAt: r.startedAt?.toISOString() ?? null,
       completedAt: r.completedAt?.toISOString() ?? null,
     })),
-    destinationCount,
+    destinationCount: destinations.length,
+    destinations: destinations.map((d) => ({
+      id: d.id,
+      name: d.name,
+      description: d.description,
+      estimatedPerPersonCost: d.estimatedPerPersonCost,
+    })),
     members: members.map((m) => ({
       id: m.id,
       userId: m.userId,

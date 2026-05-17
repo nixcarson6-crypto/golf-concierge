@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_8px_24px_-12px_hsl(var(--gold)/0.5)]",
+          "bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_8px_24px_-12px_hsl(var(--navy)/0.5)]",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/90",
         outline:
@@ -18,9 +18,11 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        gold: "bg-gradient-to-b from-[hsl(var(--gold))] to-[hsl(var(--gold-muted))] text-[hsl(var(--primary-foreground))] hover:brightness-110 shadow-[0_10px_36px_-12px_hsl(var(--gold)/0.5)]",
+        navy: "bg-[hsl(var(--navy))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--navy-muted))] shadow-[0_8px_28px_-14px_hsl(var(--navy)/0.45)]",
+        copper:
+          "bg-[hsl(var(--copper))] text-[hsl(var(--primary-foreground))] hover:bg-[hsl(var(--copper-muted))] shadow-[0_8px_28px_-14px_hsl(var(--copper)/0.4)]",
         emerald:
-          "bg-[hsl(var(--emerald)/0.15)] border border-[hsl(var(--emerald)/0.4)] text-[hsl(var(--emerald))] hover:bg-[hsl(var(--emerald)/0.22)]",
+          "bg-[hsl(var(--emerald)/0.12)] border border-[hsl(var(--emerald)/0.35)] text-[hsl(var(--emerald))] hover:bg-[hsl(var(--emerald)/0.2)]",
       },
       size: {
         sm: "h-8 px-3 text-xs",

@@ -21,7 +21,7 @@ export function NewTripForm({
       action={(fd) => startTransition(() => action(fd))}
       className="w-full max-w-md glass-strong rounded-3xl p-8"
     >
-      <div className="flex items-center gap-2 text-[hsl(var(--gold))] text-sm">
+      <div className="flex items-center gap-2 text-[hsl(var(--navy))] text-sm">
         <Sparkles className="size-4" />
         <span>New trip</span>
       </div>
@@ -48,7 +48,7 @@ export function NewTripForm({
 
       <Button
         type="submit"
-        variant="gold"
+        variant="navy"
         size="lg"
         className="mt-7 w-full"
         disabled={pending}
