@@ -1,8 +1,17 @@
 import { notFound } from "next/navigation";
+import dynamic_ from "next/dynamic";
 import { db } from "@/lib/db";
 import { requireTripAccess } from "@/lib/auth";
 import { optionalEnv } from "@/lib/env";
-import { TripMap } from "@/components/map/trip-map";
+
+const TripMap = dynamic_(
+  () => import("@/components/map/trip-map").then((m) => m.TripMap),
+  {
+    loading: () => (
+      <div className="rounded-3xl glass shimmer h-[70dvh]" />
+    ),
+  },
+);
 
 export const dynamic = "force-dynamic";
 

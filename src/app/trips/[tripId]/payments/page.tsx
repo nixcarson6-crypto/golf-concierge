@@ -4,7 +4,9 @@ import { requireTripAccess } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { stripeConfigured } from "@/lib/stripe";
+import { suggestedDepositCents } from "@/lib/bookings/executor";
 import { CreatePaymentLinksButton } from "./create-links-button";
+import { PayMyShareButton } from "./pay-my-share-button";
 import { CreditCard } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +47,12 @@ export default async function PaymentsPage({
     .filter((p) => p.status === "SUCCEEDED")
     .reduce((s, p) => s + p.amount, 0);
   const isOwner = access.role === "OWNER";
+  const depositPerPerson = currentItinerary?.totalCost
+    ? Math.round(
+        suggestedDepositCents({ itineraryTotalCents: currentItinerary.totalCost }) /
+          Math.max(1, members.length),
+      )
+    : 0;
 
   return (
     <div className="container py-8">
@@ -60,11 +68,22 @@ export default async function PaymentsPage({
         </p>
       </div>
 
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-4">
         <Metric label="Per person" value={formatCurrency(perPerson / 100)} />
+        <Metric label="Deposit pp" value={depositPerPerson ? formatCurrency(depositPerPerson / 100) : "—"} />
         <Metric label="Total due" value={formatCurrency(totalDue / 100)} />
         <Metric label="Collected" value={formatCurrency(totalPaid / 100)} accent />
       </div>
+
+      {stripeConfigured() && currentItinerary && (
+        <div className="mt-4 flex justify-end">
+          <PayMyShareButton
+            tripId={tripId}
+            depositCents={depositPerPerson}
+            fullCents={perPerson}
+          />
+        </div>
+      )}
 
       <div className="mt-6 glass rounded-3xl p-6">
         <div className="flex items-center justify-between flex-wrap gap-3">

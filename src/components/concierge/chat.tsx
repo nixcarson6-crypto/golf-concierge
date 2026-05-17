@@ -10,11 +10,31 @@ import { cn, initials, relativeTime } from "@/lib/utils";
 import { renderMarkdownBlock } from "@/lib/markdown";
 import type { WorkspaceMessage, WorkspaceMe, WorkspaceTrip } from "./workspace";
 
-const SUGGESTIONS = [
+const SUGGESTIONS_FRESH = [
   "Plan a luxury golf trip for 8 guys in Scottsdale in October.",
   "Optimize for top courses and nightlife, $3,000 per person.",
   "We're flexible — recommend a destination for early November.",
 ];
+const SUGGESTIONS_PLANNING = [
+  "Swap the steakhouse for sushi.",
+  "Add a spa morning on day 2.",
+  "Find a cheaper hotel without losing the location.",
+];
+const SUGGESTIONS_APPROVED = [
+  "What's still outstanding?",
+  "Move the Wednesday tee time earlier.",
+  "Add a dinner reservation for arrival night.",
+];
+
+function pickSuggestions(args: {
+  hasDestination: boolean;
+  hasItinerary: boolean;
+  isApproved: boolean;
+}): string[] {
+  if (args.isApproved) return SUGGESTIONS_APPROVED;
+  if (args.hasItinerary || args.hasDestination) return SUGGESTIONS_PLANNING;
+  return SUGGESTIONS_FRESH;
+}
 
 export function ConciergeChat({
   trip,
@@ -88,7 +108,24 @@ export function ConciergeChat({
     typeof window !== "undefined" &&
     ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
-  const showSuggestions = messages.length <= 1 && !trip.destination;
+  // Adaptive suggestion chips — chosen from a different set depending on
+  // where the trip is in its lifecycle. Visible when chat is quiet (no
+  // message in the last 5 turns from the user) and trip is not booked.
+  const lastUserMsgIndex = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "USER") return i;
+    }
+    return -1;
+  })();
+  const turnsSinceLastUser = messages.length - 1 - lastUserMsgIndex;
+  const tripIsBooked = trip.status === "BOOKED" || trip.status === "COMPLETED";
+  const suggestions = pickSuggestions({
+    hasDestination: Boolean(trip.destination),
+    hasItinerary: trip.status === "PLANNING" || trip.status === "AWAITING_APPROVAL",
+    isApproved: trip.status === "APPROVED" || trip.status === "BOOKING",
+  });
+  const showSuggestions =
+    !tripIsBooked && (turnsSinceLastUser >= 1 || messages.length <= 1);
 
   return (
     <div className="h-full flex flex-col rounded-3xl glass overflow-hidden">
@@ -135,9 +172,9 @@ export function ConciergeChat({
               <span className="size-1.5 rounded-full bg-[hsl(var(--gold))] animate-pulse-soft [animation-delay:240ms]" />
             </div>
           )}
-          {showSuggestions && (
+          {showSuggestions && suggestions.length > 0 && (
             <div className="pt-2 flex flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <button
                   key={s}
                   type="button"
