@@ -1,24 +1,48 @@
 "use client";
 
 import * as React from "react";
+import { GripVertical } from "lucide-react";
 import { ItineraryItemCard } from "./itinerary-item-card";
 import type { DisplayItineraryItem } from "./itinerary-item-card";
 import type { ItemAction } from "./item-actions-menu";
+import { cn } from "@/lib/utils";
 
 /**
  * Group an itinerary into day buckets and render as a vertical timeline.
  * Items without a startTime fall under "Unscheduled" at the end.
+ *
+ * Supports HTML5 drag-and-drop reorder. Drop emits the new full sequence of
+ * IDs to onReorder so the server can persist + re-validate the schedule.
  */
 export function DayTimeline({
   items,
   onAction,
+  onReorder,
   compact = false,
 }: {
   items: DisplayItineraryItem[];
   onAction?: (itemId: string, a: ItemAction) => void;
+  onReorder?: (orderedIds: string[]) => void;
   compact?: boolean;
 }) {
+  const [dragId, setDragId] = React.useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = React.useState<string | null>(null);
+
   const grouped = React.useMemo(() => groupByDay(items), [items]);
+
+  const handleDrop = (overId: string) => {
+    if (!dragId || !onReorder) return;
+    if (dragId === overId) return;
+    const order = items.map((i) => i.id);
+    const from = order.indexOf(dragId);
+    const to = order.indexOf(overId);
+    if (from < 0 || to < 0) return;
+    order.splice(to, 0, order.splice(from, 1)[0]);
+    onReorder(order);
+    setDragId(null);
+    setDropTargetId(null);
+  };
+
   return (
     <div className="space-y-8">
       {grouped.map((bucket) => (
@@ -33,12 +57,52 @@ export function DayTimeline({
           </header>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {bucket.items.map((item) => (
-              <ItineraryItemCard
+              <div
                 key={item.id}
-                item={item}
-                compact={compact}
-                onAction={onAction ? (a) => onAction(item.id, a) : undefined}
-              />
+                draggable={Boolean(onReorder)}
+                onDragStart={(e) => {
+                  if (!onReorder) return;
+                  setDragId(item.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => {
+                  if (!onReorder || !dragId) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setDropTargetId(item.id);
+                }}
+                onDragLeave={() => setDropTargetId(null)}
+                onDrop={(e) => {
+                  if (!onReorder) return;
+                  e.preventDefault();
+                  handleDrop(item.id);
+                }}
+                onDragEnd={() => {
+                  setDragId(null);
+                  setDropTargetId(null);
+                }}
+                className={cn(
+                  "relative group",
+                  dragId === item.id && "opacity-50",
+                  dropTargetId === item.id &&
+                    dragId !== item.id &&
+                    "ring-2 ring-[hsl(var(--gold))] rounded-2xl",
+                )}
+              >
+                {onReorder && (
+                  <span
+                    aria-hidden
+                    className="absolute -left-2 top-1/2 -translate-y-1/2 size-6 rounded-md bg-surface-raised/60 border border-border grid place-items-center text-muted-foreground opacity-0 group-hover:opacity-100 transition cursor-grab active:cursor-grabbing"
+                  >
+                    <GripVertical className="size-3.5" />
+                  </span>
+                )}
+                <ItineraryItemCard
+                  item={item}
+                  compact={compact}
+                  onAction={onAction ? (a) => onAction(item.id, a) : undefined}
+                />
+              </div>
             ))}
           </div>
         </section>

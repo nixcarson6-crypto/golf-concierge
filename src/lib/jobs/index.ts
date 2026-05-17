@@ -5,6 +5,7 @@ import { runItineraryAgent } from "../ai/agents/itinerary";
 import { runSummaryAgent } from "../ai/agents/summary";
 import { runWeatherWatchForAllTrips } from "../ai/agents/weatherWatch";
 import { runCostWatchdog } from "../ai/agents/costWatchdog";
+import { runPaymentReminders } from "./payment-reminders";
 import type { ItineraryAI, TripConstraints } from "../ai/schemas";
 
 /**
@@ -163,10 +164,17 @@ export const costWatchdogDaily = inngest.createFunction(
   },
 );
 
+export const paymentRemindersDaily = inngest.createFunction(
+  { id: "payment-reminders-daily" },
+  { cron: "0 17 * * *" }, // 17:00 UTC daily — late morning US East
+  async () => runPaymentReminders(),
+);
+
 export const functions = [
   onItineraryApproved,
   onRefineRequested,
   onSummaryRequested,
   weatherWatchDaily,
   costWatchdogDaily,
+  paymentRemindersDaily,
 ];

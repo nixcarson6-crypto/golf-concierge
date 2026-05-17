@@ -51,7 +51,16 @@ export default async function SharedSummaryPage({
           <PrintButton />
         </header>
 
-        <h1 className="mt-4 text-display text-5xl tracking-tight print:text-black">
+        {summary.coverImageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={summary.coverImageUrl}
+            alt={trip.destination ?? trip.title}
+            className="mt-6 w-full aspect-[16/7] object-cover rounded-3xl border border-border print:rounded-none print:border-0"
+          />
+        )}
+
+        <h1 className="mt-6 text-display text-5xl tracking-tight print:text-black">
           {trip.destination ?? trip.title}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground print:text-neutral-700">

@@ -102,6 +102,7 @@ export default async function ItineraryPage({
 
       <ItineraryView
         tripId={tripId}
+        itineraryId={itinerary.id}
         readOnly={itinerary.status !== "CURRENT"}
         items={itinerary.items.map((i) => ({
           id: i.id,

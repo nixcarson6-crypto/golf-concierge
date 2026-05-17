@@ -23,11 +23,13 @@ import { cn, initials, relativeTime } from "@/lib/utils";
 import { tripStatusLabel } from "@/lib/trip-status";
 import type {
   WorkspaceAgentRun,
+  WorkspaceAuditEvent,
   WorkspaceItinerary,
   WorkspaceMember,
   WorkspaceNotification,
   WorkspaceTrip,
 } from "./workspace";
+import { AuditTimeline } from "./audit-timeline";
 import type { AgentType } from "@prisma/client";
 
 export function StatusRail({
@@ -40,6 +42,7 @@ export function StatusRail({
   notifications,
   approval,
   summary,
+  auditEvents,
 }: {
   tripId: string;
   trip: WorkspaceTrip;
@@ -50,6 +53,7 @@ export function StatusRail({
   notifications: WorkspaceNotification[];
   approval: { approved: number; total: number; quorum: number };
   summary: { shareToken: string | null; generatedAt: string } | null;
+  auditEvents: WorkspaceAuditEvent[];
 }) {
   const qc = useQueryClient();
   const unreadCount = notifications.filter((n) => !n.readAt).length;
@@ -239,6 +243,17 @@ export function StatusRail({
                   </li>
                 ))}
               </ul>
+            </section>
+          )}
+
+          {auditEvents.length > 0 && (
+            <section>
+              <SectionHeading>
+                <Activity className="size-3" /> Timeline
+              </SectionHeading>
+              <div className="mt-3">
+                <AuditTimeline events={auditEvents} />
+              </div>
             </section>
           )}
 

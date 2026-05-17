@@ -7,6 +7,8 @@ import { ConciergeChat } from "./chat";
 import { LivePreview } from "./live-preview";
 import { StatusRail } from "./status-rail";
 import { CommandPalette } from "./command-palette";
+import { PushPrompt } from "./push-prompt";
+import { toast } from "sonner";
 import type {
   ItineraryItemType,
   ConfirmationState,
@@ -18,6 +20,7 @@ import type {
   ApprovalStatus,
   PaymentStatus,
   NotificationType,
+  AuditAction,
 } from "@prisma/client";
 
 export type WorkspaceTrip = {
@@ -105,7 +108,29 @@ export type WorkspaceNotification = {
   createdAt: string;
 };
 
-type Props = { tripId: string };
+type Props = { tripId: string; vapidPublicKey?: string | null };
+
+function WorkspaceSkeleton() {
+  return (
+    <div className="container py-5">
+      <div className="hidden lg:grid grid-cols-12 gap-5 h-[calc(100dvh-9.5rem)]">
+        <div className="col-span-5 xl:col-span-4 rounded-3xl glass shimmer" />
+        <div className="col-span-4 xl:col-span-5 rounded-3xl glass shimmer" />
+        <div className="col-span-3 rounded-3xl glass shimmer" />
+      </div>
+      <div className="lg:hidden h-[calc(100dvh-13rem)] rounded-3xl glass shimmer" />
+    </div>
+  );
+}
+
+export type WorkspaceAuditEvent = {
+  id: string;
+  action: AuditAction;
+  title: string;
+  detail: string | null;
+  actorKind: string;
+  createdAt: string;
+};
 
 type WorkspaceSnapshot = {
   trip: WorkspaceTrip;
@@ -118,10 +143,12 @@ type WorkspaceSnapshot = {
   approval: { approved: number; total: number; quorum: number };
   notifications: WorkspaceNotification[];
   summary: { shareToken: string | null; generatedAt: string } | null;
+  auditEvents: WorkspaceAuditEvent[];
 };
 
-export function ConciergeWorkspace({ tripId }: Props) {
+export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
   const qc = useQueryClient();
+  const seenNotifications = React.useRef<Set<string>>(new Set());
 
   const { data } = useQuery<WorkspaceSnapshot>({
     queryKey: ["workspace", tripId],
@@ -146,6 +173,19 @@ export function ConciergeWorkspace({ tripId }: Props) {
     };
     return () => es.close();
   }, [tripId, qc]);
+
+  // Pop a Sonner toast for any newly-arrived notification. Initial set is
+  // marked seen so we don't flood on first load.
+  React.useEffect(() => {
+    if (!data) return;
+    const initialLoad = seenNotifications.current.size === 0;
+    for (const n of data.notifications) {
+      if (seenNotifications.current.has(n.id)) continue;
+      seenNotifications.current.add(n.id);
+      if (initialLoad || n.readAt) continue;
+      toast(n.title, { description: n.message });
+    }
+  }, [data]);
 
   const [streamingReply, setStreamingReply] = React.useState<string | null>(null);
   const [sendingChat, setSendingChat] = React.useState(false);
@@ -247,17 +287,14 @@ export function ConciergeWorkspace({ tripId }: Props) {
   });
 
   if (!data) {
-    return (
-      <div className="container py-20 text-center text-muted-foreground text-sm">
-        Loading concierge…
-      </div>
-    );
+    return <WorkspaceSkeleton />;
   }
 
   const snapshot = data;
 
   return (
     <>
+      <PushPrompt vapidKey={vapidPublicKey ?? null} />
       <CommandPalette
         snapshot={snapshot}
         onSendMessage={(t) => void sendStreamingMessage(t)}
@@ -310,6 +347,7 @@ export function ConciergeWorkspace({ tripId }: Props) {
               notifications={snapshot.notifications}
               approval={snapshot.approval}
               summary={snapshot.summary}
+              auditEvents={snapshot.auditEvents}
             />
           </section>
         </div>
@@ -354,6 +392,7 @@ export function ConciergeWorkspace({ tripId }: Props) {
                 notifications={snapshot.notifications}
                 approval={snapshot.approval}
                 summary={snapshot.summary}
+                auditEvents={snapshot.auditEvents}
               />
             </TabsContent>
           </Tabs>

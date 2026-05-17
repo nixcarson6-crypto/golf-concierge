@@ -26,7 +26,7 @@ export default async function GroupPage({
   const [members, invites] = await Promise.all([
     db.tripMember.findMany({
       where: { tripId },
-      include: { user: true },
+      include: { user: true, memberPreferences: true },
       orderBy: { createdAt: "asc" },
     }),
     db.tripInvite.findMany({
@@ -60,27 +60,42 @@ export default async function GroupPage({
             </Badge>
           </div>
           <ul className="divide-y divide-border/60">
-            {members.map((m) => (
-              <li key={m.id} className="py-3 flex items-center gap-3">
-                <Avatar>
-                  {m.user?.imageUrl && (
-                    <AvatarImage src={m.user.imageUrl} alt={m.name ?? m.email} />
+            {members.map((m) => {
+              const prefs = (m.memberPreferences?.data as Record<string, unknown> | null) ?? null;
+              const prefChips = prefs ? buildPrefChips(prefs) : [];
+              return (
+                <li key={m.id} className="py-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar>
+                      {m.user?.imageUrl && (
+                        <AvatarImage src={m.user.imageUrl} alt={m.name ?? m.email} />
+                      )}
+                      <AvatarFallback>{initials(m.name ?? m.email)}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm leading-tight truncate">
+                        {m.name ?? m.email}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {m.email}
+                      </p>
+                    </div>
+                    <RoleBadge role={m.role} />
+                    <ApprovalBadge status={m.approvalStatus} />
+                    <PaymentBadge status={m.paymentStatus} />
+                  </div>
+                  {prefChips.length > 0 && (
+                    <div className="mt-2 pl-12 flex flex-wrap gap-1.5">
+                      {prefChips.map((chip) => (
+                        <Badge key={chip} variant="muted" size="sm">
+                          {chip}
+                        </Badge>
+                      ))}
+                    </div>
                   )}
-                  <AvatarFallback>{initials(m.name ?? m.email)}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm leading-tight truncate">
-                    {m.name ?? m.email}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground truncate">
-                    {m.email}
-                  </p>
-                </div>
-                <RoleBadge role={m.role} />
-                <ApprovalBadge status={m.approvalStatus} />
-                <PaymentBadge status={m.paymentStatus} />
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
 
           {invites.length > 0 && (
@@ -141,6 +156,18 @@ function ApprovalBadge({
     return <Badge variant="warning" size="sm">Changes requested</Badge>;
   if (status === "DECLINED") return <Badge variant="destructive" size="sm">Declined</Badge>;
   return <Badge variant="muted" size="sm">Awaiting approval</Badge>;
+}
+
+function buildPrefChips(prefs: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  if (typeof prefs.golfHandicap === "number") out.push(`Hcp ${prefs.golfHandicap}`);
+  if (typeof prefs.dietary === "string" && prefs.dietary) out.push(`Diet: ${prefs.dietary}`);
+  if (typeof prefs.spirits === "string" && prefs.spirits) out.push(prefs.spirits as string);
+  if (typeof prefs.nightlife === "string" && prefs.nightlife)
+    out.push(`Nights: ${prefs.nightlife}`);
+  if (prefs.earlyRiser === true) out.push("Early riser");
+  if (typeof prefs.pace === "string") out.push(`Pace: ${prefs.pace}`);
+  return out;
 }
 
 function PaymentBadge({

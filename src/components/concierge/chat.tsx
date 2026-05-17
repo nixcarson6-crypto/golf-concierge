@@ -105,7 +105,11 @@ export function ConciergeChat({
       </div>
 
       <ScrollArea className="flex-1" ref={scrollRef}>
-        <div className="px-5 py-6 space-y-5">
+        <div
+          className="px-5 py-6 space-y-5"
+          aria-live="polite"
+          aria-busy={sending}
+        >
           {messages.map((m) => (
             <ChatMessageView key={m.id} message={m} meId={me.id} />
           ))}

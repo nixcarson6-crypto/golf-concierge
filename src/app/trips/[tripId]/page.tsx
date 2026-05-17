@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireTripAccess } from "@/lib/auth";
 import { ConciergeWorkspace } from "@/components/concierge/workspace";
+import { pushPublicKey } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -15,5 +16,10 @@ export default async function TripCommandCenterPage({
   } catch {
     notFound();
   }
-  return <ConciergeWorkspace tripId={tripId} />;
+  return (
+    <ConciergeWorkspace
+      tripId={tripId}
+      vapidPublicKey={pushPublicKey()}
+    />
+  );
 }

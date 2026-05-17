@@ -57,7 +57,26 @@ export interface BookingPartner {
   isConfigured(): boolean;
   search(req: BookingRequest): Promise<BookingQuote[]>;
   quote(req: BookingRequest): Promise<BookingQuote>;
+  /** Optional two-phase: hold the inventory without charging. */
+  hold?(req: BookingRequest, quote: BookingQuote): Promise<BookingResult>;
+  /** Optional: confirm a held booking, completing the transaction. */
+  confirm?(providerReference: string): Promise<BookingResult>;
+  /** One-shot book (used when hold/confirm aren't available). */
   book(req: BookingRequest): Promise<BookingResult>;
   cancel(providerReference: string): Promise<void>;
   getStatus(providerReference: string): Promise<BookingStatusResult>;
+  /** Whether this partner supports a true two-phase booking flow. */
+  supportsHold?: boolean;
+  /** Approximate cancellation policy in plain English — used by the deposit
+   * calculator and to brief the user honestly. */
+  cancellationPolicy?: string;
+  /** How long an inventory hold lasts before it auto-releases. */
+  defaultHoldMinutes?: number;
 }
+
+export type BookingAttempt = {
+  attempt: number;
+  startedAt: Date;
+  finishedAt: Date | null;
+  error: string | null;
+};

@@ -71,18 +71,20 @@ model Trip {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  owner           User                  @relation("TripOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members         TripMember[]
-  invites         TripInvite[]
-  preferences     TripPreference[]
-  chatMessages    ChatMessage[]
-  destinations    DestinationOption[]
-  itineraries     Itinerary[]
-  bookings        Booking[]
-  payments        Payment[]
-  agentRuns       AgentRun[]
-  notifications   Notification[]
-  summary         TripSummary?
+  owner               User                  @relation("TripOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members             TripMember[]
+  invites             TripInvite[]
+  preferences         TripPreference[]
+  chatMessages        ChatMessage[]
+  destinations        DestinationOption[]
+  itineraries         Itinerary[]
+  bookings            Booking[]
+  payments            Payment[]
+  agentRuns           AgentRun[]
+  notifications       Notification[]
+  auditEvents         AuditEvent[]
+  conversationSummary ConversationSummary?
+  summary             TripSummary?
 
   @@index([ownerId, status])
   @@index([status])
@@ -130,6 +132,7 @@ model TripMember {
   user           User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   preferences    TripPreference[]
   payments       Payment[]
+  memberPreferences MemberPreference?
 
   @@unique([tripId, email])
   @@index([tripId, role])
@@ -490,17 +493,100 @@ model Notification {
 }
 
 model TripSummary {
-  id            String   @id @default(cuid())
-  tripId        String   @unique
-  itineraryId   String   @unique
-  content       String   @db.Text
+  id              String   @id @default(cuid())
+  tripId          String   @unique
+  itineraryId     String   @unique
+  content         String   @db.Text
   /// Optional structured highlights, substitutions, savings, etc.
-  highlights    Json?
-  totalCost     Int?     // cents
-  perPersonCost Int?     // cents
-  shareToken    String?  @unique
-  generatedAt   DateTime @default(now())
+  highlights      Json?
+  totalCost       Int?     // cents
+  perPersonCost   Int?     // cents
+  shareToken      String?  @unique
+  coverImageUrl   String?
+  generatedAt     DateTime @default(now())
 
-  trip          Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  itinerary     Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  trip            Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  itinerary       Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Audit log + per-member preference store + push subscriptions + rolling
+// conversation summary. All additive — no migrations break existing models.
+// ---------------------------------------------------------------------------
+
+enum AuditAction {
+  TRIP_CREATED
+  TRIP_UPDATED
+  CONSTRAINTS_UPDATED
+  DESTINATION_SELECTED
+  ITINERARY_DRAFTED
+  ITINERARY_REVISED
+  ITEM_SWAPPED
+  ITEM_LOCKED
+  ITEM_UNLOCKED
+  ITINERARY_APPROVED
+  BOOKING_REQUESTED
+  BOOKING_HELD
+  BOOKING_CONFIRMED
+  BOOKING_FAILED
+  PAYMENT_REQUESTED
+  PAYMENT_RECEIVED
+  MEMBER_INVITED
+  MEMBER_JOINED
+  SUMMARY_GENERATED
+  AGENT_RUN
+}
+
+model AuditEvent {
+  id        String      @id @default(cuid())
+  tripId    String
+  actorId   String?     // user id, agent type, or null for system
+  actorKind String      // "user" | "agent" | "system"
+  action    AuditAction
+  title     String
+  detail    String?     @db.Text
+  metadata  Json?
+  createdAt DateTime    @default(now())
+
+  trip      Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, createdAt])
+}
+
+model MemberPreference {
+  id          String   @id @default(cuid())
+  memberId    String   @unique
+  /// Structured preferences extracted from chat: handicap, diet, sleep, sips, etc.
+  data        Json
+  rawAnswers  String?  @db.Text
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  member      TripMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  userId     String
+  endpoint   String   @unique @db.Text
+  p256dh     String   @db.Text
+  auth       String   @db.Text
+  userAgent  String?  @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model ConversationSummary {
+  id           String   @id @default(cuid())
+  tripId       String   @unique
+  /// Compact rolling summary of the conversation older than the most recent
+  /// CONTEXT_TURNS messages. Updated by the summarisation agent.
+  content      String   @db.Text
+  /// Up to which chat message createdAt this summary covers
+  upToTime     DateTime
+  messageCount Int
+  updatedAt    DateTime @updatedAt
+
+  trip         Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
 }

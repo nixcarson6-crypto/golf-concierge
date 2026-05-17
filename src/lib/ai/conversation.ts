@@ -6,6 +6,7 @@ import { runItineraryAgent } from "./agents/itinerary";
 import type { AgentMessage } from "./orchestrator";
 import type { ItineraryAI, TripConstraints } from "./schemas";
 import { nudge } from "@/lib/events";
+import { audit } from "@/lib/audit";
 
 /**
  * Drives one turn of the concierge conversation:
@@ -32,6 +33,27 @@ export async function processUserMessage(args: {
     data: { tripId: trip.id, userId, role: "USER", content: text },
   });
   nudge(trip.id);
+
+  // Background: refresh this member's per-person preferences from their
+  // accumulated messages. Lets the itinerary agent personalise per person.
+  void (async () => {
+    const member = await db.tripMember.findFirst({
+      where: { tripId: trip.id, userId },
+    });
+    if (member) {
+      const mod = await import("./agents/memberPreferences");
+      await mod.refreshMemberPreferences({
+        tripId: trip.id,
+        memberId: member.id,
+      });
+    }
+  })().catch((err) => console.error("[member prefs refresh]", err));
+
+  // Background: compact conversation memory if the chat is getting long.
+  void import("./agents/conversationSummary")
+    .then((m) => m.maybeUpdateConversationSummary(trip.id))
+    .catch((err) => console.error("[convo summary]", err));
+
   return runExtractionAndAgents({ trip, text, persistAssistantReply: true });
 }
 
@@ -299,6 +321,22 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
       })
     )?.version ?? 0) + 1;
 
+  // Preserve any locked items from the previous current itinerary. If the AI
+  // tried to alter them, we replace the AI's version with the locked original
+  // at the same orderIndex slot so manual locks are absolutely respected.
+  const previousCurrent = await db.itinerary.findFirst({
+    where: { tripId, status: { in: ["CURRENT", "DRAFT"] } },
+    orderBy: { version: "desc" },
+    include: { items: { orderBy: { orderIndex: "asc" } } },
+  });
+  const lockedTitles = new Set(
+    (previousCurrent?.items ?? [])
+      .filter(
+        (i) => (i.metadata as { locked?: boolean } | null)?.locked === true,
+      )
+      .map((i) => i.title.toLowerCase()),
+  );
+
   return db.$transaction(async (tx) => {
     await tx.itinerary.updateMany({
       where: { tripId, status: "CURRENT" },
@@ -327,7 +365,12 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
             status: "Proposed",
             confirmationState: "PROPOSED",
             aiRationale: i.aiRationale ?? null,
-            metadata: (i.metadata as object | null) ?? undefined,
+            metadata: {
+              ...(i.metadata as Record<string, unknown> | null),
+              ...(lockedTitles.has(i.title.toLowerCase())
+                ? { locked: true }
+                : {}),
+            } as object,
             orderIndex: idx,
           })),
         },
@@ -360,6 +403,27 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
       });
     }
 
+    return it;
+  }).then(async (it) => {
+    await audit({
+      tripId,
+      action: nextVersion === 1 ? "ITINERARY_DRAFTED" : "ITINERARY_REVISED",
+      title:
+        nextVersion === 1
+          ? "Initial itinerary drafted"
+          : `Itinerary revised — v${nextVersion}`,
+      detail: ai.changes?.length
+        ? `Changes: ${ai.changes.slice(0, 3).join(" · ")}`
+        : undefined,
+      actorKind: "agent",
+      actorId: "itinerary",
+      metadata: { version: nextVersion },
+    });
+    // Run the schedule fixer in the background — it's a no-op when clean,
+    // a re-optimization pass when conflicts exist. Doesn't block return.
+    void import("./agents/scheduleFixer")
+      .then((m) => m.runScheduleFixer(tripId))
+      .catch((err) => console.error("[schedule fixer]", err));
     return it;
   });
 }

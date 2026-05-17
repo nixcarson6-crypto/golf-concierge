@@ -26,6 +26,8 @@ import { nudge } from "./events";
 import { stripe, stripeConfigured } from "./stripe";
 import { env } from "./env";
 import { renderInviteEmail, sendEmail } from "./email";
+import { audit } from "./audit";
+import { selectCoverImage } from "./ai/agents/coverImage";
 
 export async function approveItinerary(args: {
   tripId: string;
@@ -44,6 +46,15 @@ export async function approveItinerary(args: {
       data: { status: "BOOKING" },
     }),
   ]);
+
+  await audit({
+    tripId,
+    action: "ITINERARY_APPROVED",
+    title: "Itinerary approved",
+    detail: "Workflow chain started — bookings + payment links + summary.",
+    actorId: args.userId,
+    actorKind: "user",
+  });
 
   await broadcastNotification({
     tripId,
@@ -115,6 +126,11 @@ async function runBookingsThenSummary(tripId: string, itineraryId: string) {
       },
     });
 
+    const coverImageUrl = await selectCoverImage({
+      destination: trip.destination,
+      itinerary: finalIt.items,
+    }).catch(() => null);
+
     await db.tripSummary.upsert({
       where: { tripId },
       create: {
@@ -128,6 +144,7 @@ async function runBookingsThenSummary(tripId: string, itineraryId: string) {
         totalCost: finalIt.totalCost,
         perPersonCost: finalIt.perPersonCost,
         shareToken: shareToken(),
+        coverImageUrl: coverImageUrl ?? null,
       },
       update: {
         itineraryId: finalIt.id,
@@ -138,8 +155,16 @@ async function runBookingsThenSummary(tripId: string, itineraryId: string) {
         },
         totalCost: finalIt.totalCost,
         perPersonCost: finalIt.perPersonCost,
+        coverImageUrl: coverImageUrl ?? undefined,
         generatedAt: new Date(),
       },
+    });
+    await audit({
+      tripId,
+      action: "SUMMARY_GENERATED",
+      title: "Trip summary generated",
+      actorKind: "agent",
+      actorId: "summary",
     });
 
     await broadcastNotification({
@@ -271,6 +296,14 @@ async function broadcastNotification(args: {
       message: args.message,
     })),
   });
+  // Fire push notifications in parallel — silent no-op when VAPID not set.
+  const { pushToTrip } = await import("./push");
+  void pushToTrip({
+    tripId: args.tripId,
+    title: args.title,
+    body: args.message,
+    url: `/trips/${args.tripId}`,
+  }).catch((err) => console.error("[push broadcast]", err));
 }
 
 function shareToken() {

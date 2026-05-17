@@ -3,17 +3,21 @@ import type { ItineraryItem } from "@prisma/client";
 import { partnerFor } from "./registry";
 import { runFallbackForItem } from "@/lib/ai/agents/fallback";
 import { nudge } from "@/lib/events";
+import { audit } from "@/lib/audit";
+import { runWithRetry } from "./queue";
 
 /**
- * Runs the booking flow for an approved itinerary. For each itinerary item
- * with no booking yet:
- *   - creates a PENDING Booking row
- *   - asks the registered partner to book()
- *   - persists the result and flips the itinerary item's confirmationState
+ * Approval-time booking executor v2.
  *
- * Runs in parallel across items. Failures are isolated: one failed booking
- * does not block the rest. Failed items get their itinerary state set to
- * FAILED so the fallback agent can pick them up for re-optimization.
+ * For each itinerary item without a confirmed booking:
+ *   1. Persist a SEARCHING Booking + flip the item state.
+ *   2. If the partner supports two-phase hold+confirm, hold first, then
+ *      confirm. Otherwise call book() directly.
+ *   3. Wrap every partner call in runWithRetry — exponential backoff on
+ *      transient errors only.
+ *   4. On persistent failure → fallback agent picks up the slack.
+ *
+ * Items book in parallel; one failure does not block siblings.
  */
 export async function executeItineraryBookings(itineraryId: string) {
   const itinerary = await db.itinerary.findUnique({
@@ -40,7 +44,6 @@ async function bookOne(
 ) {
   const partner = partnerFor(item.type);
 
-  // Reuse the existing Booking row if there's one from a prior failed attempt.
   const existing = item.booking
     ? await db.booking.findUnique({ where: { id: item.booking.id } })
     : null;
@@ -59,12 +62,20 @@ async function bookOne(
 
   await db.itineraryItem.update({
     where: { id: item.id },
-    data: { confirmationState: "SEARCHING" },
+    data: { confirmationState: "SEARCHING", status: "Searching availability…" },
+  });
+  await audit({
+    tripId,
+    action: "BOOKING_REQUESTED",
+    title: `Searching ${item.title}`,
+    actorKind: "agent",
+    actorId: partner.provider,
+    metadata: { itemId: item.id },
   });
 
   try {
     const meta = (item.metadata ?? {}) as Record<string, unknown>;
-    const result = await partner.book({
+    const request = {
       tripId,
       itineraryItemId: item.id,
       type: item.type,
@@ -75,7 +86,52 @@ async function bookOne(
       budget: item.cost,
       location: item.location,
       metadata: meta,
-    });
+    };
+
+    let result;
+    if (partner.supportsHold && partner.hold && partner.confirm) {
+      // Two-phase: hold inventory first, then confirm.
+      await db.itineraryItem.update({
+        where: { id: item.id },
+        data: { confirmationState: "HOLDING", status: "Holding…" },
+      });
+      const quote = await runWithRetry(() => partner.quote(request), {
+        onAttempt: (n, err) =>
+          n > 1 && console.warn(`[booking quote retry ${n}]`, err),
+      });
+      const held = await runWithRetry(() => partner.hold!(request, quote));
+      await db.booking.update({
+        where: { id: booking.id },
+        data: {
+          provider: held.provider,
+          providerReference: held.providerReference,
+          cost: held.cost,
+          status: "HELD",
+          heldUntil: held.heldUntil,
+          metadata: held.raw as object | undefined,
+          attempts: { increment: 1 },
+        },
+      });
+      await audit({
+        tripId,
+        action: "BOOKING_HELD",
+        title: `Held ${item.title}`,
+        detail: held.heldUntil
+          ? `Hold expires ${held.heldUntil.toLocaleString()}`
+          : undefined,
+        actorKind: "agent",
+        actorId: partner.provider,
+      });
+      result = await runWithRetry(() =>
+        partner.confirm!(held.providerReference),
+      );
+    } else {
+      // One-shot.
+      result = await runWithRetry(() => partner.book(request), {
+        onAttempt: (n, err) =>
+          n > 1 && console.warn(`[booking book retry ${n}]`, err),
+      });
+    }
 
     await db.booking.update({
       where: { id: booking.id },
@@ -99,6 +155,16 @@ async function bookOne(
         status: result.status === "CONFIRMED" ? "Confirmed" : "Holding…",
       },
     });
+    await audit({
+      tripId,
+      action: "BOOKING_CONFIRMED",
+      title: `Confirmed ${item.title}`,
+      detail: result.confirmationCode
+        ? `Confirmation: ${result.confirmationCode}`
+        : undefined,
+      actorKind: "agent",
+      actorId: partner.provider,
+    });
     nudge(tripId);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -114,14 +180,31 @@ async function bookOne(
       where: { id: item.id },
       data: { confirmationState: "FAILED", status: "Re-optimizing…" },
     });
+    await audit({
+      tripId,
+      action: "BOOKING_FAILED",
+      title: `Booking failed: ${item.title}`,
+      detail: msg.slice(0, 240),
+      actorKind: "agent",
+      actorId: partner.provider,
+    });
     nudge(tripId);
-    // Hand off to the fallback agent — fire-and-forget so other bookings
-    // continue in parallel. The fallback produces a new itinerary version
-    // which the executor can be re-run against.
     void runFallbackForItem({
       tripId,
       itineraryItemId: item.id,
       reason: msg.slice(0, 200),
     }).catch((err) => console.error("[fallback agent]", err));
   }
+}
+
+/**
+ * Suggested deposit for a trip given its bookings. Sum 25% of confirmed
+ * costs as a default; partner-specific overrides can adjust later. Bounded
+ * 100..30000 USD per group to avoid silly numbers in edge cases.
+ */
+export function suggestedDepositCents(args: {
+  itineraryTotalCents: number;
+}): number {
+  const dep = Math.round(args.itineraryTotalCents * 0.25);
+  return Math.max(10000, Math.min(3_000_000, dep));
 }

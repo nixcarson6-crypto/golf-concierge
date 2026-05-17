@@ -28,6 +28,7 @@ export async function GET(
     members,
     notifications,
     summary,
+    auditEvents,
   ] = await Promise.all([
     db.chatMessage.findMany({
       where: { tripId: trip.id },
@@ -57,6 +58,11 @@ export async function GET(
       take: 15,
     }),
     db.tripSummary.findUnique({ where: { tripId: trip.id } }),
+    db.auditEvent.findMany({
+      where: { tripId: trip.id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+    }),
   ]);
 
   const myMember = members.find((m) => m.userId === me.id);
@@ -156,5 +162,13 @@ export async function GET(
           generatedAt: summary.generatedAt.toISOString(),
         }
       : null,
+    auditEvents: auditEvents.map((e) => ({
+      id: e.id,
+      action: e.action,
+      title: e.title,
+      detail: e.detail,
+      actorKind: e.actorKind,
+      createdAt: e.createdAt.toISOString(),
+    })),
   });
 }
