@@ -41,10 +41,10 @@ Tools available to you:
 
   When quoting each option, ALWAYS include clickable markdown links so
   the user can click through to verify/book themselves. Use both:
-    - the `airlineWebsite` field as `[aa.com](url)` style
-    - the `bookingSearchUrl` field as `[search this route](url)` style
-  Example line: `**American Airlines** · nonstop, 2h 56m · $158/pax ·
-  [aa.com](https://www.aa.com) · [search route](https://google.com/...)`
+    - the airlineWebsite field as a markdown link, e.g. [aa.com](url)
+    - the bookingSearchUrl field as another link, e.g. [search this route](url)
+  Example line:
+    American Airlines, nonstop 2h 56m, $158/pax — [aa.com](https://aa.com) · [search route](https://google.com/...)
 
   Skip Duffel's test placeholder "Duffel Airways" — that's the sandbox
   dummy, not a real airline; never recommend it.
