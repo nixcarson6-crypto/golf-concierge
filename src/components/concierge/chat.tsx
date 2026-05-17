@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, initials, relativeTime } from "@/lib/utils";
+import { renderMarkdownBlock } from "@/lib/markdown";
 import type { WorkspaceMessage, WorkspaceMe, WorkspaceTrip } from "./workspace";
 
 const SUGGESTIONS = [
@@ -241,7 +242,7 @@ function ChatMessageView({
         )}
         <div
           className={cn(
-            "inline-block rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words",
+            "inline-block rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words",
             isMe
               ? "bg-surface-raised text-foreground border border-border"
               : isAssistant
@@ -249,7 +250,16 @@ function ChatMessageView({
                 : "bg-surface-sunken text-foreground border border-border/60",
           )}
         >
-          {message.content}
+          {isAssistant ? (
+            <div
+              className="[&_ul]:my-1 [&_ol]:my-1"
+              dangerouslySetInnerHTML={{
+                __html: renderMarkdownBlock(message.content),
+              }}
+            />
+          ) : (
+            <span className="whitespace-pre-wrap">{message.content}</span>
+          )}
           {kind === "itinerary" && (
             <p className="mt-2 text-[11px] uppercase tracking-wide text-[hsl(var(--gold))]">
               Itinerary drafted →

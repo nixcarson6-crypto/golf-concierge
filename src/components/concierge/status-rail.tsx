@@ -242,19 +242,32 @@ export function StatusRail({
             </section>
           )}
 
-          {summary?.shareToken && (
+          {(summary?.shareToken || itinerary) && (
             <section>
               <SectionHeading>
                 <Share2 className="size-3" /> Share
               </SectionHeading>
-              <Link
-                href={`/s/${summary.shareToken}`}
-                target="_blank"
-                className="mt-3 inline-flex items-center gap-2 text-xs rounded-xl border border-border/70 bg-surface-raised/40 px-3 py-2 hover:bg-surface-raised hover:border-foreground/20 transition"
-              >
-                <Sparkles className="size-3 text-[hsl(var(--gold))]" />
-                Open shareable summary
-              </Link>
+              <div className="mt-3 space-y-2">
+                {summary?.shareToken && (
+                  <Link
+                    href={`/s/${summary.shareToken}`}
+                    target="_blank"
+                    className="flex items-center gap-2 text-xs rounded-xl border border-border/70 bg-surface-raised/40 px-3 py-2 hover:bg-surface-raised hover:border-foreground/20 transition"
+                  >
+                    <Sparkles className="size-3 text-[hsl(var(--gold))]" />
+                    Open shareable summary
+                  </Link>
+                )}
+                {itinerary && (
+                  <a
+                    href={`/api/trips/${tripId}/ical`}
+                    className="flex items-center gap-2 text-xs rounded-xl border border-border/70 bg-surface-raised/40 px-3 py-2 hover:bg-surface-raised hover:border-foreground/20 transition"
+                  >
+                    <CalendarRange className="size-3 text-muted-foreground" />
+                    Add to calendar (.ics)
+                  </a>
+                )}
+              </div>
             </section>
           )}
         </div>

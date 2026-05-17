@@ -79,6 +79,11 @@ async function runExtractionAndAgents(args: {
 
   const merged = mergeConstraints(current, output.constraints);
 
+  const newTitle = autoTitle({
+    currentTitle: trip.title,
+    constraints: merged,
+  });
+
   const writes = [
     db.trip.update({
       where: { id: trip.id },
@@ -96,6 +101,7 @@ async function runExtractionAndAgents(args: {
         luxuryLevel: merged.luxuryLevel ?? trip.luxuryLevel,
         constraints: merged as object,
         status: trip.status === "DRAFT" ? "PLANNING" : trip.status,
+        ...(newTitle && newTitle !== trip.title ? { title: newTitle } : {}),
       },
     }),
   ];
@@ -356,6 +362,38 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
 
     return it;
   });
+}
+
+/**
+ * Compose a clean human title from known constraints. Only fires when the
+ * existing title is one of the placeholder / form-default strings — never
+ * overrides a name the user typed themselves.
+ */
+function autoTitle(args: {
+  currentTitle: string;
+  constraints: TripConstraints;
+}): string | null {
+  const t = args.currentTitle.trim().toLowerCase();
+  const isPlaceholder =
+    t === "" ||
+    t === "untitled trip" ||
+    /^new trip$/i.test(args.currentTitle.trim());
+  if (!isPlaceholder) return null;
+
+  const dest = args.constraints.destination?.trim();
+  const group = args.constraints.groupSize;
+  const startMonth = args.constraints.startDate
+    ? new Date(args.constraints.startDate).toLocaleString("en-US", {
+        month: "short",
+      })
+    : null;
+
+  const parts: string[] = [];
+  if (dest) parts.push(dest);
+  if (group) parts.push(`${group} players`);
+  if (startMonth) parts.push(startMonth);
+  if (parts.length === 0) return null;
+  return parts.join(" · ");
 }
 
 function mergeConstraints(
