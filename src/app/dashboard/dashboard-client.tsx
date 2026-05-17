@@ -2,9 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowRight, Bell, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, Bell, Search, Copy } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { formatCurrency, formatDateRange, relativeTime } from "@/lib/utils";
 import { tripStatusLabel } from "@/lib/trip-status";
 import type { TripStatus, NotificationType } from "@prisma/client";
@@ -39,7 +42,10 @@ export function DashboardClient({
   trips: Trip[];
   notifications: Notification[];
 }) {
+  const router = useRouter();
   const [q, setQ] = React.useState("");
+  const [cloningId, setCloningId] = React.useState<string | null>(null);
+
   const filtered = React.useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return trips;
@@ -50,7 +56,30 @@ export function DashboardClient({
     );
   }, [q, trips]);
 
+  const active = filtered.filter(
+    (t) => t.status !== "COMPLETED" && t.status !== "CANCELLED",
+  );
+  const past = filtered.filter(
+    (t) => t.status === "COMPLETED" || t.status === "CANCELLED",
+  );
+
   const unread = notifications.filter((n) => !n.readAt);
+
+  const cloneTrip = async (tripId: string) => {
+    setCloningId(tripId);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/clone`, { method: "POST" });
+      if (!res.ok) {
+        toast.error("Couldn't clone that trip.");
+        return;
+      }
+      const { tripId: newId } = await res.json();
+      toast.success("Cloned. Tell the concierge what to change.");
+      router.push(`/trips/${newId}`);
+    } finally {
+      setCloningId(null);
+    }
+  };
 
   return (
     <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -69,47 +98,26 @@ export function DashboardClient({
             No trips match "{q}".
           </p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((trip) => (
-              <Link
-                key={trip.id}
-                href={`/trips/${trip.id}`}
-                className="group glass rounded-2xl p-6 hover:border-foreground/20 transition"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                      {trip.destination ?? "Destination TBD"}
-                    </p>
-                    <h3 className="mt-1 text-display text-xl tracking-tight truncate">
-                      {trip.title}
-                    </h3>
-                  </div>
-                  <Badge variant="muted" size="sm">
-                    {tripStatusLabel(trip.status)}
-                  </Badge>
-                </div>
-                <p className="mt-4 text-sm text-muted-foreground">
-                  {formatDateRange(
-                    trip.startDate ? new Date(trip.startDate) : null,
-                    trip.endDate ? new Date(trip.endDate) : null,
-                  )}{" "}
-                  ·{" "}
-                  {trip.groupSize
-                    ? `${trip.groupSize} players`
-                    : `${trip.memberCount} ${trip.memberCount === 1 ? "member" : "members"}`}
-                </p>
-                <div className="mt-6 flex items-center justify-between">
-                  <p className="num-tabular text-sm">
-                    {trip.budgetTotal
-                      ? formatCurrency(trip.budgetTotal / 100)
-                      : "—"}
-                  </p>
-                  <ArrowRight className="size-4 text-muted-foreground group-hover:translate-x-0.5 group-hover:text-foreground transition" />
-                </div>
-              </Link>
-            ))}
-          </div>
+          <>
+            <TripGrid
+              trips={active}
+              cloningId={cloningId}
+              onClone={cloneTrip}
+            />
+            {past.length > 0 && (
+              <div className="pt-8">
+                <h3 className="text-[10px] uppercase tracking-widest text-muted-foreground mb-3">
+                  Past trips
+                </h3>
+                <TripGrid
+                  trips={past}
+                  cloningId={cloningId}
+                  onClone={cloneTrip}
+                  muted
+                />
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -157,6 +165,87 @@ export function DashboardClient({
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function TripGrid({
+  trips,
+  cloningId,
+  onClone,
+  muted,
+}: {
+  trips: Trip[];
+  cloningId: string | null;
+  onClone: (id: string) => void;
+  muted?: boolean;
+}) {
+  if (trips.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Nothing here yet.
+      </p>
+    );
+  }
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      {trips.map((trip) => (
+        <div
+          key={trip.id}
+          className={cn(
+            "group glass rounded-2xl p-6 transition relative",
+            muted ? "opacity-80 hover:opacity-100" : "hover:border-foreground/20",
+          )}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClone(trip.id);
+            }}
+            disabled={cloningId === trip.id}
+            className="absolute top-4 right-4 size-7 rounded-lg grid place-items-center text-muted-foreground hover:text-foreground hover:bg-surface-raised opacity-0 group-hover:opacity-100 focus:opacity-100 transition disabled:opacity-50"
+            aria-label="Clone this trip"
+            title="Clone this trip"
+          >
+            <Copy className="size-3.5" />
+          </button>
+          <Link href={`/trips/${trip.id}`} className="block">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {trip.destination ?? "Destination TBD"}
+                </p>
+                <h3 className="mt-1 text-display text-xl tracking-tight truncate">
+                  {trip.title}
+                </h3>
+              </div>
+              <Badge variant="muted" size="sm">
+                {tripStatusLabel(trip.status)}
+              </Badge>
+            </div>
+            <p className="mt-4 text-sm text-muted-foreground">
+              {formatDateRange(
+                trip.startDate ? new Date(trip.startDate) : null,
+                trip.endDate ? new Date(trip.endDate) : null,
+              )}{" "}
+              ·{" "}
+              {trip.groupSize
+                ? `${trip.groupSize} players`
+                : `${trip.memberCount} ${trip.memberCount === 1 ? "member" : "members"}`}
+            </p>
+            <div className="mt-6 flex items-center justify-between">
+              <p className="num-tabular text-sm">
+                {trip.budgetTotal
+                  ? formatCurrency(trip.budgetTotal / 100)
+                  : "—"}
+              </p>
+              <ArrowRight className="size-4 text-muted-foreground group-hover:translate-x-0.5 group-hover:text-foreground transition" />
+            </div>
+          </Link>
+        </div>
+      ))}
     </div>
   );
 }

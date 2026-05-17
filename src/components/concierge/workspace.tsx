@@ -222,6 +222,11 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ content: text }),
         });
+        if (res.status === 429) {
+          toast.error("Slow down — you're sending too fast.");
+          if (previous) qc.setQueryData(["workspace", tripId], previous);
+          return;
+        }
         if (!res.ok || !res.body) throw new Error("stream failed");
 
         const reader = res.body.getReader();
