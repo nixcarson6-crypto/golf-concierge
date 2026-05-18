@@ -1,3 +1,12 @@
+allowBuilds:
+  '@clerk/shared': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  protobufjs: true
+  sharp: true
+  unrs-resolver: true
 onlyBuiltDependencies:
   - "@clerk/shared"
   - "@prisma/client"
