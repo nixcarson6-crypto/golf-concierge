@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Bell, Search, Copy } from "lucide-react";
+import { ArrowRight, Bell, Search, Copy, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -45,6 +45,7 @@ export function DashboardClient({
   const router = useRouter();
   const [q, setQ] = React.useState("");
   const [cloningId, setCloningId] = React.useState<string | null>(null);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   const filtered = React.useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -81,6 +82,22 @@ export function DashboardClient({
     }
   };
 
+  const deleteTrip = async (tripId: string, title: string) => {
+    if (!confirm(`Delete "${title}"? This can't be undone.`)) return;
+    setDeletingId(tripId);
+    try {
+      const res = await fetch(`/api/trips/${tripId}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast.error("Couldn't delete that trip.");
+        return;
+      }
+      toast.success("Trip deleted.");
+      router.refresh();
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
       <section className="lg:col-span-8 xl:col-span-9 space-y-4">
@@ -102,7 +119,9 @@ export function DashboardClient({
             <TripGrid
               trips={active}
               cloningId={cloningId}
+              deletingId={deletingId}
               onClone={cloneTrip}
+              onDelete={deleteTrip}
             />
             {past.length > 0 && (
               <div className="pt-8">
@@ -112,7 +131,9 @@ export function DashboardClient({
                 <TripGrid
                   trips={past}
                   cloningId={cloningId}
+                  deletingId={deletingId}
                   onClone={cloneTrip}
+                  onDelete={deleteTrip}
                   muted
                 />
               </div>
@@ -172,12 +193,16 @@ export function DashboardClient({
 function TripGrid({
   trips,
   cloningId,
+  deletingId,
   onClone,
+  onDelete,
   muted,
 }: {
   trips: Trip[];
   cloningId: string | null;
+  deletingId: string | null;
   onClone: (id: string) => void;
+  onDelete: (id: string, title: string) => void;
   muted?: boolean;
 }) {
   if (trips.length === 0) {
@@ -197,20 +222,36 @@ function TripGrid({
             muted ? "opacity-80 hover:opacity-100" : "hover:border-foreground/20",
           )}
         >
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onClone(trip.id);
-            }}
-            disabled={cloningId === trip.id}
-            className="absolute top-4 right-4 size-7 rounded-lg grid place-items-center text-muted-foreground hover:text-foreground hover:bg-surface-raised opacity-0 group-hover:opacity-100 focus:opacity-100 transition disabled:opacity-50"
-            aria-label="Clone this trip"
-            title="Clone this trip"
-          >
-            <Copy className="size-3.5" />
-          </button>
+          <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClone(trip.id);
+              }}
+              disabled={cloningId === trip.id}
+              className="size-7 rounded-lg grid place-items-center text-muted-foreground hover:text-foreground hover:bg-surface-raised transition disabled:opacity-50"
+              aria-label="Clone this trip"
+              title="Clone this trip"
+            >
+              <Copy className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDelete(trip.id, trip.title);
+              }}
+              disabled={deletingId === trip.id}
+              className="size-7 rounded-lg grid place-items-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition disabled:opacity-50"
+              aria-label="Delete this trip"
+              title="Delete this trip"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </div>
           <Link href={`/trips/${trip.id}`} className="block">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
