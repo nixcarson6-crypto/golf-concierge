@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
+import { nudge } from "@/lib/events";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,8 @@ export async function POST(req: Request) {
       const session = event.data.object as Stripe.Checkout.Session;
       const tripId = session.metadata?.tripId;
       const memberId = session.metadata?.memberId;
-      if (tripId && memberId) {
+      const bookingIdsCsv = session.metadata?.bookingIds;
+      if (tripId) {
         await db.payment.updateMany({
           where: { stripeCheckoutSessionId: session.id },
           data: {
@@ -37,10 +39,38 @@ export async function POST(req: Request) {
                 : null,
           },
         });
-        await db.tripMember.update({
-          where: { id: memberId },
-          data: { paymentStatus: "PAID" },
-        });
+        // Cart-style payments include bookingIds in metadata; mark each
+        // matching booking as paid (via metadata.paidAt) so the Live Trip
+        // panel can hide the Pay button + show Paid badges.
+        if (bookingIdsCsv) {
+          const ids = bookingIdsCsv
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          if (ids.length > 0) {
+            const now = new Date().toISOString();
+            const bookings = await db.booking.findMany({
+              where: { id: { in: ids }, tripId },
+              select: { id: true, metadata: true },
+            });
+            for (const b of bookings) {
+              const existing = (b.metadata as Record<string, unknown> | null) ?? {};
+              await db.booking.update({
+                where: { id: b.id },
+                data: { metadata: { ...existing, paidAt: now } },
+              });
+            }
+          }
+        }
+        // Per-member-share flow (legacy approval workflow) still flips
+        // member.paymentStatus.
+        if (memberId && !bookingIdsCsv) {
+          await db.tripMember.update({
+            where: { id: memberId },
+            data: { paymentStatus: "PAID" },
+          });
+        }
+        nudge(tripId);
       }
       break;
     }

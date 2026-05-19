@@ -52,6 +52,9 @@ const definitions = {
   OPENTABLE_API_KEY: { required: false },
   UBER_FOR_BUSINESS_TOKEN: { required: false },
   HERTZ_API_KEY: { required: false },
+  AVIS_API_KEY: { required: false },
+  LIGHTSPEED_GOLF_API_KEY: { required: false },
+  YELP_FUSION_API_KEY: { required: false },
 
   NEXT_PUBLIC_APP_URL: {
     required: false,

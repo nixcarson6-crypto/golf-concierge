@@ -15,6 +15,26 @@ import {
   type BookFlightInput,
 } from "@/lib/bookings/providers/duffel-book";
 import { recordFlightBooking } from "@/lib/bookings/record-flight";
+import {
+  bookHotel,
+  type BookHotelInput,
+} from "@/lib/bookings/providers/hotelbeds-book";
+import { recordHotelBooking } from "@/lib/bookings/record-hotel";
+import {
+  bookTeeTime,
+  type BookTeeTimeInput,
+} from "@/lib/bookings/providers/lightspeed-golf-book";
+import { recordTeeTimeBooking } from "@/lib/bookings/record-tee-time";
+import {
+  bookRestaurant,
+  type BookRestaurantInput,
+} from "@/lib/bookings/providers/yelp-reservations";
+import { recordRestaurantBooking } from "@/lib/bookings/record-restaurant";
+import {
+  bookCar,
+  type BookCarInput,
+} from "@/lib/bookings/providers/avis-book";
+import { recordCarBooking } from "@/lib/bookings/record-car";
 
 /**
  * Streaming reply helper with tool support.
@@ -136,6 +156,144 @@ const FLIGHT_BOOK_TOOL: Anthropic.Tool = {
   },
 };
 
+const HOTEL_BOOK_TOOL: Anthropic.Tool = {
+  name: "book_hotel",
+  description:
+    "Reserve a hotel that came back from search_hotels. Call this AFTER the user confirms which hotel + room rate to book. You need the rateKey from the search result (each room/rate option has one), the hotel name + city for display, dates, room count, and one lead guest name per room plus the booking holder's name + email. On success the booking is persisted to the trip's itinerary. If credentials aren't configured this records a STUB- prefixed booking so the flow still works — never lie to the user that it's real if isStub=true is returned.",
+  input_schema: {
+    type: "object",
+    properties: {
+      rateKey: {
+        type: "string",
+        description: "Hotelbeds rateKey from a prior search_hotels result.",
+      },
+      hotelName: { type: "string" },
+      city: { type: "string" },
+      checkIn: { type: "string", description: "YYYY-MM-DD" },
+      checkOut: { type: "string", description: "YYYY-MM-DD" },
+      rooms: { type: "integer", minimum: 1, maximum: 8 },
+      guests: {
+        type: "array",
+        description: "One lead guest per room.",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            surname: { type: "string" },
+          },
+          required: ["name", "surname"],
+        },
+        minItems: 1,
+        maxItems: 8,
+      },
+      holderName: { type: "string" },
+      holderSurname: { type: "string" },
+      holderEmail: { type: "string" },
+    },
+    required: [
+      "rateKey",
+      "hotelName",
+      "checkIn",
+      "checkOut",
+      "rooms",
+      "guests",
+      "holderName",
+      "holderSurname",
+      "holderEmail",
+    ],
+  },
+};
+
+const TEE_TIME_BOOK_TOOL: Anthropic.Tool = {
+  name: "book_tee_time",
+  description:
+    "Book a golf tee time at a named course. Call this when the user confirms the time and players. If you don't yet know the green fee for the course, use web_search first to look it up, then call this with greenFeePerPlayer set. The booking is persisted to the trip. If LIGHTSPEED_GOLF_API_KEY isn't configured a stub confirmation is created — surface that fact to the user (e.g. 'Pencilled in — we'll lock it once partner API access lands').",
+  input_schema: {
+    type: "object",
+    properties: {
+      courseName: { type: "string" },
+      teeOffISO: {
+        type: "string",
+        description: "Local tee-off datetime, ISO 8601.",
+      },
+      players: { type: "integer", minimum: 1, maximum: 8 },
+      greenFeePerPlayer: {
+        type: "integer",
+        description: "Green fee in USD cents per player.",
+        minimum: 0,
+      },
+      leadPlayerName: { type: "string" },
+      leadPlayerEmail: { type: "string" },
+    },
+    required: [
+      "courseName",
+      "teeOffISO",
+      "players",
+      "greenFeePerPlayer",
+      "leadPlayerName",
+      "leadPlayerEmail",
+    ],
+  },
+};
+
+const RESTAURANT_BOOK_TOOL: Anthropic.Tool = {
+  name: "book_restaurant",
+  description:
+    "Reserve a restaurant via Yelp Reservations. Works for restaurants Yelp covers. If Yelp can't book the spot (Resy/OpenTable-exclusive places, busy slot, no partner support) the tool returns a fallback link — in that case, quote the link in chat so the user can finalise it themselves, and be honest that you couldn't book it directly. Never claim a reservation was made when fallback=link is returned.",
+  input_schema: {
+    type: "object",
+    properties: {
+      restaurantName: { type: "string" },
+      city: { type: "string" },
+      dateTimeISO: { type: "string", description: "ISO 8601 datetime" },
+      partySize: { type: "integer", minimum: 1, maximum: 20 },
+      contactName: { type: "string" },
+      contactPhone: {
+        type: "string",
+        description: "E.164 format, e.g. +12125550100",
+      },
+      contactEmail: { type: "string" },
+    },
+    required: [
+      "restaurantName",
+      "city",
+      "dateTimeISO",
+      "partySize",
+      "contactName",
+      "contactPhone",
+      "contactEmail",
+    ],
+  },
+};
+
+const CAR_BOOK_TOOL: Anthropic.Tool = {
+  name: "book_car",
+  description:
+    "Reserve a rental car (Avis). Call when the user confirms pickup airport, dates, and class. If AVIS_API_KEY isn't configured, a stub booking is recorded — surface the STUB- prefix to the user honestly.",
+  input_schema: {
+    type: "object",
+    properties: {
+      pickupAirport: { type: "string", description: "IATA code" },
+      pickupISO: { type: "string" },
+      returnISO: { type: "string" },
+      carClass: {
+        type: "string",
+        enum: ["economy", "midsize", "fullsize", "luxury", "suv", "luxury suv"],
+      },
+      driverName: { type: "string" },
+      driverEmail: { type: "string" },
+    },
+    required: [
+      "pickupAirport",
+      "pickupISO",
+      "returnISO",
+      "carClass",
+      "driverName",
+      "driverEmail",
+    ],
+  },
+};
+
 const HOTEL_TOOL: Anthropic.Tool = {
   name: "search_hotels",
   description:
@@ -232,6 +390,10 @@ export async function* streamReplyTokens(
         FLIGHT_TOOL,
         FLIGHT_BOOK_TOOL,
         HOTEL_TOOL,
+        HOTEL_BOOK_TOOL,
+        TEE_TIME_BOOK_TOOL,
+        RESTAURANT_BOOK_TOOL,
+        CAR_BOOK_TOOL,
         WEB_SEARCH_TOOL,
       ] as Anthropic.Tool[],
     });
@@ -296,6 +458,10 @@ async function executeTool(
 ): Promise<string> {
   if (name === "search_hotels") return executeHotelSearch(input);
   if (name === "book_flight") return executeBookFlight(input, ctx);
+  if (name === "book_hotel") return executeBookHotel(input, ctx);
+  if (name === "book_tee_time") return executeBookTeeTime(input, ctx);
+  if (name === "book_restaurant") return executeBookRestaurant(input, ctx);
+  if (name === "book_car") return executeBookCar(input, ctx);
   if (name !== "search_flights") {
     return JSON.stringify({ error: `unknown tool: ${name}` });
   }
@@ -487,5 +653,319 @@ async function executeBookFlight(
     currency: result.currency,
     slicesSummary: result.slicesSummary,
     note: "Saved to trip itinerary. Surface the booking reference to the user.",
+  });
+}
+
+async function executeBookHotel(
+  input: unknown,
+  ctx: { tripId?: string },
+): Promise<string> {
+  if (!ctx.tripId) {
+    return JSON.stringify({ error: "book_hotel requires trip context" });
+  }
+  const parsed = input as Partial<BookHotelInput> | null;
+  if (
+    !parsed ||
+    typeof parsed.rateKey !== "string" ||
+    typeof parsed.hotelName !== "string" ||
+    typeof parsed.checkIn !== "string" ||
+    typeof parsed.checkOut !== "string" ||
+    typeof parsed.rooms !== "number" ||
+    !Array.isArray(parsed.guests) ||
+    typeof parsed.holderName !== "string" ||
+    typeof parsed.holderSurname !== "string" ||
+    typeof parsed.holderEmail !== "string"
+  ) {
+    return JSON.stringify({
+      error:
+        "invalid input — need rateKey, hotelName, checkIn, checkOut, rooms, guests[], holderName, holderSurname, holderEmail",
+    });
+  }
+
+  const result = await bookHotel({
+    rateKey: parsed.rateKey,
+    hotelName: parsed.hotelName,
+    city: parsed.city ?? null,
+    checkIn: parsed.checkIn,
+    checkOut: parsed.checkOut,
+    rooms: parsed.rooms,
+    guests: parsed.guests,
+    holderName: parsed.holderName,
+    holderSurname: parsed.holderSurname,
+    holderEmail: parsed.holderEmail,
+  });
+
+  if (!result.ok) return JSON.stringify({ error: result.error });
+
+  try {
+    await recordHotelBooking({
+      tripId: ctx.tripId,
+      bookingReference: result.bookingReference,
+      providerReference: result.providerReference,
+      totalAmount: result.totalAmount,
+      currency: result.currency,
+      hotelName: result.hotelName,
+      city: parsed.city ?? null,
+      checkIn: parsed.checkIn,
+      checkOut: parsed.checkOut,
+      rooms: parsed.rooms,
+      guests: parsed.guests.length,
+      isStub: result.isStub,
+    });
+  } catch (err) {
+    return JSON.stringify({
+      ok: true,
+      isStub: result.isStub,
+      bookingReference: result.bookingReference,
+      hotelName: result.hotelName,
+      totalUSD: Math.round(result.totalAmount / 100),
+      warning:
+        "Booked at Hotelbeds but couldn't persist to the trip itinerary: " +
+        (err instanceof Error ? err.message : String(err)),
+    });
+  }
+
+  return JSON.stringify({
+    ok: true,
+    isStub: result.isStub,
+    bookingReference: result.bookingReference,
+    hotelName: result.hotelName,
+    totalUSD: Math.round(result.totalAmount / 100),
+    currency: result.currency,
+    note: result.isStub
+      ? "STUB booking — tell the user this is pencilled in until partner API access lands."
+      : "Saved to trip itinerary.",
+  });
+}
+
+async function executeBookTeeTime(
+  input: unknown,
+  ctx: { tripId?: string },
+): Promise<string> {
+  if (!ctx.tripId) {
+    return JSON.stringify({ error: "book_tee_time requires trip context" });
+  }
+  const parsed = input as Partial<BookTeeTimeInput> | null;
+  if (
+    !parsed ||
+    typeof parsed.courseName !== "string" ||
+    typeof parsed.teeOffISO !== "string" ||
+    typeof parsed.players !== "number" ||
+    typeof parsed.greenFeePerPlayer !== "number" ||
+    typeof parsed.leadPlayerName !== "string" ||
+    typeof parsed.leadPlayerEmail !== "string"
+  ) {
+    return JSON.stringify({
+      error:
+        "invalid input — need courseName, teeOffISO, players, greenFeePerPlayer (cents), leadPlayerName, leadPlayerEmail",
+    });
+  }
+
+  const result = await bookTeeTime({
+    courseName: parsed.courseName,
+    teeOffISO: parsed.teeOffISO,
+    players: parsed.players,
+    greenFeePerPlayer: parsed.greenFeePerPlayer,
+    leadPlayerName: parsed.leadPlayerName,
+    leadPlayerEmail: parsed.leadPlayerEmail,
+  });
+
+  if (!result.ok) return JSON.stringify({ error: result.error });
+
+  try {
+    await recordTeeTimeBooking({
+      tripId: ctx.tripId,
+      bookingReference: result.bookingReference,
+      providerReference: result.providerReference,
+      totalAmount: result.totalAmount,
+      currency: result.currency,
+      courseName: result.courseName,
+      teeOffISO: parsed.teeOffISO,
+      players: parsed.players,
+      isStub: result.isStub,
+    });
+  } catch (err) {
+    return JSON.stringify({
+      ok: true,
+      isStub: result.isStub,
+      bookingReference: result.bookingReference,
+      courseName: result.courseName,
+      totalUSD: Math.round(result.totalAmount / 100),
+      warning:
+        "Booked at provider but couldn't persist to the trip itinerary: " +
+        (err instanceof Error ? err.message : String(err)),
+    });
+  }
+
+  return JSON.stringify({
+    ok: true,
+    isStub: result.isStub,
+    bookingReference: result.bookingReference,
+    courseName: result.courseName,
+    players: parsed.players,
+    totalUSD: Math.round(result.totalAmount / 100),
+    currency: result.currency,
+    note: result.isStub
+      ? "STUB booking — tell the user the tee time is pencilled in until Lightspeed Golf API access lands."
+      : "Saved to trip itinerary.",
+  });
+}
+
+async function executeBookRestaurant(
+  input: unknown,
+  ctx: { tripId?: string },
+): Promise<string> {
+  if (!ctx.tripId) {
+    return JSON.stringify({ error: "book_restaurant requires trip context" });
+  }
+  const parsed = input as Partial<BookRestaurantInput> | null;
+  if (
+    !parsed ||
+    typeof parsed.restaurantName !== "string" ||
+    typeof parsed.city !== "string" ||
+    typeof parsed.dateTimeISO !== "string" ||
+    typeof parsed.partySize !== "number" ||
+    typeof parsed.contactName !== "string" ||
+    typeof parsed.contactPhone !== "string" ||
+    typeof parsed.contactEmail !== "string"
+  ) {
+    return JSON.stringify({
+      error:
+        "invalid input — need restaurantName, city, dateTimeISO, partySize, contactName, contactPhone, contactEmail",
+    });
+  }
+
+  const result = await bookRestaurant({
+    restaurantName: parsed.restaurantName,
+    city: parsed.city,
+    dateTimeISO: parsed.dateTimeISO,
+    partySize: parsed.partySize,
+    contactName: parsed.contactName,
+    contactPhone: parsed.contactPhone,
+    contactEmail: parsed.contactEmail,
+  });
+
+  if (!result.ok) {
+    if ("fallback" in result && result.fallback === "link") {
+      return JSON.stringify({
+        ok: false,
+        fallback: "link",
+        restaurantName: result.restaurantName,
+        reservationUrl: result.reservationUrl,
+        reason: result.reason,
+        note: "Tell the user honestly that you couldn't book directly — quote the link.",
+      });
+    }
+    return JSON.stringify({
+      error: "error" in result ? result.error : "Restaurant booking failed.",
+    });
+  }
+
+  try {
+    await recordRestaurantBooking({
+      tripId: ctx.tripId,
+      bookingReference: result.bookingReference,
+      providerReference: result.providerReference,
+      restaurantName: result.restaurantName,
+      city: parsed.city,
+      dateTimeISO: parsed.dateTimeISO,
+      partySize: parsed.partySize,
+      isStub: result.isStub,
+    });
+  } catch (err) {
+    return JSON.stringify({
+      ok: true,
+      isStub: result.isStub,
+      bookingReference: result.bookingReference,
+      restaurantName: result.restaurantName,
+      warning:
+        "Reserved but couldn't persist to the trip itinerary: " +
+        (err instanceof Error ? err.message : String(err)),
+    });
+  }
+
+  return JSON.stringify({
+    ok: true,
+    isStub: result.isStub,
+    bookingReference: result.bookingReference,
+    restaurantName: result.restaurantName,
+    partySize: parsed.partySize,
+    dateTimeISO: parsed.dateTimeISO,
+    note: "Saved to trip itinerary.",
+  });
+}
+
+async function executeBookCar(
+  input: unknown,
+  ctx: { tripId?: string },
+): Promise<string> {
+  if (!ctx.tripId) {
+    return JSON.stringify({ error: "book_car requires trip context" });
+  }
+  const parsed = input as Partial<BookCarInput> | null;
+  if (
+    !parsed ||
+    typeof parsed.pickupAirport !== "string" ||
+    typeof parsed.pickupISO !== "string" ||
+    typeof parsed.returnISO !== "string" ||
+    typeof parsed.carClass !== "string" ||
+    typeof parsed.driverName !== "string" ||
+    typeof parsed.driverEmail !== "string"
+  ) {
+    return JSON.stringify({
+      error:
+        "invalid input — need pickupAirport, pickupISO, returnISO, carClass, driverName, driverEmail",
+    });
+  }
+
+  const result = await bookCar({
+    pickupAirport: parsed.pickupAirport,
+    pickupISO: parsed.pickupISO,
+    returnISO: parsed.returnISO,
+    carClass: parsed.carClass,
+    driverName: parsed.driverName,
+    driverEmail: parsed.driverEmail,
+  });
+
+  if (!result.ok) return JSON.stringify({ error: result.error });
+
+  try {
+    await recordCarBooking({
+      tripId: ctx.tripId,
+      bookingReference: result.bookingReference,
+      providerReference: result.providerReference,
+      totalAmount: result.totalAmount,
+      currency: result.currency,
+      vendor: result.vendor,
+      carClass: result.carClass,
+      pickupAirport: parsed.pickupAirport,
+      pickupISO: parsed.pickupISO,
+      returnISO: parsed.returnISO,
+      isStub: result.isStub,
+    });
+  } catch (err) {
+    return JSON.stringify({
+      ok: true,
+      isStub: result.isStub,
+      bookingReference: result.bookingReference,
+      vendor: result.vendor,
+      totalUSD: Math.round(result.totalAmount / 100),
+      warning:
+        "Reserved at provider but couldn't persist to the trip itinerary: " +
+        (err instanceof Error ? err.message : String(err)),
+    });
+  }
+
+  return JSON.stringify({
+    ok: true,
+    isStub: result.isStub,
+    bookingReference: result.bookingReference,
+    vendor: result.vendor,
+    carClass: result.carClass,
+    totalUSD: Math.round(result.totalAmount / 100),
+    currency: result.currency,
+    note: result.isStub
+      ? "STUB booking — tell the user honestly this is pencilled in until Avis API access lands."
+      : "Saved to trip itinerary.",
   });
 }

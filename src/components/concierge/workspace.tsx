@@ -113,6 +113,18 @@ export type WorkspaceDestinationOption = {
   estimatedPerPersonCost: number | null;
 };
 
+export type WorkspaceBooking = {
+  id: string;
+  type: ItineraryItemType;
+  title: string;
+  provider: string;
+  confirmationCode: string | null;
+  cost: number | null;
+  status: string;
+  isStub: boolean;
+  paidAt: string | null;
+};
+
 type Props = { tripId: string; vapidPublicKey?: string | null };
 
 function WorkspaceSkeleton() {
@@ -138,6 +150,7 @@ type WorkspaceSnapshot = {
   members: WorkspaceMember[];
   approval: { approved: number; total: number; quorum: number };
   notifications: WorkspaceNotification[];
+  bookings?: WorkspaceBooking[];
 };
 
 export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
@@ -159,6 +172,25 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       if (!res.ok) throw new Error("Failed to load workspace");
       return res.json();
     },
+  });
+
+  // Context-aware chat suggestions. Re-fetched whenever the workspace
+  // snapshot changes (destination updates, bookings happen, etc.) so the
+  // suggestions stay aligned with the actual trip state.
+  const snapshotKey = data
+    ? `${data.trip.destination ?? ""}|${data.trip.startDate ?? ""}|${data.trip.groupSize ?? ""}|${data.bookings?.length ?? 0}|${data.messages.length}`
+    : null;
+  const { data: suggestionsData } = useQuery<{ suggestions: string[] }>({
+    queryKey: ["suggestions", tripId, snapshotKey],
+    queryFn: async () => {
+      const res = await fetch(`/api/trips/${tripId}/suggestions`, {
+        cache: "no-store",
+      });
+      if (!res.ok) return { suggestions: [] };
+      return res.json();
+    },
+    enabled: Boolean(data),
+    staleTime: 30_000,
   });
 
   React.useEffect(() => {
@@ -322,9 +354,17 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       onSend={(text) => void sendStreamingMessage(text)}
       sending={sendingChat}
       streamingReply={streamingReply}
+      suggestions={suggestionsData?.suggestions ?? []}
     />
   );
-  const preview = <LivePreview trip={snapshot.trip} itinerary={snapshot.itinerary} />;
+  const preview = (
+    <LivePreview
+      tripId={tripId}
+      trip={snapshot.trip}
+      itinerary={snapshot.itinerary}
+      bookings={snapshot.bookings ?? []}
+    />
+  );
 
   return (
     <>

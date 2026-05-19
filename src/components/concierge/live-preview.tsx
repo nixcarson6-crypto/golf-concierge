@@ -5,20 +5,31 @@ import {
   CalendarRange,
   CircleDollarSign,
   Compass,
+  Loader2,
   Sparkles,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
 import { formatCurrency, formatDateRange } from "@/lib/utils";
-import type { WorkspaceItinerary, WorkspaceTrip } from "./workspace";
+import type {
+  WorkspaceBooking,
+  WorkspaceItinerary,
+  WorkspaceTrip,
+} from "./workspace";
 
 export function LivePreview({
+  tripId,
   trip,
   itinerary,
+  bookings = [],
 }: {
+  tripId: string;
   trip: WorkspaceTrip;
   itinerary: WorkspaceItinerary | null;
+  bookings?: WorkspaceBooking[];
 }) {
   // "Empty" = nothing the concierge has extracted yet. We surface a
   // gentler prompt instead of the static "Destination forming…" which
@@ -113,6 +124,94 @@ export function LivePreview({
           </div>
         )}
       </ScrollArea>
+      <CartFooter tripId={tripId} bookings={bookings} />
+    </div>
+  );
+}
+
+function CartFooter({
+  tripId,
+  bookings,
+}: {
+  tripId: string;
+  bookings: WorkspaceBooking[];
+}) {
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const unpaid = bookings.filter((b) => !b.paidAt && (b.cost ?? 0) > 0);
+  const total = unpaid.reduce((sum, b) => sum + (b.cost ?? 0), 0);
+
+  if (unpaid.length === 0) return null;
+
+  const onPay = async () => {
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/checkout/cart`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(err.error ?? "Couldn't start checkout.");
+        return;
+      }
+      const { url } = (await res.json()) as { url: string };
+      window.location.href = url;
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Checkout request failed.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-border/60 bg-surface/80 backdrop-blur-xl px-5 py-3 space-y-2.5">
+      <div className="space-y-1">
+        {unpaid.map((b) => (
+          <div
+            key={b.id}
+            className="flex items-center justify-between gap-2 text-xs"
+          >
+            <span className="truncate text-muted-foreground">
+              {b.title}
+              {b.isStub && (
+                <span className="ml-1.5 text-[10px] uppercase tracking-wide text-[hsl(var(--copper))]">
+                  pencilled
+                </span>
+              )}
+            </span>
+            <span className="num-tabular shrink-0">
+              {b.cost ? formatCurrency(b.cost / 100) : "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/40">
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            Total
+          </p>
+          <p className="text-display text-lg num-tabular">
+            {formatCurrency(total / 100)}
+          </p>
+        </div>
+        <Button
+          variant="navy"
+          size="sm"
+          onClick={onPay}
+          disabled={submitting}
+          className="shrink-0"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" /> Starting…
+            </>
+          ) : (
+            <>Pay {formatCurrency(total / 100)}</>
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

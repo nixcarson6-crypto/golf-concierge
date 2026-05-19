@@ -29,6 +29,7 @@ export async function GET(
     notifications,
     summary,
     auditEvents,
+    bookings,
   ] = await Promise.all([
     db.chatMessage.findMany({
       where: { tripId: trip.id },
@@ -37,7 +38,7 @@ export async function GET(
       include: { user: { select: { id: true, name: true, imageUrl: true } } },
     }),
     db.itinerary.findFirst({
-      where: { tripId: trip.id, status: { in: ["CURRENT", "APPROVED"] } },
+      where: { tripId: trip.id, status: { in: ["DRAFT", "CURRENT", "APPROVED"] } },
       orderBy: { version: "desc" },
       include: { items: { orderBy: { orderIndex: "asc" } } },
     }),
@@ -65,6 +66,11 @@ export async function GET(
       where: { tripId: trip.id },
       orderBy: { createdAt: "desc" },
       take: 20,
+    }),
+    db.booking.findMany({
+      where: { tripId: trip.id, status: "CONFIRMED" },
+      include: { itineraryItem: { select: { title: true, type: true } } },
+      orderBy: { createdAt: "asc" },
     }),
   ]);
 
@@ -178,6 +184,18 @@ export async function GET(
       detail: e.detail,
       actorKind: e.actorKind,
       createdAt: e.createdAt.toISOString(),
+    })),
+    bookings: bookings.map((b) => ({
+      id: b.id,
+      type: b.type,
+      title: b.itineraryItem?.title ?? `${b.type} booking`,
+      provider: b.provider,
+      confirmationCode: b.confirmationCode,
+      cost: b.cost,
+      status: b.status,
+      isStub: Boolean((b.metadata as { isStub?: boolean } | null)?.isStub),
+      paidAt:
+        (b.metadata as { paidAt?: string } | null)?.paidAt ?? null,
     })),
   });
 }

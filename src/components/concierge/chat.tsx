@@ -65,6 +65,7 @@ export function ConciergeChat({
   onSend,
   sending,
   streamingReply,
+  suggestions: serverSuggestions,
 }: {
   tripId: string;
   trip: WorkspaceTrip;
@@ -76,6 +77,7 @@ export function ConciergeChat({
   onSend: (text: string) => void;
   sending: boolean;
   streamingReply?: string | null;
+  suggestions?: string[];
 }) {
   const [value, setValue] = React.useState("");
   const [listening, setListening] = React.useState(false);
@@ -140,11 +142,20 @@ export function ConciergeChat({
   })();
   const turnsSinceLastUser = messages.length - 1 - lastUserMsgIndex;
   const tripIsBooked = trip.status === "BOOKED" || trip.status === "COMPLETED";
-  const suggestions = pickSuggestions({
-    hasDestination: Boolean(trip.destination),
-    hasItinerary: trip.status === "PLANNING" || trip.status === "AWAITING_APPROVAL",
-    isApproved: trip.status === "APPROVED" || trip.status === "BOOKING",
-  });
+  // Prefer the Haiku-generated, context-aware suggestions from the server.
+  // Fall back to the static hardcoded list if the endpoint hasn't responded
+  // yet or it failed — better than an empty suggestion strip during the
+  // first render of a brand-new trip.
+  const suggestions =
+    serverSuggestions && serverSuggestions.length > 0
+      ? serverSuggestions
+      : pickSuggestions({
+          hasDestination: Boolean(trip.destination),
+          hasItinerary:
+            trip.status === "PLANNING" || trip.status === "AWAITING_APPROVAL",
+          isApproved:
+            trip.status === "APPROVED" || trip.status === "BOOKING",
+        });
   const showSuggestions =
     !tripIsBooked && (turnsSinceLastUser >= 1 || messages.length <= 1);
 
