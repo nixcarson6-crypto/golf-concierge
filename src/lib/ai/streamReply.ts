@@ -10,6 +10,11 @@ import {
   formatHotelOneLine,
   type HotelSearchInput,
 } from "@/lib/bookings/providers/hotelbeds-search";
+import {
+  bookFlightOffer,
+  type BookFlightInput,
+} from "@/lib/bookings/providers/duffel-book";
+import { recordFlightBooking } from "@/lib/bookings/record-flight";
 
 /**
  * Streaming reply helper with tool support.
@@ -29,6 +34,8 @@ export type StreamReplyOptions = {
   history: Array<{ role: "user" | "assistant"; content: string }>;
   cacheSystem?: boolean;
   maxTokens?: number;
+  /** Trip context — required for tools that persist (e.g. book_flight). */
+  tripId?: string;
 };
 
 /** Anthropic-hosted web search. Server-side execution; no client executor. */
@@ -78,6 +85,54 @@ const FLIGHT_TOOL: Anthropic.Tool = {
       },
     },
     required: ["slices", "passengers"],
+  },
+};
+
+const FLIGHT_BOOK_TOOL: Anthropic.Tool = {
+  name: "book_flight",
+  description:
+    "Ticket a Duffel flight offer the user has chosen. Call this AFTER the user explicitly confirms which option to book (e.g. 'book the AA option', 'book it'). You must collect passenger details from the user first — given name, family name, date of birth (YYYY-MM-DD), gender (m/f), email, and phone number in E.164 format (e.g. +12125550100) — one set per passenger on the offer. The `offerId` is the `id` field from the search_flights result. On success, the booking is persisted to the trip and appears in the Live Trip panel. On failure (most commonly: offer expired after a few minutes), re-run search_flights and present fresh options.",
+  input_schema: {
+    type: "object",
+    properties: {
+      offerId: {
+        type: "string",
+        description:
+          "The Duffel offer id from a prior search_flights call. Offers expire in ~5 minutes — if it's been longer, re-search before booking.",
+      },
+      passengers: {
+        type: "array",
+        description: "One entry per passenger on the offer.",
+        items: {
+          type: "object",
+          properties: {
+            given_name: { type: "string" },
+            family_name: { type: "string" },
+            born_on: {
+              type: "string",
+              description: "ISO date YYYY-MM-DD.",
+            },
+            gender: { type: "string", enum: ["m", "f"] },
+            email: { type: "string" },
+            phone_number: {
+              type: "string",
+              description: "E.164 format, e.g. +12125550100.",
+            },
+          },
+          required: [
+            "given_name",
+            "family_name",
+            "born_on",
+            "gender",
+            "email",
+            "phone_number",
+          ],
+        },
+        minItems: 1,
+        maxItems: 9,
+      },
+    },
+    required: ["offerId", "passengers"],
   },
 };
 
@@ -173,7 +228,12 @@ export async function* streamReplyTokens(
       max_tokens: opts.maxTokens ?? 800,
       system: systemParam,
       messages: messages as Anthropic.MessageParam[],
-      tools: [FLIGHT_TOOL, HOTEL_TOOL, WEB_SEARCH_TOOL] as Anthropic.Tool[],
+      tools: [
+        FLIGHT_TOOL,
+        FLIGHT_BOOK_TOOL,
+        HOTEL_TOOL,
+        WEB_SEARCH_TOOL,
+      ] as Anthropic.Tool[],
     });
 
     for await (const event of stream as unknown as AsyncIterable<Anthropic.MessageStreamEvent>) {
@@ -209,7 +269,9 @@ export async function* streamReplyTokens(
       // web_search is server-executed by Anthropic — skip; its results are
       // already inlined in the assistant message we just appended above.
       if (block.name === "web_search") continue;
-      const result = await executeTool(block.name, block.input);
+      const result = await executeTool(block.name, block.input, {
+        tripId: opts.tripId,
+      });
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
@@ -227,8 +289,13 @@ export async function* streamReplyTokens(
   return full;
 }
 
-async function executeTool(name: string, input: unknown): Promise<string> {
+async function executeTool(
+  name: string,
+  input: unknown,
+  ctx: { tripId?: string },
+): Promise<string> {
   if (name === "search_hotels") return executeHotelSearch(input);
+  if (name === "book_flight") return executeBookFlight(input, ctx);
   if (name !== "search_flights") {
     return JSON.stringify({ error: `unknown tool: ${name}` });
   }
@@ -338,5 +405,87 @@ async function executeHotelSearch(input: unknown): Promise<string> {
         board: r.boardName,
       })),
     })),
+  });
+}
+
+async function executeBookFlight(
+  input: unknown,
+  ctx: { tripId?: string },
+): Promise<string> {
+  if (!ctx.tripId) {
+    return JSON.stringify({
+      error: "book_flight requires trip context — internal wiring issue.",
+    });
+  }
+  const parsed = input as Partial<BookFlightInput> | null;
+  if (
+    !parsed ||
+    typeof parsed.offerId !== "string" ||
+    !Array.isArray(parsed.passengers) ||
+    parsed.passengers.length === 0
+  ) {
+    return JSON.stringify({
+      error: "invalid input — need offerId and passengers[]",
+    });
+  }
+  for (const p of parsed.passengers) {
+    if (
+      !p ||
+      typeof p.given_name !== "string" ||
+      typeof p.family_name !== "string" ||
+      typeof p.born_on !== "string" ||
+      (p.gender !== "m" && p.gender !== "f") ||
+      typeof p.email !== "string" ||
+      typeof p.phone_number !== "string"
+    ) {
+      return JSON.stringify({
+        error:
+          "each passenger needs given_name, family_name, born_on (YYYY-MM-DD), gender (m/f), email, phone_number (E.164).",
+      });
+    }
+  }
+
+  const result = await bookFlightOffer({
+    offerId: parsed.offerId,
+    passengers: parsed.passengers,
+  });
+
+  if (!result.ok) {
+    return JSON.stringify({ error: result.error });
+  }
+
+  try {
+    await recordFlightBooking({
+      tripId: ctx.tripId,
+      orderId: result.orderId,
+      bookingReference: result.bookingReference,
+      totalAmount: result.totalAmount,
+      currency: result.currency,
+      airline: result.airline,
+      passengers: result.passengers,
+      slicesSummary: result.slicesSummary,
+    });
+  } catch (err) {
+    return JSON.stringify({
+      ok: true,
+      bookingReference: result.bookingReference,
+      airline: result.airline,
+      totalUSD: Math.round(result.totalAmount / 100),
+      slicesSummary: result.slicesSummary,
+      warning:
+        "Ticketed at Duffel but couldn't persist to the trip itinerary: " +
+        (err instanceof Error ? err.message : String(err)),
+    });
+  }
+
+  return JSON.stringify({
+    ok: true,
+    bookingReference: result.bookingReference,
+    airline: result.airline,
+    passengers: result.passengers,
+    totalUSD: Math.round(result.totalAmount / 100),
+    currency: result.currency,
+    slicesSummary: result.slicesSummary,
+    note: "Saved to trip itinerary. Surface the booking reference to the user.",
   });
 }
