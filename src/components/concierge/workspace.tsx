@@ -144,6 +144,13 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
   const qc = useQueryClient();
   const seenNotifications = React.useRef<Set<string>>(new Set());
   const [mobileView, setMobileView] = React.useState<"chat" | "preview">("chat");
+  // Suppress SSE-driven refetches while we're streaming a reply. The server
+  // fires `nudge` (which becomes a `snapshot.changed` SSE event) right after
+  // persisting the user message AND right after persisting the assistant
+  // reply — both happen during the same response stream. Without this guard,
+  // the refetch races with our optimistic streaming bubble and blows it
+  // away mid-token, which is the flicker users see.
+  const isStreamingRef = React.useRef(false);
 
   const { data } = useQuery<WorkspaceSnapshot>({
     queryKey: ["workspace", tripId],
@@ -156,7 +163,10 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
 
   React.useEffect(() => {
     const es = new EventSource(`/api/trips/${tripId}/stream`);
-    const refetch = () => qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    const refetch = () => {
+      if (isStreamingRef.current) return;
+      qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    };
     es.addEventListener("snapshot.changed", refetch);
     es.addEventListener("agent.progress", refetch);
     es.addEventListener("notification", refetch);
@@ -183,6 +193,7 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     async (text: string) => {
       setSendingChat(true);
       setStreamingReply("");
+      isStreamingRef.current = true;
 
       await qc.cancelQueries({ queryKey: ["workspace", tripId] });
       const previous = qc.getQueryData<WorkspaceSnapshot>(["workspace", tripId]);
@@ -280,9 +291,15 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       } finally {
         setSendingChat(false);
         setStreamingReply(null);
-        // The SSE 'snapshot.changed' event from the background extractor
-        // will refresh the workspace with the real persisted message.
-        // Optimistic message has identical text so no flicker on swap.
+        // Release the SSE refetch lock on the next tick so any late
+        // 'snapshot.changed' events from the streaming flow (e.g. the
+        // assistant-persist nudge) get coalesced. The first event that
+        // arrives after this will fire the background-extraction refetch
+        // and naturally swap our optimistic message for the persisted
+        // one (same text → no visible flicker).
+        setTimeout(() => {
+          isStreamingRef.current = false;
+        }, 100);
       }
     },
     [qc, tripId],
