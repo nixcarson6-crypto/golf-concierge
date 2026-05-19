@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light, editorial palette — bone white background, deep navy accent,
+     * sparing copper micro-accent. Inspired by yacht-luxury / quiet print. */
+    --background: 36 28% 94%;       /* #F5F1EA bone white */
+    --foreground: 210 51% 8%;       /* #0B1620 ink */
+
+    --surface: 34 22% 97%;
+    --surface-raised: 34 14% 99%;
+    --surface-sunken: 36 28% 91%;
+
+    --card: 34 22% 97%;
+    --card-foreground: 210 51% 8%;
+
+    --popover: 34 14% 99%;
+    --popover-foreground: 210 51% 8%;
+
+    --primary: 215 41% 18%;         /* deep navy */
+    --primary-foreground: 36 28% 96%;
+
+    --secondary: 215 24% 28%;
+    --secondary-foreground: 36 28% 96%;
+
+    --muted: 36 16% 88%;
+    --muted-foreground: 215 12% 38%;
+
+    --accent: 24 49% 56%;           /* copper — for sparing micro-accents */
+    --accent-foreground: 36 28% 96%;
+
+    --destructive: 4 64% 48%;
+    --destructive-foreground: 36 28% 96%;
+
+    --border: 215 14% 82%;
+    --input: 215 14% 86%;
+    --ring: 215 41% 28%;
+
+    --navy: 215 41% 18%;            /* #1B2A41 primary accent */
+    --navy-muted: 215 28% 32%;
+    --copper: 24 49% 56%;           /* #C18F5C micro-accent, sparing */
+    --copper-muted: 24 32% 44%;
+    --emerald: 158 38% 32%;         /* darker green that reads on light bg */
+    --emerald-muted: 158 24% 26%;
+    --warning: 32 78% 44%;
+    --success: 158 44% 32%;
+
+    --radius: 0.875rem;
+
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-display: "Fraunces", "Cormorant Garamond", Georgia, serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  }
+
+  .dark {
+    color-scheme: light;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body {
+    height: 100%;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(1200px 600px at 18% -10%, hsl(var(--navy) / 0.05), transparent 60%),
+      radial-gradient(900px 500px at 100% 8%, hsl(var(--copper) / 0.04), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background-color: hsl(var(--navy) / 0.18);
+    color: hsl(var(--foreground));
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+}
+
+@layer components {
+  .glass {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--surface-raised) / 0.92),
+      hsl(var(--surface) / 0.82)
+    );
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid hsl(var(--border) / 0.7);
+  }
+
+  .glass-strong {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--surface-raised) / 0.98),
+      hsl(var(--surface) / 0.9)
+    );
+    backdrop-filter: blur(28px) saturate(160%);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    border: 1px solid hsl(var(--border));
+  }
+
+  .navy-border {
+    border: 1px solid hsl(var(--navy) / 0.25);
+    box-shadow:
+      0 0 0 1px hsl(var(--navy) / 0.04) inset,
+      0 6px 30px -16px hsl(var(--navy) / 0.18);
+  }
+
+  .text-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  .num-tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" on, "lnum" on;
+  }
+
+  .hairline {
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--border)) 20%,
+      hsl(var(--border)) 80%,
+      transparent
+    );
+    height: 1px;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted) / 0.3) 0%,
+      hsl(var(--muted) / 0.6) 50%,
+      hsl(var(--muted) / 0.3) 100%
+    );
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
