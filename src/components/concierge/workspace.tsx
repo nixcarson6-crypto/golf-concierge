@@ -239,6 +239,32 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
                 setStreamingReply(full);
               } else if (evt.type === "done") {
                 full = evt.full as string;
+                // Optimistically inject the assistant reply into the
+                // workspace cache BEFORE clearing the streaming bubble.
+                // Without this there's a 200-500ms gap where the
+                // streaming bubble disappears and the refetched message
+                // hasn't arrived yet — the reply visibly flickers off
+                // and back on. Same text, no flicker.
+                qc.setQueryData<WorkspaceSnapshot>(
+                  ["workspace", tripId],
+                  (prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          messages: [
+                            ...prev.messages,
+                            {
+                              id: `streamed_${Date.now()}`,
+                              role: "ASSISTANT" as ChatRole,
+                              content: full,
+                              metadata: { kind: "stream" },
+                              createdAt: new Date().toISOString(),
+                              author: null,
+                            },
+                          ],
+                        }
+                      : prev,
+                );
                 setStreamingReply(null);
               } else if (evt.type === "error") {
                 throw new Error(evt.message);
@@ -254,7 +280,9 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       } finally {
         setSendingChat(false);
         setStreamingReply(null);
-        qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+        // The SSE 'snapshot.changed' event from the background extractor
+        // will refresh the workspace with the real persisted message.
+        // Optimistic message has identical text so no flicker on swap.
       }
     },
     [qc, tripId],

@@ -20,6 +20,17 @@ export function LivePreview({
   trip: WorkspaceTrip;
   itinerary: WorkspaceItinerary | null;
 }) {
+  // "Empty" = nothing the concierge has extracted yet. We surface a
+  // gentler prompt instead of the static "Destination forming…" which
+  // reads as if work is in progress when really we're waiting on input.
+  const isEmpty =
+    !trip.destination &&
+    !trip.startDate &&
+    !trip.groupSize &&
+    !trip.budgetTotal &&
+    !trip.budgetPerPerson &&
+    !itinerary;
+
   return (
     <div className="h-full flex flex-col rounded-3xl glass overflow-hidden">
       <header className="px-5 py-4 border-b border-border/60">
@@ -28,7 +39,8 @@ export function LivePreview({
         </p>
         <div className="mt-1 flex items-center justify-between gap-2">
           <h2 className="text-display text-xl tracking-tight truncate">
-            {trip.destination ?? "Destination forming…"}
+            {trip.destination ??
+              (isEmpty ? "Waiting on details" : "Destination forming…")}
           </h2>
           {itinerary && (
             <Badge variant="navy" size="sm">
@@ -136,7 +148,8 @@ function PreviewEmpty() {
           Your trip will take shape here.
         </p>
         <p className="mt-2 text-sm text-muted-foreground max-w-xs mx-auto">
-          Just talk to the concierge. The plan builds itself as you go.
+          Tell the concierge a destination, dates, group size, and budget — this
+          panel fills in as you go.
         </p>
       </div>
     </div>

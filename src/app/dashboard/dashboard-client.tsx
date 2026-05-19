@@ -222,36 +222,6 @@ function TripGrid({
             muted ? "opacity-80 hover:opacity-100" : "hover:border-foreground/20",
           )}
         >
-          <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onClone(trip.id);
-              }}
-              disabled={cloningId === trip.id}
-              className="size-7 rounded-lg grid place-items-center text-muted-foreground hover:text-foreground hover:bg-surface-raised transition disabled:opacity-50"
-              aria-label="Clone this trip"
-              title="Clone this trip"
-            >
-              <Copy className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onDelete(trip.id, trip.title);
-              }}
-              disabled={deletingId === trip.id}
-              className="size-7 rounded-lg grid place-items-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition disabled:opacity-50"
-              aria-label="Delete this trip"
-              title="Delete this trip"
-            >
-              <Trash2 className="size-3.5" />
-            </button>
-          </div>
           <Link href={`/trips/${trip.id}`} className="block">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -282,9 +252,39 @@ function TripGrid({
                   ? formatCurrency(trip.budgetTotal / 100)
                   : "—"}
               </p>
-              <ArrowRight className="size-4 text-muted-foreground group-hover:translate-x-0.5 group-hover:text-foreground transition" />
+              <ArrowRight className="size-4 text-muted-foreground transition group-hover:opacity-0" />
             </div>
           </Link>
+          <div className="absolute bottom-5 right-5 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onClone(trip.id);
+              }}
+              disabled={cloningId === trip.id}
+              className="size-7 rounded-lg grid place-items-center text-muted-foreground hover:text-foreground hover:bg-surface-raised transition disabled:opacity-50"
+              aria-label="Clone this trip"
+              title="Clone this trip"
+            >
+              <Copy className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onDelete(trip.id, trip.title);
+              }}
+              disabled={deletingId === trip.id}
+              className="size-7 rounded-lg grid place-items-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition disabled:opacity-50"
+              aria-label="Delete this trip"
+              title="Delete this trip"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </div>
         </div>
       ))}
     </div>
