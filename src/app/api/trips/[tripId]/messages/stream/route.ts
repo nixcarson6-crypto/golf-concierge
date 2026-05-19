@@ -85,6 +85,7 @@ export async function POST(
           cacheSystem: true,
           history,
           maxTokens: 1200,
+          tripId,
         });
         // Iterate to capture the return value (full text)
         // eslint-disable-next-line no-constant-condition
