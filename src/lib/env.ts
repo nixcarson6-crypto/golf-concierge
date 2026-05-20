@@ -28,6 +28,8 @@ const definitions = {
     default: "claude-haiku-4-5-20251001",
   },
 
+  TAVILY_API_KEY: { required: false },
+
   STRIPE_SECRET_KEY: { required: false },
   STRIPE_WEBHOOK_SECRET: { required: false },
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: { required: false },

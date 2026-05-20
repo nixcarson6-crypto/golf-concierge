@@ -35,6 +35,7 @@ import {
   type BookCarInput,
 } from "@/lib/bookings/providers/avis-book";
 import { recordCarBooking } from "@/lib/bookings/record-car";
+import { tavilySearch, type TavilySearchInput } from "@/lib/ai/tavily";
 
 /**
  * Streaming reply helper with tool support.
@@ -64,6 +65,50 @@ const WEB_SEARCH_TOOL: any = {
   type: "web_search_20250305",
   name: "web_search",
   max_uses: 5,
+};
+
+const TAVILY_SEARCH_TOOL: Anthropic.Tool = {
+  name: "tavily_search",
+  description:
+    "AI-optimized web search via Tavily. Use this for travel-specific, local-business, and freshness-sensitive lookups where you want structured top results with snippets and a synthesized answer: course green fees + tee sheets, restaurant menus / dress codes / availability hints, hotel amenities not in search_hotels, local weather, event calendars affecting a destination, course conditions, news/closures. Faster and cheaper than web_search for narrow factual queries. Prefer web_search for broad multi-step research or when you want the model to read full pages. Returns up to 10 results with title, url, snippet, score, and an optional one-line answer summary.",
+  input_schema: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "Natural-language search query. Be specific.",
+      },
+      searchDepth: {
+        type: "string",
+        enum: ["basic", "advanced"],
+        description:
+          "'basic' (default) for quick lookups, 'advanced' for harder/long-tail queries. Advanced costs more credits.",
+      },
+      maxResults: {
+        type: "integer",
+        minimum: 1,
+        maximum: 10,
+        description: "Max results to return (default 5).",
+      },
+      topic: {
+        type: "string",
+        enum: ["general", "news"],
+        description: "'news' biases toward recent articles; default 'general'.",
+      },
+      includeDomains: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Restrict results to these domains (e.g. ['golfdigest.com', 'pinehurst.com']).",
+      },
+      excludeDomains: {
+        type: "array",
+        items: { type: "string" },
+        description: "Exclude these domains from results.",
+      },
+    },
+    required: ["query"],
+  },
 };
 
 const FLIGHT_TOOL: Anthropic.Tool = {
@@ -394,6 +439,7 @@ export async function* streamReplyTokens(
         TEE_TIME_BOOK_TOOL,
         RESTAURANT_BOOK_TOOL,
         CAR_BOOK_TOOL,
+        TAVILY_SEARCH_TOOL,
         WEB_SEARCH_TOOL,
       ] as Anthropic.Tool[],
     });
@@ -462,6 +508,7 @@ async function executeTool(
   if (name === "book_tee_time") return executeBookTeeTime(input, ctx);
   if (name === "book_restaurant") return executeBookRestaurant(input, ctx);
   if (name === "book_car") return executeBookCar(input, ctx);
+  if (name === "tavily_search") return tavilySearch(input as TavilySearchInput);
   if (name !== "search_flights") {
     return JSON.stringify({ error: `unknown tool: ${name}` });
   }
