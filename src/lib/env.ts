@@ -57,6 +57,7 @@ const definitions = {
   AVIS_API_KEY: { required: false },
   LIGHTSPEED_GOLF_API_KEY: { required: false },
   YELP_FUSION_API_KEY: { required: false },
+  YELP_FUSION_CLIENT_ID: { required: false },
 
   NEXT_PUBLIC_APP_URL: {
     required: false,
