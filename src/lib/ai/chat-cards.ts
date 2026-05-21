@@ -52,7 +52,32 @@ export type TeeTimeCard = {
   isStub?: boolean;
 };
 
-export type ChatCard = FlightCard | HotelCard | TeeTimeCard;
+export type BookingConfirmationCard = {
+  kind: "booking_confirmation";
+  /** What got booked. */
+  bookingType: "flight" | "hotel" | "tee_time" | "restaurant" | "car";
+  /** Confirmation / PNR / booking reference. */
+  bookingReference: string;
+  /** Vendor name (airline, hotel, course, restaurant). */
+  vendor: string;
+  /** Short one-liner summary, e.g. "DFW → COS Jul 4, return Jul 8 · 4 pax". */
+  summary: string;
+  /** Total charged, in cents. */
+  totalAmount: number;
+  currency: string;
+  /** Passengers / guests / players — display only. */
+  partyNames?: string[];
+  /** Lead booker email — for "we've sent confirmation to…" line. */
+  contactEmail?: string;
+  /** Deep link to verify booking on the vendor's site. */
+  verifyUrl?: string | null;
+  /** Human label for the verify button, e.g. "Verify on aa.com". */
+  verifyLabel?: string | null;
+  /** True if this is a pencilled-in stub pending partner API access. */
+  isStub?: boolean;
+};
+
+export type ChatCard = FlightCard | HotelCard | TeeTimeCard | BookingConfirmationCard;
 
 type AnyRecord = Record<string, unknown>;
 
@@ -183,6 +208,77 @@ export function parseHotelSearchResult(raw: string): HotelCard[] {
       },
     ];
   });
+}
+
+/**
+ * Build a deep link to the airline's "manage trip" page where the user
+ * can paste the PNR and verify the booking on the airline's own site.
+ * Returns null for unknown carriers — the card will hide the button.
+ */
+export function airlineVerifyUrl(
+  airline: string,
+  airlineCode: string | null | undefined,
+  lastName: string | null | undefined,
+  pnr: string,
+): { url: string; label: string } | null {
+  const code = (airlineCode ?? "").toUpperCase();
+  const name = (airline ?? "").toLowerCase();
+  const ln = encodeURIComponent((lastName ?? "").trim());
+  const ref = encodeURIComponent(pnr);
+
+  if (code === "AA" || name.includes("american")) {
+    return {
+      url: `https://www.aa.com/reservation/find-your-reservation/find/?recordLocator=${ref}&lastName=${ln}`,
+      label: "Verify on aa.com",
+    };
+  }
+  if (code === "DL" || name.includes("delta")) {
+    return {
+      url: `https://www.delta.com/mytrips/findTripsManageTripAction.action?confirmationNumber=${ref}&lastName=${ln}`,
+      label: "Verify on delta.com",
+    };
+  }
+  if (code === "UA" || name.includes("united")) {
+    return {
+      url: `https://www.united.com/en/us/manageres/mytrips?confirmationNumber=${ref}&lastName=${ln}`,
+      label: "Verify on united.com",
+    };
+  }
+  if (code === "WN" || name.includes("southwest")) {
+    return {
+      url: `https://www.southwest.com/air/manage-reservation/index.html?confirmationNumber=${ref}&lastName=${ln}`,
+      label: "Verify on southwest.com",
+    };
+  }
+  if (code === "AS" || name.includes("alaska")) {
+    return {
+      url: `https://www.alaskaair.com/booking/reservation-lookup?confirmationCode=${ref}&lastName=${ln}`,
+      label: "Verify on alaskaair.com",
+    };
+  }
+  if (code === "B6" || name.includes("jetblue")) {
+    return {
+      url: `https://www.jetblue.com/manage-trips?recordLocator=${ref}&lastName=${ln}`,
+      label: "Verify on jetblue.com",
+    };
+  }
+  if (code === "F9" || name.includes("frontier")) {
+    return {
+      url: `https://www.flyfrontier.com/booking/my-trip?confirmationCode=${ref}&lastName=${ln}`,
+      label: "Verify on flyfrontier.com",
+    };
+  }
+  if (code === "NK" || name.includes("spirit")) {
+    return {
+      url: `https://www.spirit.com/check-in?recordLocator=${ref}&lastName=${ln}`,
+      label: "Verify on spirit.com",
+    };
+  }
+  // Generic fallback — Google flights "manage your trip" search
+  return {
+    url: `https://www.google.com/search?q=${encodeURIComponent(`${airline} manage booking ${pnr}`)}`,
+    label: `Look up ${airline}`,
+  };
 }
 
 /** Friendly progress label shown while a tool is running. */

@@ -41,7 +41,9 @@ import {
   parseFlightSearchResult,
   parseHotelSearchResult,
   toolStartLabel,
+  airlineVerifyUrl,
   type ChatCard,
+  type BookingConfirmationCard,
 } from "@/lib/ai/chat-cards";
 
 /**
@@ -573,6 +575,15 @@ export async function* streamReplyEvents(
           for (const card of parseHotelSearchResult(result)) {
             yield { type: "card", card };
           }
+        } else if (
+          block.name === "book_flight" ||
+          block.name === "book_hotel" ||
+          block.name === "book_tee_time" ||
+          block.name === "book_restaurant" ||
+          block.name === "book_car"
+        ) {
+          const card = buildConfirmationCard(block.name, block.input, result);
+          if (card) yield { type: "card", card };
         }
       }
 
@@ -587,6 +598,186 @@ export async function* streamReplyEvents(
   }
 
   return full;
+}
+
+/**
+ * Translate a successful book_* tool result into a visible confirmation
+ * card. Returns null if the result is missing the fields we need —
+ * the AI's prose announcement still ships, just without a card.
+ */
+function buildConfirmationCard(
+  toolName: string,
+  toolInput: unknown,
+  rawResult: string,
+): BookingConfirmationCard | null {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(rawResult) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const s = (v: unknown) => (typeof v === "string" && v ? v : null);
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+  const bookingReference = s(parsed.bookingReference);
+  if (!bookingReference) return null;
+  const isStub = Boolean(parsed.isStub);
+  const currency = s(parsed.currency) ?? "USD";
+
+  if (toolName === "book_flight") {
+    const inp = (toolInput ?? {}) as { passengers?: Array<{ given_name?: string; family_name?: string; email?: string }> };
+    const passengers = parsed.passengers as Array<{ given_name?: string; family_name?: string }> | undefined;
+    const partyNames = (passengers ?? inp.passengers ?? [])
+      .map((p) => [p.given_name, p.family_name].filter(Boolean).join(" ").trim())
+      .filter((n) => n.length > 0);
+    const leadLastName = passengers?.[0]?.family_name ?? inp.passengers?.[0]?.family_name ?? null;
+    const airline = s(parsed.airline) ?? "Airline";
+    const totalUSD = n(parsed.totalUSD) ?? 0;
+    const slicesSummary = s(parsed.slicesSummary) ?? "";
+    const contactEmail = s(inp.passengers?.[0]?.email);
+    const verify = isStub
+      ? null
+      : airlineVerifyUrl(airline, null, leadLastName, bookingReference);
+    return {
+      kind: "booking_confirmation",
+      bookingType: "flight",
+      bookingReference,
+      vendor: airline,
+      summary: slicesSummary || "Flight booked",
+      totalAmount: totalUSD * 100,
+      currency,
+      partyNames,
+      contactEmail: contactEmail ?? undefined,
+      verifyUrl: verify?.url ?? null,
+      verifyLabel: verify?.label ?? null,
+      isStub,
+    };
+  }
+
+  if (toolName === "book_hotel") {
+    const inp = (toolInput ?? {}) as {
+      hotelName?: string;
+      city?: string;
+      checkIn?: string;
+      checkOut?: string;
+      rooms?: number;
+      guests?: Array<{ name?: string; surname?: string }>;
+      holderEmail?: string;
+    };
+    const hotelName = s(parsed.hotelName) ?? s(inp.hotelName) ?? "Hotel";
+    const city = s(inp.city);
+    const checkIn = s(inp.checkIn) ?? "";
+    const checkOut = s(inp.checkOut) ?? "";
+    const rooms = n(inp.rooms) ?? 1;
+    const partyNames = (inp.guests ?? [])
+      .map((g) => [g.name, g.surname].filter(Boolean).join(" ").trim())
+      .filter((x) => x.length > 0);
+    const totalUSD = n(parsed.totalUSD) ?? 0;
+    const summary = [
+      city ? `${hotelName} · ${city}` : hotelName,
+      checkIn && checkOut ? `${checkIn} → ${checkOut}` : null,
+      `${rooms} room${rooms > 1 ? "s" : ""}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return {
+      kind: "booking_confirmation",
+      bookingType: "hotel",
+      bookingReference,
+      vendor: hotelName,
+      summary,
+      totalAmount: totalUSD * 100,
+      currency,
+      partyNames,
+      contactEmail: s(inp.holderEmail) ?? undefined,
+      verifyUrl: null,
+      verifyLabel: null,
+      isStub,
+    };
+  }
+
+  if (toolName === "book_tee_time") {
+    const inp = (toolInput ?? {}) as {
+      courseName?: string;
+      teeOffISO?: string;
+      players?: number;
+      leadPlayerName?: string;
+      leadPlayerEmail?: string;
+    };
+    const courseName = s(inp.courseName) ?? "Course";
+    const teeOff = s(inp.teeOffISO) ?? "";
+    const players = n(inp.players) ?? 1;
+    const totalUSD = n(parsed.totalUSD) ?? 0;
+    return {
+      kind: "booking_confirmation",
+      bookingType: "tee_time",
+      bookingReference,
+      vendor: courseName,
+      summary: `${courseName} · ${teeOff} · ${players} player${players > 1 ? "s" : ""}`,
+      totalAmount: totalUSD * 100,
+      currency,
+      partyNames: inp.leadPlayerName ? [inp.leadPlayerName] : [],
+      contactEmail: s(inp.leadPlayerEmail) ?? undefined,
+      verifyUrl: null,
+      verifyLabel: null,
+      isStub,
+    };
+  }
+
+  if (toolName === "book_restaurant") {
+    const inp = (toolInput ?? {}) as {
+      restaurantName?: string;
+      city?: string;
+      dateTimeISO?: string;
+      partySize?: number;
+      contactName?: string;
+      contactEmail?: string;
+    };
+    const name = s(inp.restaurantName) ?? "Restaurant";
+    const dt = s(inp.dateTimeISO) ?? "";
+    const partySize = n(inp.partySize) ?? 2;
+    return {
+      kind: "booking_confirmation",
+      bookingType: "restaurant",
+      bookingReference,
+      vendor: name,
+      summary: [
+        inp.city ? `${name} · ${inp.city}` : name,
+        dt,
+        `Party of ${partySize}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      totalAmount: 0,
+      currency,
+      partyNames: inp.contactName ? [inp.contactName] : [],
+      contactEmail: s(inp.contactEmail) ?? undefined,
+      verifyUrl: null,
+      verifyLabel: null,
+      isStub,
+    };
+  }
+
+  if (toolName === "book_car") {
+    const vendor = s(parsed.vendor) ?? "Rental";
+    const carClass = s(parsed.carClass) ?? "";
+    const totalUSD = n(parsed.totalUSD) ?? 0;
+    return {
+      kind: "booking_confirmation",
+      bookingType: "car",
+      bookingReference,
+      vendor,
+      summary: carClass ? `${vendor} · ${carClass}` : vendor,
+      totalAmount: totalUSD * 100,
+      currency,
+      partyNames: [],
+      verifyUrl: null,
+      verifyLabel: null,
+      isStub,
+    };
+  }
+
+  return null;
 }
 
 export async function* streamReplyTokens(

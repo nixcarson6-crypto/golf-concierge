@@ -12,6 +12,11 @@ import {
   XCircle,
   Loader2,
   Sparkles,
+  ExternalLink,
+  Copy,
+  ShieldCheck,
+  Car,
+  Utensils,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import type {
@@ -19,6 +24,7 @@ import type {
   FlightCard as FlightCardData,
   HotelCard as HotelCardData,
   TeeTimeCard as TeeTimeCardData,
+  BookingConfirmationCard as BookingConfirmationCardData,
 } from "@/lib/ai/chat-cards";
 
 const fmtTime = (iso: string) => {
@@ -58,8 +64,148 @@ export function ChatCardsList({ cards }: { cards: ChatCard[] }) {
           return <HotelCard key={`h-${card.rateKey}-${i}`} card={card} />;
         if (card.kind === "tee_time")
           return <TeeTimeCard key={`t-${card.courseName}-${i}`} card={card} />;
+        if (card.kind === "booking_confirmation")
+          return (
+            <BookingConfirmationCard
+              key={`bc-${card.bookingReference}-${i}`}
+              card={card}
+            />
+          );
         return null;
       })}
+    </div>
+  );
+}
+
+function BookingConfirmationCard({
+  card,
+}: {
+  card: BookingConfirmationCardData;
+}) {
+  const [copied, setCopied] = React.useState(false);
+  const copyRef = async () => {
+    try {
+      await navigator.clipboard.writeText(card.bookingReference);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // clipboard might be blocked; silent fail is fine
+    }
+  };
+
+  const Icon = card.bookingType === "flight"
+    ? Plane
+    : card.bookingType === "hotel"
+      ? BedDouble
+      : card.bookingType === "tee_time"
+        ? Flag
+        : card.bookingType === "car"
+          ? Car
+          : Utensils;
+
+  const accentBg = card.isStub
+    ? "bg-[hsl(var(--copper))]/10 border-[hsl(var(--copper))]/40"
+    : "bg-[hsl(var(--emerald))]/8 border-[hsl(var(--emerald))]/35";
+
+  const StatusIcon = card.isStub ? Sparkles : ShieldCheck;
+  const statusColor = card.isStub
+    ? "text-[hsl(var(--copper))]"
+    : "text-[hsl(var(--emerald))]";
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border px-4 py-3.5 space-y-3",
+        accentBg,
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="size-9 rounded-lg bg-surface-raised grid place-items-center text-foreground shrink-0">
+            <Icon className="size-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground/80 leading-none mb-0.5 flex items-center gap-1">
+              <StatusIcon className={cn("size-3", statusColor)} />
+              {card.isStub ? "Pencilled in" : "Confirmed"}
+              {" · "}
+              <span className="capitalize">{card.bookingType.replace("_", " ")}</span>
+            </p>
+            <p className="text-sm font-semibold leading-tight truncate">
+              {card.vendor}
+            </p>
+          </div>
+        </div>
+        {card.totalAmount > 0 && (
+          <div className="text-right shrink-0">
+            <p className="text-sm font-semibold tabular-nums">
+              {card.currency === "USD" || !card.currency
+                ? formatCurrency(card.totalAmount / 100)
+                : `${card.currency} ${(card.totalAmount / 100).toFixed(0)}`}
+            </p>
+            <p className="text-[10px] text-muted-foreground">total</p>
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-foreground/80">{card.summary}</p>
+
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40">
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground leading-none mb-1">
+            Confirmation
+          </p>
+          <button
+            type="button"
+            onClick={copyRef}
+            className="inline-flex items-center gap-1.5 text-sm font-mono font-semibold tabular-nums text-foreground hover:text-[hsl(var(--copper))] transition"
+            title="Copy confirmation number"
+          >
+            {card.bookingReference}
+            <Copy className="size-3 opacity-60" />
+            {copied && (
+              <span className="text-[10px] text-[hsl(var(--emerald))] font-sans font-normal">
+                Copied
+              </span>
+            )}
+          </button>
+        </div>
+        {card.verifyUrl && card.verifyLabel && (
+          <a
+            href={card.verifyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium border border-border bg-surface-raised hover:bg-surface-raised/80 hover:border-foreground/30 transition"
+          >
+            {card.verifyLabel}
+            <ExternalLink className="size-3" />
+          </a>
+        )}
+      </div>
+
+      {card.partyNames && card.partyNames.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-0.5">
+          {card.partyNames.map((n, i) => (
+            <span
+              key={i}
+              className="text-[10px] px-2 py-0.5 rounded-full bg-surface-raised/70 text-muted-foreground"
+            >
+              {n}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {card.contactEmail && !card.isStub && (
+        <p className="text-[10px] text-muted-foreground">
+          Confirmation will be emailed to {card.contactEmail}
+        </p>
+      )}
+      {card.isStub && (
+        <p className="text-[10px] text-[hsl(var(--copper))]/90">
+          Pencilled in — we&apos;ll lock this with the partner once API access lands.
+        </p>
+      )}
     </div>
   );
 }
