@@ -197,7 +197,8 @@ const FLIGHT_TOOL: Anthropic.Tool = {
       cabin: {
         type: "string",
         enum: ["economy", "premium_economy", "business", "first"],
-        description: "Cabin class. Default economy if not specified.",
+        description:
+          "Cabin class — REQUIRED. Pyltrix is a luxury platform; default to 'business' unless the user explicitly wants the best deal (economy) or first class. Always confirm the user's preference once per trip, then reuse it for every flight search on the same trip.",
       },
     },
     required: ["slices", "passengers"],

@@ -124,6 +124,14 @@ export type WorkspaceBooking = {
   status: string;
   isStub: boolean;
   paidAt: string | null;
+  // Optional rich details surfaced for the expandable booking view in
+  // the Live Trip panel. Set when present on the partner payload.
+  vendor: string | null;
+  summary: string | null;
+  partyNames: string[] | null;
+  contactEmail: string | null;
+  leadLastName: string | null;
+  airlineCode: string | null;
 };
 
 type Props = { tripId: string; vapidPublicKey?: string | null };

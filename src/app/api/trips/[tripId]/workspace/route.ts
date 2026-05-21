@@ -185,17 +185,47 @@ export async function GET(
       actorKind: e.actorKind,
       createdAt: e.createdAt.toISOString(),
     })),
-    bookings: bookings.map((b) => ({
-      id: b.id,
-      type: b.type,
-      title: b.itineraryItem?.title ?? `${b.type} booking`,
-      provider: b.provider,
-      confirmationCode: b.confirmationCode,
-      cost: b.cost,
-      status: b.status,
-      isStub: Boolean((b.metadata as { isStub?: boolean } | null)?.isStub),
-      paidAt:
-        (b.metadata as { paidAt?: string } | null)?.paidAt ?? null,
-    })),
+    bookings: bookings.map((b) => {
+      const meta = (b.metadata ?? {}) as Record<string, unknown>;
+      return {
+        id: b.id,
+        type: b.type,
+        title: b.itineraryItem?.title ?? `${b.type} booking`,
+        provider: b.provider,
+        confirmationCode: b.confirmationCode,
+        cost: b.cost,
+        status: b.status,
+        isStub: Boolean(meta.isStub),
+        paidAt: (meta.paidAt as string | undefined) ?? null,
+        // Extra detail surfaced for the click-to-expand booking view in
+        // the live trip panel. Source of truth is the partner payload
+        // we recorded at booking time.
+        vendor:
+          (meta.airline as string | undefined) ??
+          (meta.hotelName as string | undefined) ??
+          (meta.courseName as string | undefined) ??
+          (meta.restaurantName as string | undefined) ??
+          (meta.vendor as string | undefined) ??
+          null,
+        summary:
+          (meta.slicesSummary as string | undefined) ??
+          (meta.summary as string | undefined) ??
+          null,
+        partyNames: Array.isArray(meta.passengerNames)
+          ? (meta.passengerNames as string[])
+          : Array.isArray(meta.passengers)
+            ? (meta.passengers as Array<{ given_name?: string; family_name?: string }>)
+                .map((p) =>
+                  [p.given_name, p.family_name].filter(Boolean).join(" ").trim(),
+                )
+                .filter((s) => s.length > 0)
+            : null,
+        contactEmail: (meta.contactEmail as string | undefined) ?? null,
+        leadLastName:
+          ((meta.passengers as Array<{ family_name?: string }> | undefined) ?? [])[0]
+            ?.family_name ?? null,
+        airlineCode: (meta.airlineCode as string | undefined) ?? null,
+      };
+    }),
   });
 }

@@ -7,13 +7,23 @@ import {
   Compass,
   Loader2,
   Sparkles,
+  Plane,
+  BedDouble,
+  Flag,
+  Car,
+  Utensils,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
-import { formatCurrency, formatDateRange } from "@/lib/utils";
+import { cn, formatCurrency, formatDateRange } from "@/lib/utils";
+import { airlineVerifyUrl } from "@/lib/ai/chat-cards";
 import type {
   WorkspaceBooking,
   WorkspaceItinerary,
@@ -92,11 +102,11 @@ export function LivePreview({
       </header>
 
       <ScrollArea className="flex-1">
-        {!itinerary ? (
+        {!itinerary && bookings.length === 0 ? (
           <PreviewEmpty />
         ) : (
           <div className="px-5 py-5 space-y-3">
-            {itinerary.aiSummary && (
+            {itinerary?.aiSummary && (
               <div className="rounded-2xl border border-border/70 bg-surface-raised/50 px-4 py-3.5">
                 <div className="flex items-start gap-2.5">
                   <Sparkles className="size-3.5 text-[hsl(var(--copper))] mt-0.5 shrink-0" />
@@ -106,7 +116,7 @@ export function LivePreview({
                 </div>
               </div>
             )}
-            {itinerary.changes && itinerary.changes.length > 0 && (
+            {itinerary?.changes && itinerary.changes.length > 0 && (
               <div className="rounded-2xl border border-[hsl(var(--navy)/0.2)] bg-[hsl(var(--navy)/0.04)] px-4 py-3 text-xs space-y-1.5">
                 <p className="text-[10px] uppercase tracking-widest text-[hsl(var(--navy))]">
                   What changed in v{itinerary.version}
@@ -118,7 +128,10 @@ export function LivePreview({
                 ))}
               </div>
             )}
-            {itinerary.items.map((item) => (
+            {bookings.length > 0 && (
+              <BookingsSection bookings={bookings} />
+            )}
+            {itinerary?.items.map((item) => (
               <ItineraryItemCard key={item.id} item={item} />
             ))}
           </div>
@@ -126,6 +139,185 @@ export function LivePreview({
       </ScrollArea>
       <CartFooter tripId={tripId} bookings={bookings} />
     </div>
+  );
+}
+
+function BookingsSection({ bookings }: { bookings: WorkspaceBooking[] }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase tracking-widest text-muted-foreground px-1">
+        Bookings · {bookings.length}
+      </p>
+      <div className="space-y-1.5">
+        {bookings.map((b) => (
+          <BookingRow key={b.id} booking={b} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BookingRow({ booking }: { booking: WorkspaceBooking }) {
+  const [open, setOpen] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+
+  const Icon =
+    booking.type === "FLIGHT"
+      ? Plane
+      : booking.type === "LODGING"
+        ? BedDouble
+        : booking.type === "TEE_TIME"
+          ? Flag
+          : booking.type === "TRANSPORT"
+            ? Car
+            : Utensils;
+
+  const verify =
+    booking.type === "FLIGHT" && booking.confirmationCode && !booking.isStub
+      ? airlineVerifyUrl(
+          booking.vendor ?? booking.title,
+          booking.airlineCode,
+          booking.leadLastName,
+          booking.confirmationCode,
+        )
+      : null;
+
+  const copyRef = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!booking.confirmationCode) return;
+    try {
+      await navigator.clipboard.writeText(booking.confirmationCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // clipboard might be blocked
+    }
+  };
+
+  const canExpand =
+    Boolean(booking.confirmationCode) ||
+    Boolean(booking.summary) ||
+    (booking.partyNames && booking.partyNames.length > 0);
+
+  return (
+    <article
+      className={cn(
+        "rounded-2xl border bg-card/60 transition",
+        booking.isStub
+          ? "border-[hsl(var(--copper))]/40"
+          : "border-border/70 hover:border-foreground/15",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => canExpand && setOpen((v) => !v)}
+        className={cn(
+          "w-full flex items-center gap-3 px-4 py-3 text-left",
+          canExpand && "cursor-pointer",
+        )}
+        aria-expanded={open}
+      >
+        <div className="size-9 rounded-xl bg-surface-raised grid place-items-center text-foreground shrink-0">
+          <Icon className="size-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none">
+            {booking.vendor ?? booking.title}
+          </p>
+          <h3 className="text-sm font-medium leading-tight mt-1 truncate">
+            {booking.summary ?? booking.title}
+          </h3>
+        </div>
+        <div className="text-right shrink-0 flex items-center gap-2">
+          <div>
+            {booking.cost != null && (
+              <p className="text-sm font-semibold tabular-nums leading-none">
+                {formatCurrency(booking.cost / 100)}
+              </p>
+            )}
+            <p className="text-[10px] mt-1 leading-none">
+              {booking.isStub ? (
+                <span className="text-[hsl(var(--copper))]">Pencilled</span>
+              ) : (
+                <span className="text-[hsl(var(--emerald))]">Confirmed</span>
+              )}
+            </p>
+          </div>
+          {canExpand && (
+            <ChevronDown
+              className={cn(
+                "size-4 text-muted-foreground transition",
+                open && "rotate-180",
+              )}
+            />
+          )}
+        </div>
+      </button>
+
+      {open && canExpand && (
+        <div className="px-4 pb-3.5 pt-1 space-y-2.5 border-t border-border/40">
+          {booking.confirmationCode && (
+            <div className="flex items-center justify-between gap-2 pt-2">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none mb-1">
+                  Confirmation
+                </p>
+                <button
+                  type="button"
+                  onClick={copyRef}
+                  className="inline-flex items-center gap-1.5 text-sm font-mono font-semibold tabular-nums hover:text-[hsl(var(--copper))] transition"
+                  title="Copy confirmation"
+                >
+                  {booking.confirmationCode}
+                  <Copy className="size-3 opacity-60" />
+                  {copied && (
+                    <span className="text-[10px] text-[hsl(var(--emerald))] font-sans font-normal inline-flex items-center gap-1">
+                      <CheckCircle2 className="size-3" /> Copied
+                    </span>
+                  )}
+                </button>
+              </div>
+              {verify && (
+                <a
+                  href={verify.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium border border-border bg-surface-raised hover:bg-surface-raised/80 hover:border-foreground/30 transition shrink-0"
+                >
+                  {verify.label}
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+            </div>
+          )}
+
+          {booking.partyNames && booking.partyNames.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {booking.partyNames.map((n, i) => (
+                <span
+                  key={i}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-surface-raised/70 text-muted-foreground"
+                >
+                  {n}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {booking.contactEmail && !booking.isStub && (
+            <p className="text-[10px] text-muted-foreground">
+              Confirmation will be emailed to {booking.contactEmail}
+            </p>
+          )}
+          {booking.isStub && (
+            <p className="text-[10px] text-[hsl(var(--copper))]/90">
+              Pencilled in — we&apos;ll lock this with the partner once API access lands.
+            </p>
+          )}
+        </div>
+      )}
+    </article>
   );
 }
 
