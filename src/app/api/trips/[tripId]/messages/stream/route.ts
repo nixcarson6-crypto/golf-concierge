@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireTripAccess, requireUser } from "@/lib/auth";
 import { streamReplyEvents } from "@/lib/ai/streamReply";
 import { CONCIERGE_VOICE } from "@/lib/ai/prompts";
+import { buildTripContext } from "@/lib/ai/trip-context";
 import { processUserMessageBackground } from "@/lib/ai/conversation";
 import { nudge } from "@/lib/events";
 import { checkChatRate } from "@/lib/rate-limit";
@@ -88,12 +89,18 @@ export async function POST(
       let full = "";
       const cards: ChatCard[] = [];
       try {
+        const liveContext = await buildTripContext({
+          tripId,
+          currentUserId: user.id,
+        });
         const gen = streamReplyEvents({
           system: CONCIERGE_VOICE,
+          liveContext,
           cacheSystem: true,
           history,
           maxTokens: 1200,
           tripId,
+          userId: user.id,
         });
         // eslint-disable-next-line no-constant-condition
         while (true) {

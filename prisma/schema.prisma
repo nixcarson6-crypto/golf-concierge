@@ -21,6 +21,17 @@ model User {
   name        String?
   email       String   @unique
   imageUrl    String?
+
+  // Booking profile — used by the AI to auto-fill flight/hotel/car
+  // bookings without re-asking the customer every time. Optional so
+  // sign-up doesn't gate on collecting all of this; the AI fills it
+  // in progressively as bookings happen.
+  legalGivenName  String?
+  legalFamilyName String?
+  dateOfBirth     DateTime?
+  gender          String?   // "m" | "f" — airline ticketing requirement
+  phone           String?   // E.164 format, e.g. +12125550100
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -125,6 +136,17 @@ model TripMember {
   approvalStatus ApprovalStatus @default(PENDING)
   paymentStatus  PaymentStatus  @default(UNPAID)
   joinedAt       DateTime?
+
+  // Booking profile for this trip's companion — same as User but per
+  // member, since not every companion has a Pyltrix account yet. The
+  // AI fills these in progressively when collecting passenger info for
+  // group bookings, then reuses them across the trip.
+  legalGivenName  String?
+  legalFamilyName String?
+  dateOfBirth     DateTime?
+  gender          String?
+  phone           String?
+
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

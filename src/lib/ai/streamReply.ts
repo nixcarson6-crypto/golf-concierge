@@ -36,6 +36,7 @@ import {
 } from "@/lib/bookings/providers/avis-book";
 import { recordCarBooking } from "@/lib/bookings/record-car";
 import { tavilySearch, type TavilySearchInput } from "@/lib/ai/tavily";
+import { db } from "@/lib/db";
 import {
   parseFlightSearchResult,
   parseHotelSearchResult,
@@ -58,11 +59,19 @@ import {
  */
 export type StreamReplyOptions = {
   system: string;
+  /**
+   * Optional live per-turn context (e.g. trip + user profile snapshot).
+   * Sent as a separate, non-cached system block so the AI sees fresh state
+   * each turn without busting the prompt cache on the static voice block.
+   */
+  liveContext?: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   cacheSystem?: boolean;
   maxTokens?: number;
   /** Trip context — required for tools that persist (e.g. book_flight). */
   tripId?: string;
+  /** Current user id — used by save_user_profile to persist learned fields. */
+  userId?: string;
 };
 
 /** Anthropic-hosted web search. Server-side execution; no client executor. */
@@ -114,6 +123,40 @@ const TAVILY_SEARCH_TOOL: Anthropic.Tool = {
       },
     },
     required: ["query"],
+  },
+};
+
+const SAVE_USER_PROFILE_TOOL: Anthropic.Tool = {
+  name: "save_user_profile",
+  description:
+    "Persist the trip owner's (current user's) booking profile so we never re-ask. Call this as soon as the user provides any of: legal name, date of birth, gender, or phone — even partial. The values you pass overwrite what we have; only include fields you actually learned this turn. This is how Pyltrix stays hands-free across bookings.",
+  input_schema: {
+    type: "object",
+    properties: {
+      legalGivenName: { type: "string", description: "Legal first name as on government ID." },
+      legalFamilyName: { type: "string", description: "Legal last name as on government ID." },
+      dateOfBirth: { type: "string", description: "ISO date YYYY-MM-DD." },
+      gender: { type: "string", enum: ["m", "f"], description: "Airline ticketing gender." },
+      phone: { type: "string", description: "E.164 phone, e.g. +12125550100." },
+    },
+  },
+};
+
+const SAVE_MEMBER_PROFILE_TOOL: Anthropic.Tool = {
+  name: "save_member_profile",
+  description:
+    "Persist a trip companion's booking profile (someone the owner invited to the trip). Identify the member by email. Use this when collecting passenger info for group bookings so subsequent bookings on this trip auto-fill the companion's details.",
+  input_schema: {
+    type: "object",
+    properties: {
+      email: { type: "string", description: "The companion's email (used as identity within the trip)." },
+      legalGivenName: { type: "string" },
+      legalFamilyName: { type: "string" },
+      dateOfBirth: { type: "string", description: "ISO date YYYY-MM-DD." },
+      gender: { type: "string", enum: ["m", "f"] },
+      phone: { type: "string", description: "E.164 phone." },
+    },
+    required: ["email"],
   },
 };
 
@@ -426,15 +469,24 @@ export async function* streamReplyEvents(
   opts: StreamReplyOptions,
 ): AsyncGenerator<StreamReplyEvent, string> {
   const client = anthropic();
-  const systemParam = opts.cacheSystem
-    ? [
+  // The static voice block stays cacheable; the live trip/user context is
+  // appended as a second uncached block so it can change every turn without
+  // busting the prompt cache. If liveContext is absent we just send the
+  // voice block (cached or plain string per cacheSystem).
+  const systemParam: string | Anthropic.TextBlockParam[] = opts.cacheSystem
+    ? ([
         {
           type: "text" as const,
           text: opts.system,
           cache_control: { type: "ephemeral" as const },
         },
-      ]
-    : opts.system;
+        ...(opts.liveContext
+          ? [{ type: "text" as const, text: opts.liveContext }]
+          : []),
+      ] as Anthropic.TextBlockParam[])
+    : opts.liveContext
+      ? `${opts.system}\n\n${opts.liveContext}`
+      : opts.system;
 
   const messages: AnthropicMessage[] = opts.history.map((m) => ({
     role: m.role,
@@ -456,6 +508,8 @@ export async function* streamReplyEvents(
         TEE_TIME_BOOK_TOOL,
         RESTAURANT_BOOK_TOOL,
         CAR_BOOK_TOOL,
+        SAVE_USER_PROFILE_TOOL,
+        SAVE_MEMBER_PROFILE_TOOL,
         TAVILY_SEARCH_TOOL,
         WEB_SEARCH_TOOL,
       ] as Anthropic.Tool[],
@@ -497,6 +551,7 @@ export async function* streamReplyEvents(
       };
       const result = await executeTool(block.name, block.input, {
         tripId: opts.tripId,
+        userId: opts.userId,
       });
       let ok = true;
       try {
@@ -569,6 +624,8 @@ export async function* streamReplyTokens(
         TEE_TIME_BOOK_TOOL,
         RESTAURANT_BOOK_TOOL,
         CAR_BOOK_TOOL,
+        SAVE_USER_PROFILE_TOOL,
+        SAVE_MEMBER_PROFILE_TOOL,
         TAVILY_SEARCH_TOOL,
         WEB_SEARCH_TOOL,
       ] as Anthropic.Tool[],
@@ -609,6 +666,7 @@ export async function* streamReplyTokens(
       if (block.name === "web_search") continue;
       const result = await executeTool(block.name, block.input, {
         tripId: opts.tripId,
+        userId: opts.userId,
       });
       toolResults.push({
         type: "tool_result",
@@ -630,7 +688,7 @@ export async function* streamReplyTokens(
 async function executeTool(
   name: string,
   input: unknown,
-  ctx: { tripId?: string },
+  ctx: { tripId?: string; userId?: string },
 ): Promise<string> {
   if (name === "search_hotels") return executeHotelSearch(input);
   if (name === "book_flight") return executeBookFlight(input, ctx);
@@ -639,6 +697,9 @@ async function executeTool(
   if (name === "book_restaurant") return executeBookRestaurant(input, ctx);
   if (name === "book_car") return executeBookCar(input, ctx);
   if (name === "tavily_search") return tavilySearch(input as TavilySearchInput);
+  if (name === "save_user_profile") return executeSaveUserProfile(input, ctx);
+  if (name === "save_member_profile")
+    return executeSaveMemberProfile(input, ctx);
   if (name !== "search_flights") {
     return JSON.stringify({ error: `unknown tool: ${name}` });
   }
@@ -1146,3 +1207,114 @@ async function executeBookCar(
       : "Saved to trip itinerary.",
   });
 }
+
+
+type ProfileFields = {
+  legalGivenName?: string;
+  legalFamilyName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  phone?: string;
+};
+
+function buildProfileData(input: ProfileFields) {
+  const data: Record<string, unknown> = {};
+  if (typeof input.legalGivenName === "string" && input.legalGivenName.trim()) {
+    data.legalGivenName = input.legalGivenName.trim();
+  }
+  if (typeof input.legalFamilyName === "string" && input.legalFamilyName.trim()) {
+    data.legalFamilyName = input.legalFamilyName.trim();
+  }
+  if (typeof input.dateOfBirth === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.dateOfBirth)) {
+    data.dateOfBirth = new Date(input.dateOfBirth + "T00:00:00Z");
+  }
+  if (input.gender === "m" || input.gender === "f") {
+    data.gender = input.gender;
+  }
+  if (typeof input.phone === "string" && /^\+?\d{7,}$/.test(input.phone.replace(/\s/g, ""))) {
+    data.phone = input.phone.replace(/\s/g, "");
+  }
+  return data;
+}
+
+async function executeSaveUserProfile(
+  rawInput: unknown,
+  ctx: { userId?: string },
+): Promise<string> {
+  if (!ctx.userId) {
+    return JSON.stringify({ error: "no user id in context" });
+  }
+  const input = (rawInput ?? {}) as ProfileFields;
+  const data = buildProfileData(input);
+  if (Object.keys(data).length === 0) {
+    return JSON.stringify({ ok: false, note: "no valid fields supplied" });
+  }
+  try {
+    const updated = await db.user.update({
+      where: { id: ctx.userId },
+      data,
+      select: {
+        legalGivenName: true,
+        legalFamilyName: true,
+        dateOfBirth: true,
+        gender: true,
+        phone: true,
+      },
+    });
+    return JSON.stringify({
+      ok: true,
+      saved: Object.keys(data),
+      profile: {
+        legalGivenName: updated.legalGivenName,
+        legalFamilyName: updated.legalFamilyName,
+        dateOfBirth: updated.dateOfBirth?.toISOString().slice(0, 10) ?? null,
+        gender: updated.gender,
+        phone: updated.phone,
+      },
+      note: "Saved to user profile — will auto-fill future bookings without re-asking.",
+    });
+  } catch (err) {
+    return JSON.stringify({
+      error: "save failed",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function executeSaveMemberProfile(
+  rawInput: unknown,
+  ctx: { tripId?: string },
+): Promise<string> {
+  if (!ctx.tripId) return JSON.stringify({ error: "no trip id in context" });
+  const input = (rawInput ?? {}) as ProfileFields & { email?: string };
+  const email = typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+  if (!email) return JSON.stringify({ error: "email is required to identify the member" });
+  const data = buildProfileData(input);
+  if (Object.keys(data).length === 0) {
+    return JSON.stringify({ ok: false, note: "no valid fields supplied" });
+  }
+  try {
+    const member = await db.tripMember.findUnique({
+      where: { tripId_email: { tripId: ctx.tripId, email } },
+      select: { id: true },
+    });
+    if (!member) {
+      return JSON.stringify({
+        error: "no member with that email on this trip",
+        hint: "Invite them first, or confirm the email spelling.",
+      });
+    }
+    await db.tripMember.update({ where: { id: member.id }, data });
+    return JSON.stringify({
+      ok: true,
+      saved: Object.keys(data),
+      note: `Saved profile for ${email} on this trip.`,
+    });
+  } catch (err) {
+    return JSON.stringify({
+      error: "save failed",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
