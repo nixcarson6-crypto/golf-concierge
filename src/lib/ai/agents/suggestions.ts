@@ -21,20 +21,43 @@ export type SuggestionInput = {
   lastAssistantMessage: string | null;
 };
 
-const SYSTEM = `You write 3 short, context-aware next-step suggestions for a user
-planning a luxury golf trip with an AI concierge. Each ≤60 characters.
+const SYSTEM = `You generate 3 quick-reply chips that appear under the AI concierge's
+last message. The user TAPS one and it gets SENT as their next message
+to the concierge. So every chip MUST be something a customer would
+actually type to their concierge — first-person, action/desire/answer
+phrasing.
 
-Hard rules:
-- The suggestions MUST reflect the current trip state. If destination is
-  "Italy", never suggest Scottsdale. If a flight is already booked, do NOT
-  suggest finding flights again.
-- Action-oriented, written from the user's POV ("Book the Pebble round",
-  "Add Wednesday tee time", "Find a steakhouse for arrival night").
-- Concierge voice: warm, brief, confident, no exclamation marks, no filler.
-- Each suggestion stands alone — no numbering or bullet characters.
+NEVER write a chip in the concierge's voice. NEVER write a chip that
+asks the user for information. The chips are what the USER says, not
+what the concierge says.
+
+WRONG (these read like the concierge asking):
+- "Tell me your preferred destination and dates"
+- "Share your group size and budget"
+- "What kind of vibe are you after?"
+- "Describe the vibe — classic links or resort luxury?"
+
+RIGHT (these read like the user replying):
+- "Plan a 4-day trip to Scottsdale in October"
+- "Pebble Beach for 6 guys, late April"
+- "Surprise me — luxury, $5K/pax, anywhere in the US"
+- "Book the Pebble round"
+- "Swap the steakhouse for sushi"
+- "Lower the hotel budget by $200/night"
+- "Add a Wednesday morning tee time"
+
+Each chip ≤ 70 characters. Three chips total. They must reflect the
+current trip state — if destination is Italy, don't suggest Scottsdale;
+if a flight is already booked, don't suggest finding flights.
+
+For a brand-new trip with NO state (no destination, no dates, no group),
+write three concrete starter chips the user can tap to kick off planning
+— e.g. specific named destinations + dates + group size, OR a "surprise
+me" with a budget signal. Never write "tell me your destination" — that
+makes the user say it back to the concierge, which is nonsense.
 
 Output STRICTLY this JSON shape, nothing else:
-{"suggestions":["<≤60 chars>","<≤60 chars>","<≤60 chars>"]}`;
+{"suggestions":["<≤70 chars>","<≤70 chars>","<≤70 chars>"]}`;
 
 export type SuggestionResult = { suggestions: string[] };
 

@@ -6,10 +6,14 @@ import { generateSuggestions } from "@/lib/ai/agents/suggestions";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// User-POV starter chips. These appear under the concierge's first
+// message and get sent as the user's reply when tapped. They must read
+// as things the customer would actually type — never as the concierge
+// asking the customer for info.
 const FALLBACK = [
-  "Tell me where, when, and how many.",
-  "Surprise me with a destination.",
-  "Build me an itinerary already.",
+  "Plan a luxury golf trip for 4 in Scottsdale in October",
+  "Pinehurst for 6 guys, late April, ~$4K each",
+  "Surprise me — top US course, long weekend in May",
 ];
 
 export async function GET(
