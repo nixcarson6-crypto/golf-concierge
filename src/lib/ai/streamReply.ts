@@ -36,6 +36,12 @@ import {
 } from "@/lib/bookings/providers/avis-book";
 import { recordCarBooking } from "@/lib/bookings/record-car";
 import { tavilySearch, type TavilySearchInput } from "@/lib/ai/tavily";
+import {
+  parseFlightSearchResult,
+  parseHotelSearchResult,
+  toolStartLabel,
+  type ChatCard,
+} from "@/lib/ai/chat-cards";
 
 /**
  * Streaming reply helper with tool support.
@@ -403,6 +409,130 @@ type AnthropicMessage = {
         | { type: "tool_result"; tool_use_id: string; content: string }
       >;
 };
+
+export type StreamReplyEvent =
+  | { type: "delta"; text: string }
+  | { type: "tool_start"; id: string; tool: string; label: string }
+  | { type: "tool_end"; id: string; tool: string; ok: boolean }
+  | { type: "card"; card: ChatCard };
+
+/**
+ * Richer event stream: emits text deltas plus tool-use indicators and
+ * structured cards (flight/hotel/etc) as they become available. Use this
+ * for new code; `streamReplyTokens` below is kept as a string-only
+ * wrapper for any older callers.
+ */
+export async function* streamReplyEvents(
+  opts: StreamReplyOptions,
+): AsyncGenerator<StreamReplyEvent, string> {
+  const client = anthropic();
+  const systemParam = opts.cacheSystem
+    ? [
+        {
+          type: "text" as const,
+          text: opts.system,
+          cache_control: { type: "ephemeral" as const },
+        },
+      ]
+    : opts.system;
+
+  const messages: AnthropicMessage[] = opts.history.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  let full = "";
+  for (let round = 0; round < 4; round++) {
+    const stream = client.messages.stream({
+      model: modelFor("orchestrator"),
+      max_tokens: opts.maxTokens ?? 800,
+      system: systemParam,
+      messages: messages as Anthropic.MessageParam[],
+      tools: [
+        FLIGHT_TOOL,
+        FLIGHT_BOOK_TOOL,
+        HOTEL_TOOL,
+        HOTEL_BOOK_TOOL,
+        TEE_TIME_BOOK_TOOL,
+        RESTAURANT_BOOK_TOOL,
+        CAR_BOOK_TOOL,
+        TAVILY_SEARCH_TOOL,
+        WEB_SEARCH_TOOL,
+      ] as Anthropic.Tool[],
+    });
+
+    for await (const event of stream as unknown as AsyncIterable<Anthropic.MessageStreamEvent>) {
+      if (
+        event.type === "content_block_delta" &&
+        event.delta.type === "text_delta"
+      ) {
+        full += event.delta.text;
+        yield { type: "delta", text: event.delta.text };
+      }
+    }
+
+    const finalMessage = await stream.finalMessage();
+    if (finalMessage.stop_reason !== "tool_use") {
+      return full;
+    }
+
+    messages.push({
+      role: "assistant",
+      content: finalMessage.content as AnthropicMessage["content"],
+    });
+
+    const toolResults: Array<{
+      type: "tool_result";
+      tool_use_id: string;
+      content: string;
+    }> = [];
+    for (const block of finalMessage.content) {
+      if (block.type !== "tool_use") continue;
+      if (block.name === "web_search") continue;
+      yield {
+        type: "tool_start",
+        id: block.id,
+        tool: block.name,
+        label: toolStartLabel(block.name, block.input),
+      };
+      const result = await executeTool(block.name, block.input, {
+        tripId: opts.tripId,
+      });
+      let ok = true;
+      try {
+        const parsedResult = JSON.parse(result) as { error?: unknown };
+        if (parsedResult && typeof parsedResult.error === "string") ok = false;
+      } catch {
+        ok = false;
+      }
+      yield { type: "tool_end", id: block.id, tool: block.name, ok };
+
+      if (ok) {
+        if (block.name === "search_flights") {
+          const inp = block.input as { passengers?: number } | null;
+          const pax = typeof inp?.passengers === "number" ? inp.passengers : 1;
+          for (const card of parseFlightSearchResult(result, pax)) {
+            yield { type: "card", card };
+          }
+        } else if (block.name === "search_hotels") {
+          for (const card of parseHotelSearchResult(result)) {
+            yield { type: "card", card };
+          }
+        }
+      }
+
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: block.id,
+        content: result,
+      });
+    }
+    if (toolResults.length === 0) return full;
+    messages.push({ role: "user", content: toolResults });
+  }
+
+  return full;
+}
 
 export async function* streamReplyTokens(
   opts: StreamReplyOptions,

@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireTripAccess, requireUser } from "@/lib/auth";
-import { streamReplyTokens } from "@/lib/ai/streamReply";
+import { streamReplyEvents } from "@/lib/ai/streamReply";
 import { CONCIERGE_VOICE } from "@/lib/ai/prompts";
 import { processUserMessageBackground } from "@/lib/ai/conversation";
 import { nudge } from "@/lib/events";
 import { checkChatRate } from "@/lib/rate-limit";
+import type { ChatCard } from "@/lib/ai/chat-cards";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,33 +71,47 @@ export async function POST(
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (
-        event: { type: "delta"; text: string } | { type: "done"; full: string } | { type: "error"; message: string },
-      ) => {
+      type OutboundEvent =
+        | { type: "delta"; text: string }
+        | { type: "tool_start"; id: string; tool: string; label: string }
+        | { type: "tool_end"; id: string; tool: string; ok: boolean }
+        | { type: "card"; card: ChatCard }
+        | { type: "done"; full: string; cards: ChatCard[] }
+        | { type: "error"; message: string };
+
+      const send = (event: OutboundEvent) => {
         controller.enqueue(
           encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`),
         );
       };
 
       let full = "";
+      const cards: ChatCard[] = [];
       try {
-        const gen = streamReplyTokens({
+        const gen = streamReplyEvents({
           system: CONCIERGE_VOICE,
           cacheSystem: true,
           history,
           maxTokens: 1200,
           tripId,
         });
-        // Iterate to capture the return value (full text)
         // eslint-disable-next-line no-constant-condition
         while (true) {
           const { value, done } = await gen.next();
           if (done) {
-            full = value as string;
+            full = (value as string) ?? full;
             break;
           }
-          full += value as string;
-          send({ type: "delta", text: value as string });
+          const ev = value;
+          if (ev.type === "delta") {
+            full += ev.text;
+            send(ev);
+          } else if (ev.type === "card") {
+            cards.push(ev.card);
+            send(ev);
+          } else {
+            send(ev);
+          }
         }
 
         await db.chatMessage.create({
@@ -104,12 +119,15 @@ export async function POST(
             tripId,
             role: "ASSISTANT",
             content: full,
-            metadata: { kind: "stream" },
+            metadata: {
+              kind: "stream",
+              cards: cards.length > 0 ? cards : undefined,
+            },
           },
         });
         nudge(tripId);
 
-        send({ type: "done", full });
+        send({ type: "done", full, cards });
       } catch (err) {
         send({
           type: "error",
@@ -117,8 +135,6 @@ export async function POST(
         });
       } finally {
         controller.close();
-        // Now do the heavyweight structured extraction + downstream agents in
-        // the background. The user has already seen the conversational reply.
         void processUserMessageBackground({
           trip,
           userId: user.id,

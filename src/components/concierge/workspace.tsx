@@ -8,6 +8,7 @@ import { PushPrompt } from "./push-prompt";
 import { Button } from "@/components/ui/button";
 import { Eye, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
+import type { ChatCard } from "@/lib/ai/chat-cards";
 import type {
   ItineraryItemType,
   ConfirmationState,
@@ -219,12 +220,18 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
   }, [data]);
 
   const [streamingReply, setStreamingReply] = React.useState<string | null>(null);
+  const [streamingTools, setStreamingTools] = React.useState<
+    Array<{ id: string; tool: string; label: string; status: "running" | "done" | "failed" }>
+  >([]);
+  const [streamingCards, setStreamingCards] = React.useState<ChatCard[]>([]);
   const [sendingChat, setSendingChat] = React.useState(false);
 
   const sendStreamingMessage = React.useCallback(
     async (text: string) => {
       setSendingChat(true);
       setStreamingReply("");
+      setStreamingTools([]);
+      setStreamingCards([]);
       isStreamingRef.current = true;
 
       await qc.cancelQueries({ queryKey: ["workspace", tripId] });
@@ -280,8 +287,29 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
               if (evt.type === "delta") {
                 full += evt.text as string;
                 setStreamingReply(full);
+              } else if (evt.type === "tool_start") {
+                setStreamingTools((prev) => [
+                  ...prev,
+                  {
+                    id: evt.id as string,
+                    tool: evt.tool as string,
+                    label: evt.label as string,
+                    status: "running",
+                  },
+                ]);
+              } else if (evt.type === "tool_end") {
+                setStreamingTools((prev) =>
+                  prev.map((t) =>
+                    t.id === evt.id
+                      ? { ...t, status: evt.ok ? "done" : "failed" }
+                      : t,
+                  ),
+                );
+              } else if (evt.type === "card") {
+                setStreamingCards((prev) => [...prev, evt.card as ChatCard]);
               } else if (evt.type === "done") {
                 full = evt.full as string;
+                const finalCards = (evt.cards as ChatCard[] | undefined) ?? [];
                 // Optimistically inject the assistant reply into the
                 // workspace cache BEFORE clearing the streaming bubble.
                 // Without this there's a 200-500ms gap where the
@@ -300,7 +328,10 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
                               id: `streamed_${Date.now()}`,
                               role: "ASSISTANT" as ChatRole,
                               content: full,
-                              metadata: { kind: "stream" },
+                              metadata: {
+                                kind: "stream",
+                                cards: finalCards.length > 0 ? finalCards : undefined,
+                              },
                               createdAt: new Date().toISOString(),
                               author: null,
                             },
@@ -309,6 +340,8 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
                       : prev,
                 );
                 setStreamingReply(null);
+                setStreamingTools([]);
+                setStreamingCards([]);
               } else if (evt.type === "error") {
                 throw new Error(evt.message);
               }
@@ -323,6 +356,8 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       } finally {
         setSendingChat(false);
         setStreamingReply(null);
+        setStreamingTools([]);
+        setStreamingCards([]);
         // Release the SSE refetch lock on the next tick so any late
         // 'snapshot.changed' events from the streaming flow (e.g. the
         // assistant-persist nudge) get coalesced. The first event that
@@ -354,6 +389,8 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       onSend={(text) => void sendStreamingMessage(text)}
       sending={sendingChat}
       streamingReply={streamingReply}
+      streamingTools={streamingTools}
+      streamingCards={streamingCards}
       suggestions={suggestionsData?.suggestions ?? []}
     />
   );

@@ -21,6 +21,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, formatCurrency, initials, relativeTime } from "@/lib/utils";
 import { renderMarkdownBlock } from "@/lib/markdown";
+import {
+  ChatCardsList,
+  ToolIndicatorList,
+  type ToolIndicator,
+} from "./chat-cards";
+import type { ChatCard } from "@/lib/ai/chat-cards";
 import type {
   WorkspaceMessage,
   WorkspaceMe,
@@ -65,6 +71,8 @@ export function ConciergeChat({
   onSend,
   sending,
   streamingReply,
+  streamingTools,
+  streamingCards,
   suggestions: serverSuggestions,
 }: {
   tripId: string;
@@ -77,6 +85,8 @@ export function ConciergeChat({
   onSend: (text: string) => void;
   sending: boolean;
   streamingReply?: string | null;
+  streamingTools?: ToolIndicator[];
+  streamingCards?: ChatCard[];
   suggestions?: string[];
 }) {
   const [value, setValue] = React.useState("");
@@ -198,36 +208,31 @@ export function ConciergeChat({
               destinations={destinations}
               approval={approval}
               currentItineraryId={currentItineraryId}
+              onSendFollowUp={onSend}
             />
           ))}
-          {streamingReply !== undefined &&
-            streamingReply !== null &&
-            streamingReply.length > 0 && (
-              <ChatMessageView
-                meId={me.id}
-                tripId={tripId}
-                trip={trip}
-                me={me}
-                destinations={destinations}
-                approval={approval}
-                currentItineraryId={currentItineraryId}
-                isLatestAssistant={false}
-                message={{
-                  id: "streaming",
-                  role: "ASSISTANT",
-                  content: streamingReply,
-                  metadata: { streaming: true },
-                  createdAt: new Date().toISOString(),
-                  author: null,
-                }}
-              />
-            )}
-          {sending && (!streamingReply || streamingReply.length === 0) && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground pl-9">
-              <span className="size-1.5 rounded-full bg-[hsl(var(--copper))] animate-pulse-soft" />
-              <span className="size-1.5 rounded-full bg-[hsl(var(--copper))] animate-pulse-soft [animation-delay:120ms]" />
-              <span className="size-1.5 rounded-full bg-[hsl(var(--copper))] animate-pulse-soft [animation-delay:240ms]" />
-            </div>
+          {sending && (
+            <ChatMessageView
+              meId={me.id}
+              tripId={tripId}
+              trip={trip}
+              me={me}
+              destinations={destinations}
+              approval={approval}
+              currentItineraryId={currentItineraryId}
+              isLatestAssistant={false}
+              streamingTools={streamingTools}
+              streamingCards={streamingCards}
+              onSendFollowUp={onSend}
+              message={{
+                id: "streaming",
+                role: "ASSISTANT",
+                content: streamingReply ?? "",
+                metadata: { streaming: true },
+                createdAt: new Date().toISOString(),
+                author: null,
+              }}
+            />
           )}
           {showSuggestions && suggestions.length > 0 && (
             <div className="pt-2 flex flex-wrap gap-2">
@@ -305,6 +310,9 @@ function ChatMessageView({
   destinations,
   approval,
   currentItineraryId,
+  streamingTools,
+  streamingCards,
+  onSendFollowUp,
 }: {
   message: WorkspaceMessage;
   meId: string;
@@ -315,15 +323,29 @@ function ChatMessageView({
   destinations: WorkspaceDestinationOption[];
   approval: { approved: number; total: number; quorum: number };
   currentItineraryId: string | null;
+  streamingTools?: ToolIndicator[];
+  streamingCards?: ChatCard[];
+  onSendFollowUp?: (text: string) => void;
 }) {
   const isAssistant = message.role === "ASSISTANT";
   const isMe = message.author?.id === meId;
+  const isStreaming = Boolean(message.metadata?.streaming);
   const followUps =
     (message.metadata?.followUps as string[] | undefined) ?? null;
   const kind = message.metadata?.kind as string | undefined;
+  const persistedCards =
+    (message.metadata?.cards as ChatCard[] | undefined) ?? null;
+  const cards: ChatCard[] = isStreaming
+    ? streamingCards ?? []
+    : persistedCards ?? [];
+  const tools: ToolIndicator[] = isStreaming ? streamingTools ?? [] : [];
   const authorName = isAssistant
     ? "Concierge"
     : message.author?.name ?? "Member";
+
+  const hasContent = message.content.length > 0;
+  const showBubble = !isAssistant || hasContent;
+  const showTypingDots = isStreaming && !hasContent && tools.length === 0;
 
   return (
     <div className={cn("flex gap-3", isMe && "flex-row-reverse")}>
@@ -350,29 +372,48 @@ function ChatMessageView({
         {!isAssistant && !isMe && (
           <p className="text-[10px] text-muted-foreground">{authorName}</p>
         )}
-        <div
-          className={cn(
-            "inline-block rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words text-left",
-            isMe
-              ? "bg-surface-raised text-foreground border border-border"
-              : isAssistant
-                ? "bg-card/80 border border-border/70 text-foreground navy-border"
-                : "bg-surface-sunken text-foreground border border-border/60",
-          )}
-        >
-          {isAssistant ? (
-            <div
-              className="[&_ul]:my-1 [&_ol]:my-1"
-              dangerouslySetInnerHTML={{
-                __html: renderMarkdownBlock(message.content),
-              }}
-            />
-          ) : (
-            <span className="whitespace-pre-wrap">{message.content}</span>
-          )}
-        </div>
+        {showTypingDots && (
+          <div className="inline-flex items-center gap-1.5 px-3 py-2 rounded-2xl border border-border/70 bg-card/80">
+            <span className="size-1.5 rounded-full bg-[hsl(var(--copper))] animate-pulse-soft" />
+            <span className="size-1.5 rounded-full bg-[hsl(var(--copper))] animate-pulse-soft [animation-delay:120ms]" />
+            <span className="size-1.5 rounded-full bg-[hsl(var(--copper))] animate-pulse-soft [animation-delay:240ms]" />
+          </div>
+        )}
+        {isStreaming && tools.length > 0 && <ToolIndicatorList tools={tools} />}
+        {showBubble && (
+          <div
+            className={cn(
+              "inline-block rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words text-left",
+              isMe
+                ? "bg-surface-raised text-foreground border border-border"
+                : isAssistant
+                  ? "bg-card/80 border border-border/70 text-foreground navy-border"
+                  : "bg-surface-sunken text-foreground border border-border/60",
+            )}
+          >
+            {isAssistant ? (
+              isStreaming ? (
+                <span className="whitespace-pre-wrap">
+                  {message.content}
+                  <span className="inline-block w-1.5 h-3.5 ml-0.5 align-text-bottom bg-foreground/40 animate-pulse-soft" />
+                </span>
+              ) : (
+                <div
+                  className="[&_ul]:my-1 [&_ol]:my-1"
+                  dangerouslySetInnerHTML={{
+                    __html: renderMarkdownBlock(message.content),
+                  }}
+                />
+              )
+            ) : (
+              <span className="whitespace-pre-wrap">{message.content}</span>
+            )}
+          </div>
+        )}
 
-        {isAssistant && (
+        {isAssistant && cards.length > 0 && <ChatCardsList cards={cards} />}
+
+        {isAssistant && !isStreaming && (
           <InlineActions
             kind={kind}
             isLatestAssistant={isLatestAssistant}
@@ -388,26 +429,39 @@ function ChatMessageView({
           />
         )}
 
-        {followUps && followUps.length > 0 && (
+        {followUps && followUps.length > 0 && !isStreaming && (
           <div className={cn("flex flex-wrap gap-1.5", isMe && "justify-end")}>
-            {followUps.map((q, i) => (
-              <span
-                key={i}
-                className="text-[11px] px-2 py-1 rounded-full border border-border/70 bg-surface-raised/50 text-muted-foreground"
-              >
-                {q}
-              </span>
-            ))}
+            {followUps.map((q, i) =>
+              onSendFollowUp ? (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => onSendFollowUp(q)}
+                  className="text-[11px] px-2.5 py-1 rounded-full border border-border/70 bg-surface-raised/50 text-foreground/80 hover:bg-surface-raised hover:border-foreground/30 transition"
+                >
+                  {q}
+                </button>
+              ) : (
+                <span
+                  key={i}
+                  className="text-[11px] px-2 py-1 rounded-full border border-border/70 bg-surface-raised/50 text-muted-foreground"
+                >
+                  {q}
+                </span>
+              ),
+            )}
           </div>
         )}
-        <p
-          className={cn(
-            "text-[10px] text-muted-foreground/60",
-            isMe ? "text-right" : "text-left",
-          )}
-        >
-          {relativeTime(message.createdAt)}
-        </p>
+        {!isStreaming && (
+          <p
+            className={cn(
+              "text-[10px] text-muted-foreground/60",
+              isMe ? "text-right" : "text-left",
+            )}
+          >
+            {relativeTime(message.createdAt)}
+          </p>
+        )}
       </div>
     </div>
   );
