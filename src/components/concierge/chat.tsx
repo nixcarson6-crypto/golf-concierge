@@ -263,9 +263,9 @@ export function ConciergeChat({
                 submit();
               }
             }}
-            rows={2}
+            rows={3}
             placeholder="Describe what you want — or just say a tweak…"
-            className="bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl min-h-[64px] max-h-[200px]"
+            className="bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl min-h-[80px] max-h-[240px]"
             disabled={sending}
           />
           <div className="flex items-center justify-between px-3 pb-2.5">

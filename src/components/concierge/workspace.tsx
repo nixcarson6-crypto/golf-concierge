@@ -418,8 +418,8 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       <div className="container py-5">
         {/* Desktop: chat + quiet preview */}
         <div className="hidden lg:grid grid-cols-12 gap-5 h-[calc(100dvh-7rem)]">
-          <section className="col-span-7 min-h-0">{chat}</section>
-          <section className="col-span-5 min-h-0">{preview}</section>
+          <section className="col-span-8 min-h-0">{chat}</section>
+          <section className="col-span-4 min-h-0">{preview}</section>
         </div>
 
         {/* Mobile: chat full-width, single toggle button swaps to preview */}
