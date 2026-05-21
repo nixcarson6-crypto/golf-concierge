@@ -211,74 +211,53 @@ export function parseHotelSearchResult(raw: string): HotelCard[] {
 }
 
 /**
- * Build a deep link to the airline's "manage trip" page where the user
- * can paste the PNR and verify the booking on the airline's own site.
- * Returns null for unknown carriers — the card will hide the button.
+ * Build a link to the airline's "manage trip" landing page. Airlines
+ * have stopped honoring query-param pre-fill (it just lands on a 404),
+ * so we no longer try to deep-link the PNR — we send the user to the
+ * stable manage-trip page and they paste the PNR (which we copy to
+ * clipboard separately). Returns null for sandbox/test bookings where
+ * the PNR isn't claimable on the airline's side anyway.
  */
 export function airlineVerifyUrl(
   airline: string,
   airlineCode: string | null | undefined,
-  lastName: string | null | undefined,
-  pnr: string,
+  _lastName: string | null | undefined,
+  _pnr: string,
+  opts: { sandbox?: boolean } = {},
 ): { url: string; label: string } | null {
+  // No real booking exists on the airline's side for sandbox/test
+  // bookings — surfacing a verify button would just lead to "not found".
+  if (opts.sandbox) return null;
+
   const code = (airlineCode ?? "").toUpperCase();
   const name = (airline ?? "").toLowerCase();
-  const ln = encodeURIComponent((lastName ?? "").trim());
-  const ref = encodeURIComponent(pnr);
 
   if (code === "AA" || name.includes("american")) {
-    return {
-      url: `https://www.aa.com/reservation/find-your-reservation/find/?recordLocator=${ref}&lastName=${ln}`,
-      label: "Verify on aa.com",
-    };
+    return { url: "https://www.aa.com/managetrip/manage-trip.do", label: "Open aa.com" };
   }
   if (code === "DL" || name.includes("delta")) {
-    return {
-      url: `https://www.delta.com/mytrips/findTripsManageTripAction.action?confirmationNumber=${ref}&lastName=${ln}`,
-      label: "Verify on delta.com",
-    };
+    return { url: "https://www.delta.com/mytrips", label: "Open delta.com" };
   }
   if (code === "UA" || name.includes("united")) {
-    return {
-      url: `https://www.united.com/en/us/manageres/mytrips?confirmationNumber=${ref}&lastName=${ln}`,
-      label: "Verify on united.com",
-    };
+    return { url: "https://www.united.com/en/us/manageres/mytrips", label: "Open united.com" };
   }
   if (code === "WN" || name.includes("southwest")) {
-    return {
-      url: `https://www.southwest.com/air/manage-reservation/index.html?confirmationNumber=${ref}&lastName=${ln}`,
-      label: "Verify on southwest.com",
-    };
+    return { url: "https://www.southwest.com/air/manage-reservation/", label: "Open southwest.com" };
   }
   if (code === "AS" || name.includes("alaska")) {
-    return {
-      url: `https://www.alaskaair.com/booking/reservation-lookup?confirmationCode=${ref}&lastName=${ln}`,
-      label: "Verify on alaskaair.com",
-    };
+    return { url: "https://www.alaskaair.com/booking/reservation-lookup", label: "Open alaskaair.com" };
   }
   if (code === "B6" || name.includes("jetblue")) {
-    return {
-      url: `https://www.jetblue.com/manage-trips?recordLocator=${ref}&lastName=${ln}`,
-      label: "Verify on jetblue.com",
-    };
+    return { url: "https://www.jetblue.com/manage-trips", label: "Open jetblue.com" };
   }
   if (code === "F9" || name.includes("frontier")) {
-    return {
-      url: `https://www.flyfrontier.com/booking/my-trip?confirmationCode=${ref}&lastName=${ln}`,
-      label: "Verify on flyfrontier.com",
-    };
+    return { url: "https://www.flyfrontier.com/booking/my-trip", label: "Open flyfrontier.com" };
   }
   if (code === "NK" || name.includes("spirit")) {
-    return {
-      url: `https://www.spirit.com/check-in?recordLocator=${ref}&lastName=${ln}`,
-      label: "Verify on spirit.com",
-    };
+    return { url: "https://www.spirit.com/check-in", label: "Open spirit.com" };
   }
-  // Generic fallback — Google flights "manage your trip" search
-  return {
-    url: `https://www.google.com/search?q=${encodeURIComponent(`${airline} manage booking ${pnr}`)}`,
-    label: `Look up ${airline}`,
-  };
+  // Unknown carrier — return null so we just show in-app details.
+  return null;
 }
 
 /** Friendly progress label shown while a tool is running. */

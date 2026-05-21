@@ -187,6 +187,20 @@ export async function GET(
     })),
     bookings: bookings.map((b) => {
       const meta = (b.metadata ?? {}) as Record<string, unknown>;
+      const slices = Array.isArray(meta.bookedSlices)
+        ? (meta.bookedSlices as Array<Record<string, unknown>>).map((s) => ({
+            origin: (s.origin as string | undefined) ?? "",
+            destination: (s.destination as string | undefined) ?? "",
+            originName: (s.originName as string | undefined) ?? null,
+            destinationName: (s.destinationName as string | undefined) ?? null,
+            departing: (s.departing as string | undefined) ?? "",
+            arriving: (s.arriving as string | undefined) ?? "",
+            flightNumber: (s.flightNumber as string | undefined) ?? null,
+            marketingCarrier: (s.marketingCarrier as string | undefined) ?? null,
+            cabinClass: (s.cabinClass as string | undefined) ?? null,
+            stops: (s.stops as number | undefined) ?? 0,
+          }))
+        : null;
       return {
         id: b.id,
         type: b.type,
@@ -225,6 +239,10 @@ export async function GET(
           ((meta.passengers as Array<{ family_name?: string }> | undefined) ?? [])[0]
             ?.family_name ?? null,
         airlineCode: (meta.airlineCode as string | undefined) ?? null,
+        bookedSlices: slices,
+        isSandbox: Boolean(meta.isSandbox),
+        confirmedAt: b.confirmedAt?.toISOString() ?? null,
+        providerReference: b.providerReference,
       };
     }),
   });

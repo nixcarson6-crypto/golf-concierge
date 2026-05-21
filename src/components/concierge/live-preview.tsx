@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, formatCurrency, formatDateRange } from "@/lib/utils";
 import { airlineVerifyUrl } from "@/lib/ai/chat-cards";
+import { BookingDetailsDialog } from "./booking-details-dialog";
 import type {
   WorkspaceBooking,
   WorkspaceItinerary,
@@ -343,20 +344,21 @@ function ChecklistRow({ group }: { group: ChecklistGroup }) {
 
 function BookingDetail({
   booking,
-  category,
 }: {
   booking: WorkspaceBooking;
   category: ChecklistCategory;
 }) {
   const [copied, setCopied] = React.useState(false);
+  const [detailOpen, setDetailOpen] = React.useState(false);
 
   const verify =
-    category === "flight" && booking.confirmationCode && !booking.isStub
+    booking.confirmationCode && !booking.isStub
       ? airlineVerifyUrl(
           booking.vendor ?? booking.title,
           booking.airlineCode,
           booking.leadLastName,
           booking.confirmationCode,
+          { sandbox: booking.isSandbox },
         )
       : null;
 
@@ -373,6 +375,10 @@ function BookingDetail({
   };
 
   const titleLine = booking.summary ?? booking.title;
+  // Show 'View details' for flights (we have rich slice data) and as a
+  // fallback for any booking with a confirmation. It's the primary trust
+  // signal — customers should always be able to open a full in-app view.
+  const canShowDetails = Boolean(booking.confirmationCode);
 
   return (
     <div className="pt-2 first:pt-0 space-y-1.5">
@@ -394,19 +400,40 @@ function BookingDetail({
               </span>
             )}
           </button>
-          {verify && (
-            <a
-              href={verify.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium border border-border bg-surface-raised hover:bg-surface-raised/80 hover:border-foreground/30 transition shrink-0"
-            >
-              {verify.label}
-              <ExternalLink className="size-3" />
-            </a>
-          )}
+          <div className="flex items-center gap-1.5">
+            {canShowDetails && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDetailOpen(true);
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium border border-[hsl(var(--navy))]/40 bg-[hsl(var(--navy))]/8 text-[hsl(var(--navy))] hover:bg-[hsl(var(--navy))]/15 transition shrink-0"
+              >
+                View details
+              </button>
+            )}
+            {verify && (
+              <a
+                href={verify.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium border border-border bg-surface-raised hover:bg-surface-raised/80 hover:border-foreground/30 transition shrink-0"
+                title="Copy your confirmation first, then paste it on the airline's manage-trip page."
+              >
+                {verify.label}
+                <ExternalLink className="size-3" />
+              </a>
+            )}
+          </div>
         </div>
+      )}
+
+      {booking.isSandbox && (
+        <p className="text-[10px] text-[hsl(var(--copper))]/90">
+          Sandbox test booking — real airline verification activates with a live Duffel key.
+        </p>
       )}
 
       {booking.partyNames && booking.partyNames.length > 0 && (
@@ -422,7 +449,7 @@ function BookingDetail({
         </div>
       )}
 
-      {booking.contactEmail && !booking.isStub && (
+      {booking.contactEmail && !booking.isStub && !booking.isSandbox && (
         <p className="text-[10px] text-muted-foreground">
           Confirmation will be emailed to {booking.contactEmail}
         </p>
@@ -431,6 +458,14 @@ function BookingDetail({
         <p className="text-[10px] text-[hsl(var(--copper))]/90">
           Pencilled in — we&apos;ll lock this with the partner once API access lands.
         </p>
+      )}
+
+      {canShowDetails && (
+        <BookingDetailsDialog
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+          booking={booking}
+        />
       )}
     </div>
   );

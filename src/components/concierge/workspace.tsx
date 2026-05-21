@@ -114,6 +114,19 @@ export type WorkspaceDestinationOption = {
   estimatedPerPersonCost: number | null;
 };
 
+export type WorkspaceBookedSlice = {
+  origin: string;
+  destination: string;
+  originName: string | null;
+  destinationName: string | null;
+  departing: string;
+  arriving: string;
+  flightNumber: string | null;
+  marketingCarrier: string | null;
+  cabinClass: string | null;
+  stops: number;
+};
+
 export type WorkspaceBooking = {
   id: string;
   type: ItineraryItemType;
@@ -132,6 +145,10 @@ export type WorkspaceBooking = {
   contactEmail: string | null;
   leadLastName: string | null;
   airlineCode: string | null;
+  bookedSlices: WorkspaceBookedSlice[] | null;
+  isSandbox: boolean;
+  confirmedAt: string | null;
+  providerReference: string | null;
 };
 
 type Props = { tripId: string; vapidPublicKey?: string | null };

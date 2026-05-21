@@ -5,6 +5,7 @@
  */
 
 import { db } from "@/lib/db";
+import type { BookedSlice } from "@/lib/bookings/providers/duffel-book";
 
 export type RecordFlightArgs = {
   tripId: string;
@@ -13,8 +14,12 @@ export type RecordFlightArgs = {
   totalAmount: number; // cents
   currency: string;
   airline: string;
+  airlineCode?: string | null;
   passengers: number;
+  passengerNames?: string[];
   slicesSummary: string;
+  bookedSlices?: BookedSlice[];
+  isSandbox?: boolean;
   rationale?: string;
 };
 
@@ -66,7 +71,11 @@ export async function recordFlightBooking(args: RecordFlightArgs) {
       confirmedAt: new Date(),
       metadata: {
         airline: args.airline,
+        airlineCode: args.airlineCode ?? null,
         slicesSummary: args.slicesSummary,
+        passengerNames: args.passengerNames ?? [],
+        bookedSlices: args.bookedSlices ?? [],
+        isSandbox: args.isSandbox ?? false,
       },
     },
   });

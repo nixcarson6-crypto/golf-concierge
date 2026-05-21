@@ -636,9 +636,13 @@ function buildConfirmationCard(
     const totalUSD = n(parsed.totalUSD) ?? 0;
     const slicesSummary = s(parsed.slicesSummary) ?? "";
     const contactEmail = s(inp.passengers?.[0]?.email);
-    const verify = isStub
-      ? null
-      : airlineVerifyUrl(airline, null, leadLastName, bookingReference);
+    const isSandbox = Boolean(parsed.isSandbox);
+    const verify =
+      isStub || isSandbox
+        ? null
+        : airlineVerifyUrl(airline, null, leadLastName, bookingReference, {
+            sandbox: isSandbox,
+          });
     return {
       kind: "booking_confirmation",
       bookingType: "flight",
@@ -1058,8 +1062,12 @@ async function executeBookFlight(
       totalAmount: result.totalAmount,
       currency: result.currency,
       airline: result.airline,
+      airlineCode: result.airlineCode ?? null,
       passengers: result.passengers,
+      passengerNames: result.passengerNames,
       slicesSummary: result.slicesSummary,
+      bookedSlices: result.bookedSlices,
+      isSandbox: result.isSandbox,
     });
   } catch (err) {
     return JSON.stringify({
@@ -1082,7 +1090,10 @@ async function executeBookFlight(
     totalUSD: Math.round(result.totalAmount / 100),
     currency: result.currency,
     slicesSummary: result.slicesSummary,
-    note: "Saved to trip itinerary. Surface the booking reference to the user.",
+    isSandbox: result.isSandbox,
+    note: result.isSandbox
+      ? "Saved to trip itinerary. This is a Duffel sandbox booking — surface the confirmation honestly but note real airline verification activates with a live key."
+      : "Saved to trip itinerary. Surface the booking reference to the user.",
   });
 }
 
