@@ -89,10 +89,19 @@ export async function POST(
       let full = "";
       const cards: ChatCard[] = [];
       try {
-        const liveContext = await buildTripContext({
-          tripId,
-          currentUserId: user.id,
-        });
+        // Build the live context (trip + user profile) but never let it
+        // kill the stream. If the DB schema is stale or the query throws
+        // for any reason we just continue without the context — the AI
+        // can still reply, it just won't have profile auto-fill.
+        let liveContext: string | undefined;
+        try {
+          liveContext = await buildTripContext({
+            tripId,
+            currentUserId: user.id,
+          });
+        } catch (err) {
+          console.error("[trip-context] failed, continuing without it:", err);
+        }
         const gen = streamReplyEvents({
           system: CONCIERGE_VOICE,
           liveContext,
