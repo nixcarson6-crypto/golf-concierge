@@ -7,6 +7,11 @@ import type { TripRole } from "@prisma/client";
  * Ensures the requesting Clerk user is mirrored to a local `User` row.
  * The Clerk webhook also handles this, but we sync on-demand to remove a
  * race condition on the very first request after sign-up.
+ *
+ * Also handles the case where the Clerk user id changes for the same email
+ * (e.g. keyless dev mode mints a fresh user id each session, or a user is
+ * deleted + recreated in Clerk) — we rebind the existing User row to the
+ * new clerkUserId instead of failing on the unique email constraint.
  */
 export async function getOrCreateUser() {
   const { userId } = await auth();
@@ -24,23 +29,26 @@ export async function getOrCreateUser() {
 
   if (!primaryEmail) return null;
 
-  return db.user.upsert({
-    where: { clerkUserId: userId },
-    create: {
+  const name =
+    [clerk.firstName, clerk.lastName].filter(Boolean).join(" ").trim() ||
+    clerk.username ||
+    null;
+
+  const existingByEmail = await db.user.findUnique({
+    where: { email: primaryEmail },
+  });
+  if (existingByEmail) {
+    return db.user.update({
+      where: { id: existingByEmail.id },
+      data: { clerkUserId: userId, name, imageUrl: clerk.imageUrl },
+    });
+  }
+
+  return db.user.create({
+    data: {
       clerkUserId: userId,
       email: primaryEmail,
-      name:
-        [clerk.firstName, clerk.lastName].filter(Boolean).join(" ").trim() ||
-        clerk.username ||
-        null,
-      imageUrl: clerk.imageUrl,
-    },
-    update: {
-      email: primaryEmail,
-      name:
-        [clerk.firstName, clerk.lastName].filter(Boolean).join(" ").trim() ||
-        clerk.username ||
-        null,
+      name,
       imageUrl: clerk.imageUrl,
     },
   });
