@@ -201,6 +201,15 @@ export async function GET(
             stops: (s.stops as number | undefined) ?? 0,
           }))
         : null;
+      // Sandbox detection: prefer the explicit metadata flag, but also
+      // infer from the Duffel order id prefix so bookings made BEFORE
+      // we started writing the flag are still flagged correctly.
+      const explicitSandbox = Boolean(meta.isSandbox);
+      const orderId =
+        (meta.duffelOrderId as string | undefined) ?? b.providerReference ?? "";
+      const inferredSandbox =
+        orderId.startsWith("ord_test_") || orderId.includes("_test_");
+      const isSandbox = explicitSandbox || inferredSandbox;
       return {
         id: b.id,
         type: b.type,
@@ -240,7 +249,7 @@ export async function GET(
             ?.family_name ?? null,
         airlineCode: (meta.airlineCode as string | undefined) ?? null,
         bookedSlices: slices,
-        isSandbox: Boolean(meta.isSandbox),
+        isSandbox,
         confirmedAt: b.confirmedAt?.toISOString() ?? null,
         providerReference: b.providerReference,
       };
