@@ -518,39 +518,22 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     />
   );
 
+  // The quiz is the front door now. The chat workspace has been the
+  // source of repeated confusion ("It says it booked but I see nothing")
+  // because chat narrative != real booking. We render LivePreview as
+  // the full result page so what the customer sees IS the trip — real
+  // flights to click+book, real bookings as they happen, no
+  // conversational text pretending things are confirmed when they
+  // aren't. The chat component is retained in the codebase for power
+  // users / future re-introduction but no longer rendered here.
+  void chat;
+
   return (
     <>
       <PushPrompt vapidKey={vapidPublicKey ?? null} />
 
       <div className="container py-5">
-        {/* Desktop: chat + quiet preview */}
-        <div className="hidden lg:grid grid-cols-12 gap-5 h-[calc(100dvh-7rem)]">
-          <section className="col-span-8 min-h-0">{chat}</section>
-          <section className="col-span-4 min-h-0">{preview}</section>
-        </div>
-
-        {/* Mobile: chat full-width, single toggle button swaps to preview */}
-        <div className="lg:hidden h-[calc(100dvh-10rem)] relative">
-          {mobileView === "chat" ? chat : preview}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              setMobileView((v) => (v === "chat" ? "preview" : "chat"))
-            }
-            className="absolute top-3 right-3 z-10 bg-surface-raised/85 backdrop-blur"
-          >
-            {mobileView === "chat" ? (
-              <>
-                <Eye className="size-4" /> Preview
-              </>
-            ) : (
-              <>
-                <MessageSquare className="size-4" /> Chat
-              </>
-            )}
-          </Button>
-        </div>
+        <div className="mx-auto max-w-3xl h-[calc(100dvh-7rem)]">{preview}</div>
       </div>
     </>
   );

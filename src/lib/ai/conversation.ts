@@ -467,6 +467,21 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     const cut = s.split(/,|\s+and\s+/i)[0];
     if (cut && cut.length >= 3) s = cut.trim();
   }
+  // Reject anything that doesn't look like an actual place name —
+  // pronoun-only fragments ("I want", "we should", "go somewhere"),
+  // single short words that are obviously not a place, etc. When in
+  // doubt, return null so the build endpoint falls back to "Surprise
+  // me" mode and runs the destination agent. Far better than letting
+  // "I want" become the trip's destination.
+  if (s.length < 3) return null;
+  const garbagePatterns = [
+    /^(i|we|us|me|you|they)$/i,
+    /^(want|need|wanna|like)$/i,
+    /^(go|here|there|somewhere|anywhere|wherever)$/i,
+    /^(maybe|idk|dunno|whatever|surprise\s+me)$/i,
+    /^(nice|good|great|fun|cool)$/i,
+  ];
+  if (garbagePatterns.some((re) => re.test(s))) return null;
   return s.length > 0 ? s : null;
 }
 

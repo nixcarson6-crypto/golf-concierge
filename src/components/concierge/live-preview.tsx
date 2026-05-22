@@ -95,8 +95,11 @@ export function LivePreview({
             me={me}
           />
         )}
+        {itinerary && itinerary.items.length > 0 && (
+          <ItineraryDaysSection itinerary={itinerary} />
+        )}
         {groups.length === 0 ? (
-          !trip.suggestedFlights ? (
+          !trip.suggestedFlights && (!itinerary || itinerary.items.length === 0) ? (
             <ChecklistEmpty />
           ) : null
         ) : (
@@ -782,6 +785,137 @@ function SuggestedFlightsSection({
         />
       )}
     </>
+  );
+}
+
+function ItineraryDaysSection({
+  itinerary,
+}: {
+  itinerary: WorkspaceItinerary;
+}) {
+  // Group by date (YYYY-MM-DD); items without a date go to "Trip plan".
+  const byDay = React.useMemo(() => {
+    const map = new Map<string, typeof itinerary.items>();
+    for (const it of itinerary.items) {
+      const dayKey = it.startTime
+        ? new Date(it.startTime).toISOString().slice(0, 10)
+        : "no-date";
+      const list = map.get(dayKey) ?? [];
+      list.push(it);
+      map.set(dayKey, list);
+    }
+    // Sort items within each day by start time.
+    for (const [, list] of map) {
+      list.sort((a, b) => {
+        if (!a.startTime) return 1;
+        if (!b.startTime) return -1;
+        return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+      });
+    }
+    // Sort days chronologically; "no-date" goes last.
+    return [...map.entries()].sort(([a], [b]) => {
+      if (a === "no-date") return 1;
+      if (b === "no-date") return -1;
+      return a.localeCompare(b);
+    });
+  }, [itinerary]);
+
+  const fmtDay = (key: string): string => {
+    if (key === "no-date") return "Trip plan";
+    const d = new Date(key);
+    return d.toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const fmtTime = (iso: string | null): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const typeGlyph: Record<string, string> = {
+    FLIGHT: "✈️",
+    HOTEL: "🏨",
+    GOLF: "⛳",
+    MEAL: "🍽️",
+    TRANSPORT: "🚗",
+    EXPERIENCE: "✨",
+    SPA: "💆",
+    OTHER: "📍",
+  };
+
+  return (
+    <div className="px-4 pt-4 pb-3 space-y-4">
+      <div className="flex items-center justify-between px-1">
+        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          Your trip plan
+        </p>
+        {itinerary.perPersonCost != null && (
+          <p className="text-[10px] text-muted-foreground tabular-nums">
+            ${Math.round(itinerary.perPersonCost).toLocaleString()} pp est.
+          </p>
+        )}
+      </div>
+      {byDay.map(([dayKey, items]) => (
+        <div key={dayKey} className="space-y-1.5">
+          <p className="text-xs font-semibold text-foreground/80 px-1">
+            {fmtDay(dayKey)}
+          </p>
+          <div className="space-y-1.5">
+            {items.map((it) => {
+              const time = fmtTime(it.startTime);
+              const glyph = typeGlyph[it.type] ?? "📍";
+              return (
+                <div
+                  key={it.id}
+                  className="rounded-xl border border-border/60 bg-surface-raised/60 px-3 py-2.5"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-lg leading-none shrink-0 mt-0.5">
+                      {glyph}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <p className="text-sm font-medium leading-snug truncate">
+                          {it.title}
+                        </p>
+                        {time && (
+                          <p className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                            {time}
+                          </p>
+                        )}
+                      </div>
+                      {it.location && (
+                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                          {it.location}
+                        </p>
+                      )}
+                      {it.description && (
+                        <p className="text-[11px] text-foreground/70 mt-1 leading-snug line-clamp-2">
+                          {it.description}
+                        </p>
+                      )}
+                      {it.cost != null && it.cost > 0 && (
+                        <p className="text-[10px] text-muted-foreground tabular-nums mt-1">
+                          ${Math.round(it.cost / 100).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
