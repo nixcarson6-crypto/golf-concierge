@@ -130,7 +130,129 @@ export function LivePreview({
           </div>
         )}
       </ScrollArea>
+      <BookAllPanel
+        tripId={tripId}
+        bookings={bookings}
+        itinerary={itinerary}
+        suggestedFlights={trip.suggestedFlights}
+      />
       <CartFooter tripId={tripId} bookings={bookings} />
+    </div>
+  );
+}
+
+/**
+ * "Book all my reservations" CTA. Shows on quiz-built trips with an
+ * itinerary but no bookings yet. One click iterates every actionable
+ * item through its provider integration via /book-all. Real partners
+ * (Duffel) issue real confirmations; pending partners (Hotelbeds,
+ * Lightspeed) record stub bookings that flip live once those keys
+ * land. Hides itself once bookings exist — the CartFooter (payment
+ * CTA) takes over from there.
+ */
+function BookAllPanel({
+  tripId,
+  bookings,
+  itinerary,
+  suggestedFlights,
+}: {
+  tripId: string;
+  bookings: WorkspaceBooking[];
+  itinerary: WorkspaceItinerary | null;
+  suggestedFlights: WorkspaceTrip["suggestedFlights"];
+}) {
+  const qc = useQueryClient();
+  const [submitting, setSubmitting] = React.useState(false);
+
+  // Hide once the trip has any confirmed booking — the payment
+  // CartFooter takes over.
+  const anyBooked = bookings.some((b) => b.status === "CONFIRMED");
+  if (anyBooked) return null;
+
+  // Need at least an itinerary OR suggested flights to book anything.
+  const hasSomething =
+    (itinerary && itinerary.items.length > 0) ||
+    (suggestedFlights && suggestedFlights.offers.length > 0);
+  if (!hasSomething) return null;
+
+  const bookAll = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/book-all`, {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        needsProfile?: boolean;
+        error?: string;
+        outcomes?: Array<{
+          category: string;
+          status: string;
+          title: string;
+          detail?: string;
+        }>;
+      } | null;
+      if (!res.ok || !data?.ok) {
+        if (data?.needsProfile) {
+          toast.error(
+            data.error ??
+              "Fill in your traveler profile first, then re-run Book All.",
+          );
+        } else {
+          toast.error(data?.error ?? "Couldn't book the trip.");
+        }
+        return;
+      }
+      const booked = data.outcomes?.filter((o) => o.status === "booked").length ?? 0;
+      const pencilled =
+        data.outcomes?.filter((o) => o.status === "pencilled").length ?? 0;
+      const failed =
+        data.outcomes?.filter((o) => o.status === "failed").length ?? 0;
+      if (failed > 0) {
+        toast.error(
+          `Booked ${booked}, pencilled ${pencilled}, ${failed} failed — check the workspace.`,
+        );
+      } else {
+        toast.success(
+          `Trip locked in: ${booked} confirmed${pencilled > 0 ? `, ${pencilled} pencilled` : ""}.`,
+        );
+      }
+      void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-border/60 bg-[hsl(var(--copper))]/10 px-5 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            Ready to lock it in?
+          </p>
+          <p className="text-sm text-foreground/85 leading-snug mt-0.5">
+            One click — flights, lodging, golf, dining, transport.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          onClick={bookAll}
+          disabled={submitting}
+          className="shrink-0 bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="size-4 mr-1.5 animate-spin" />
+              Booking…
+            </>
+          ) : (
+            "Book all"
+          )}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -565,16 +687,13 @@ function SuggestedFlightsSection({
     null,
   );
 
-  // Auto-open the booking modal when the user just landed here from
-  // the quiz (?autoBook=1). The "best fit" offer (first in the list)
-  // is pre-selected; for users with a complete saved profile this is
-  // effectively a one-click confirm. We strip the query param right
-  // after so a refresh doesn't re-trigger.
+  // Auto-open used to fire from ?autoBook=1 — removed. The user wants
+  // to see the result page first, swap items they don't like, then hit
+  // the "Book All" CTA when they're ready. We still strip the URL
+  // param if present so old bookmarks don't keep re-triggering once
+  // the new flow ships.
   React.useEffect(() => {
     if (searchParams?.get("autoBook") !== "1") return;
-    if (bookingOffer || activeOffer) return;
-    if (!suggested.offers.length) return;
-    setBookingOffer(suggested.offers[0]);
     const url = new URL(window.location.href);
     url.searchParams.delete("autoBook");
     router.replace(url.pathname + url.search);
@@ -1060,6 +1179,70 @@ function ItineraryItemDialog({
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(null);
   const [photoLoading, setPhotoLoading] = React.useState(false);
   const [photoFailed, setPhotoFailed] = React.useState(false);
+  const [swapping, setSwapping] = React.useState(false);
+  const [swapApplying, setSwapApplying] = React.useState(false);
+
+  type Alternative = {
+    name: string;
+    description?: string;
+    location?: string;
+    estimatedCostUSD?: number;
+    why?: string;
+  };
+  const [swapAlternatives, setSwapAlternatives] = React.useState<
+    Alternative[] | null
+  >(null);
+  const qc = useQueryClient();
+
+  const openSwap = async () => {
+    if (swapping) return;
+    setSwapping(true);
+    try {
+      const res = await fetch(
+        `/api/trips/${tripId}/itinerary-items/${item.id}/swap`,
+      );
+      const data = (await res.json().catch(() => null)) as {
+        alternatives?: Alternative[];
+        error?: string;
+      } | null;
+      if (!res.ok || !data?.alternatives) {
+        toast.error(data?.error ?? "Couldn't fetch alternatives.");
+        return;
+      }
+      setSwapAlternatives(data.alternatives);
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setSwapping(false);
+    }
+  };
+
+  const applySwap = async (alt: Alternative) => {
+    if (swapApplying) return;
+    setSwapApplying(true);
+    try {
+      const res = await fetch(
+        `/api/trips/${tripId}/itinerary-items/${item.id}/swap`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(alt),
+        },
+      );
+      if (!res.ok) {
+        toast.error("Couldn't apply the swap.");
+        return;
+      }
+      toast.success(`Swapped to ${alt.name}.`);
+      setSwapAlternatives(null);
+      onOpenChange(false);
+      void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setSwapApplying(false);
+    }
+  };
 
   // Fetch a Google Places hero photo when the dialog opens. We bias the
   // search with the location string (e.g. "Drum & Quill Pub Village of
@@ -1216,26 +1399,88 @@ function ItineraryItemDialog({
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
-              disabled={deleting}
+              disabled={deleting || swapping}
               className="shrink-0"
             >
               Close
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={deleteItem}
-              disabled={deleting}
-              className="shrink-0 whitespace-nowrap text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/10 border-[hsl(var(--destructive))]/30"
-            >
-              {deleting ? (
-                <Loader2 className="size-3 mr-1.5 animate-spin" />
-              ) : (
-                <Trash2 className="size-3 mr-1.5" />
-              )}
-              Remove from trip
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openSwap}
+                disabled={deleting || swapping}
+                className="shrink-0 whitespace-nowrap"
+              >
+                {swapping ? (
+                  <Loader2 className="size-3 mr-1.5 animate-spin" />
+                ) : null}
+                Find alternative
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={deleteItem}
+                disabled={deleting || swapping}
+                className="shrink-0 whitespace-nowrap text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/10 border-[hsl(var(--destructive))]/30"
+              >
+                {deleting ? (
+                  <Loader2 className="size-3 mr-1.5 animate-spin" />
+                ) : (
+                  <Trash2 className="size-3 mr-1.5" />
+                )}
+                Remove
+              </Button>
+            </div>
           </section>
+          {swapAlternatives && (
+            <section className="rounded-2xl border border-[hsl(var(--copper))]/30 bg-[hsl(var(--copper))]/5 p-4 space-y-2">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+                Pick an alternative
+              </p>
+              {swapAlternatives.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No alternatives came back — try again or use Remove.
+                </p>
+              )}
+              {swapAlternatives.map((alt, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => applySwap(alt)}
+                  disabled={swapApplying}
+                  className="w-full text-left rounded-xl border border-border/60 bg-surface-raised/70 p-3 hover:border-[hsl(var(--copper))]/50 hover:bg-surface-raised transition disabled:opacity-50"
+                >
+                  <div className="flex items-baseline justify-between gap-2 mb-1">
+                    <p className="font-semibold text-sm leading-snug">
+                      {alt.name}
+                    </p>
+                    {alt.estimatedCostUSD != null && (
+                      <p className="text-xs font-medium tabular-nums shrink-0">
+                        ${alt.estimatedCostUSD.toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                  {alt.location && (
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {alt.location}
+                    </p>
+                  )}
+                  <p className="text-[11px] text-foreground/75 mt-1 leading-snug">
+                    {alt.why ?? alt.description}
+                  </p>
+                </button>
+              ))}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSwapAlternatives(null)}
+                className="w-full mt-1"
+              >
+                Cancel swap
+              </Button>
+            </section>
+          )}
         </div>
       </DialogContent>
     </Dialog>
