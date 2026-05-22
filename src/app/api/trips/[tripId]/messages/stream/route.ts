@@ -107,17 +107,16 @@ export async function POST(
           liveContext,
           cacheSystem: true,
           history,
-          maxTokens: 1200,
+          maxTokens: 2000,
           tripId,
           userId: user.id,
         });
         // Hard cap on a single generator step so a wedged tool (e.g.
         // Duffel hanging, Anthropic deadlocked, Prisma stuck on a dead
-        // connection) can't silently freeze the whole stream. The
-        // client-side silence watchdog gives us a second line of
-        // defence at 30s; this server-side cap fires earlier so we
-        // get to send a clean error event before the connection dies.
-        const STEP_TIMEOUT_MS = 25_000;
+        // connection) can't silently freeze the whole stream. 60 s gives
+        // enough room for the 3-round "book → expire → re-search → present"
+        // loop where a new Anthropic stream must start in round 3.
+        const STEP_TIMEOUT_MS = 60_000;
         const stepWithTimeout = async () => {
           let timer: ReturnType<typeof setTimeout> | null = null;
           const timeout = new Promise<never>((_, reject) => {
@@ -171,6 +170,28 @@ export async function POST(
 
         send({ type: "done", full, cards });
       } catch (err) {
+        // If the AI said something before the error, save it so the
+        // customer can at least read what was streamed rather than seeing
+        // a blank chat bubble. Then send the visible error beneath it.
+        if (full.trim()) {
+          try {
+            await db.chatMessage.create({
+              data: {
+                tripId,
+                role: "ASSISTANT",
+                content: full,
+                metadata: {
+                  kind: "stream",
+                  cards: cards.length > 0 ? cards : undefined,
+                  interrupted: true,
+                },
+              },
+            });
+            nudge(tripId);
+          } catch {
+            // best-effort — don't let a DB write hide the original error
+          }
+        }
         send({
           type: "error",
           message: err instanceof Error ? err.message : "stream failed",
