@@ -5,50 +5,33 @@ import { db } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 /**
- * Post-login entry: drop the user straight into a chat.
- * - If they have any trips, jump to the most recent.
- * - If they don't, spin up a blank "Untitled trip" so first-timers also
- *   land in the concierge instead of an empty list.
+ * Post-login entry routing:
+ *  - If the user has a fully-built trip (status past DRAFT), open the
+ *    most recent one in the workspace.
+ *  - If they only have a half-finished DRAFT, resume the quiz where
+ *    they left off (still no itinerary, so /build is the right place).
+ *  - First-timers: go to /trips/new which creates a fresh DRAFT and
+ *    bounces into the quiz — no more chat-seeded empty trips.
  */
 export default async function DashboardPage() {
   const user = await requireUser();
 
-  const latest = await db.trip.findFirst({
+  const built = await db.trip.findFirst({
     where: {
       OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
+      status: { not: "DRAFT" },
     },
     orderBy: { updatedAt: "desc" },
     select: { id: true },
   });
+  if (built) redirect(`/trips/${built.id}`);
 
-  if (latest) redirect(`/trips/${latest.id}`);
-
-  const trip = await db.trip.create({
-    data: {
-      ownerId: user.id,
-      title: "Untitled trip",
-      status: "DRAFT",
-      members: {
-        create: {
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          role: "OWNER",
-          joinedAt: new Date(),
-          approvalStatus: "APPROVED",
-        },
-      },
-      chatMessages: {
-        create: {
-          userId: user.id,
-          role: "ASSISTANT",
-          content:
-            "Welcome — tell me about the trip. Where you're thinking, when, how many guys, the vibe, and any non-negotiables. I'll take it from there.",
-        },
-      },
-    },
+  const draft = await db.trip.findFirst({
+    where: { ownerId: user.id, status: "DRAFT" },
+    orderBy: { updatedAt: "desc" },
     select: { id: true },
   });
+  if (draft) redirect(`/build/${draft.id}`);
 
-  redirect(`/trips/${trip.id}`);
+  redirect("/trips/new");
 }

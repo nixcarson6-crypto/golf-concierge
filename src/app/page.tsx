@@ -6,7 +6,11 @@ import { Badge } from "@/components/ui/badge";
 
 export default async function LandingPage() {
   const { userId } = await auth();
-  const primaryHref = userId ? "/dashboard" : "/sign-up";
+  // "Start a trip" jumps straight to a fresh quiz when the user is
+  // signed in. The /trips/new route seeds a DRAFT trip then redirects
+  // to /build/[id] where the questions start. For signed-out users,
+  // /sign-up bounces back here after auth.
+  const primaryHref = userId ? "/trips/new" : "/sign-up";
 
   return (
     <main className="relative min-h-dvh">
