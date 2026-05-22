@@ -393,7 +393,20 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
                 setStreamingTools([]);
                 setStreamingCards([]);
               } else if (evt.type === "error") {
-                throw new Error(evt.message);
+                // DON'T throw and rollback the optimistic user message —
+                // that's what made the chat look silent. The server's
+                // catch block has already persisted a fallback assistant
+                // reply ("I hit a snag..." or the partial stream so far),
+                // so we keep the user's message in place, surface a
+                // toast, and let the background refetch swap in the
+                // fallback reply. Cancel the reader so we exit cleanly.
+                toast.error(
+                  typeof evt.message === "string" && evt.message
+                    ? evt.message
+                    : "Concierge hit a snag — see the reply below.",
+                );
+                void reader.cancel().catch(() => {});
+                break;
               }
             } catch {
               // ignore malformed events
@@ -401,7 +414,9 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
           }
         }
       } catch (err) {
-        if (previous) qc.setQueryData(["workspace", tripId], previous);
+        // True connection failure (network blip, server crash). Keep the
+        // user's message in the cache — the server still has it and the
+        // refetch will sync any partial assistant reply or fallback.
         console.error("[chat stream]", err);
         toast.error(
           err instanceof Error
@@ -409,6 +424,8 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
             : "Concierge didn't respond. Try again.",
         );
       } finally {
+        // Force a refetch so any fallback reply the server saved shows up.
+        void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
         setSendingChat(false);
         setStreamingReply(null);
         setStreamingTools([]);

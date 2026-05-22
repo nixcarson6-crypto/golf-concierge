@@ -187,31 +187,37 @@ export async function POST(
 
         send({ type: "done", full: finalContent, cards });
       } catch (err) {
-        // If the AI said something before the error, save it so the
-        // customer can at least read what was streamed rather than seeing
-        // a blank chat bubble. Then send the visible error beneath it.
-        if (full.trim()) {
-          try {
-            await db.chatMessage.create({
-              data: {
-                tripId,
-                role: "ASSISTANT",
-                content: full,
-                metadata: {
-                  kind: "stream",
-                  cards: cards.length > 0 ? cards : undefined,
-                  interrupted: true,
-                },
+        // ALWAYS persist an assistant message on error, even when no text
+        // was streamed. Without this the user's message has no reply in
+        // DB — the chat shows silence on the next refetch and the AI
+        // sees an unanswered user message on the next turn (which makes
+        // it loop). Save the partial stream if we have one, otherwise a
+        // visible explanation of the snag.
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const fallbackContent = full.trim()
+          ? full
+          : `I hit a snag mid-thought (${errMsg.slice(0, 140)}). Try that again — usually it goes through on retry.`;
+        try {
+          await db.chatMessage.create({
+            data: {
+              tripId,
+              role: "ASSISTANT",
+              content: fallbackContent,
+              metadata: {
+                kind: "stream",
+                cards: cards.length > 0 ? cards : undefined,
+                interrupted: true,
+                errorReason: errMsg.slice(0, 300),
               },
-            });
-            nudge(tripId);
-          } catch {
-            // best-effort — don't let a DB write hide the original error
-          }
+            },
+          });
+          nudge(tripId);
+        } catch (writeErr) {
+          console.error("[stream] fallback persist failed:", writeErr);
         }
         send({
           type: "error",
-          message: err instanceof Error ? err.message : "stream failed",
+          message: errMsg,
         });
       } finally {
         controller.close();
