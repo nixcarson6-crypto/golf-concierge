@@ -158,6 +158,10 @@ export function BookingDetailsDialog({
                   </li>
                 ))}
               </ul>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Seats are assigned at check-in by the airline. To pre-select
+                seats or add bags, use the airline link below.
+              </p>
             </section>
           )}
 
@@ -206,14 +210,22 @@ export function BookingDetailsDialog({
                 href={verify.url}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={copyRef}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-border bg-surface-raised hover:bg-surface-raised/80 hover:border-foreground/30 transition"
-                title="Opens the airline's manage-trip page. Your confirmation number has been copied to your clipboard — paste it there to pull up the booking."
+                title="Opens the airline's manage-trip page. We've copied your confirmation to the clipboard — paste it to pull up the booking on their site."
               >
-                {verify.label}
+                Manage seats / bags
                 <ExternalLink className="size-3" />
               </a>
             )}
           </section>
+          {verify && (
+            <p className="text-[11px] text-muted-foreground -mt-2">
+              Pyltrix has everything you need above. The airline link is only
+              for seat changes, bag add-ons, or check-in — we&apos;ll copy your
+              confirmation to your clipboard so you can paste it on their site.
+            </p>
+          )}
         </div>
       </DialogContent>
     </Dialog>

@@ -15,7 +15,6 @@ import {
   Activity,
   ChevronDown,
   Copy,
-  ExternalLink,
   CheckCircle2,
 } from "lucide-react";
 import type { ItineraryItemType } from "@prisma/client";
@@ -24,7 +23,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, formatCurrency, formatDateRange } from "@/lib/utils";
-import { airlineVerifyUrl } from "@/lib/ai/chat-cards";
 import { BookingDetailsDialog } from "./booking-details-dialog";
 import type {
   WorkspaceBooking,
@@ -351,17 +349,6 @@ function BookingDetail({
   const [copied, setCopied] = React.useState(false);
   const [detailOpen, setDetailOpen] = React.useState(false);
 
-  const verify =
-    booking.confirmationCode && !booking.isStub
-      ? airlineVerifyUrl(
-          booking.vendor ?? booking.title,
-          booking.airlineCode,
-          booking.leadLastName,
-          booking.confirmationCode,
-          { sandbox: booking.isSandbox },
-        )
-      : null;
-
   const copyRef = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!booking.confirmationCode) return;
@@ -400,33 +387,18 @@ function BookingDetail({
               </span>
             )}
           </button>
-          <div className="flex items-center gap-1.5">
-            {canShowDetails && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDetailOpen(true);
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium border border-[hsl(var(--navy))]/40 bg-[hsl(var(--navy))]/8 text-[hsl(var(--navy))] hover:bg-[hsl(var(--navy))]/15 transition shrink-0"
-              >
-                View details
-              </button>
-            )}
-            {verify && (
-              <a
-                href={verify.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium border border-border bg-surface-raised hover:bg-surface-raised/80 hover:border-foreground/30 transition shrink-0"
-                title="Copy your confirmation first, then paste it on the airline's manage-trip page."
-              >
-                {verify.label}
-                <ExternalLink className="size-3" />
-              </a>
-            )}
-          </div>
+          {canShowDetails && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDetailOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border border-[hsl(var(--navy))]/50 bg-[hsl(var(--navy))]/10 text-[hsl(var(--navy))] hover:bg-[hsl(var(--navy))]/20 transition shrink-0"
+            >
+              View booking
+            </button>
+          )}
         </div>
       )}
 
