@@ -18,7 +18,10 @@ const PLACES_BASE = "https://places.googleapis.com/v1/places";
 export async function GET(req: NextRequest) {
   const apiKey = optionalEnv("GOOGLE_MAPS_SERVER_API_KEY");
   if (!apiKey) {
-    return new Response(JSON.stringify({ photoUrl: null }), {
+    console.warn(
+      "[places/photo] GOOGLE_MAPS_SERVER_API_KEY is not set — photos disabled.",
+    );
+    return new Response(JSON.stringify({ photoUrl: null, reason: "no-key" }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -27,38 +30,47 @@ export async function GET(req: NextRequest) {
   const query = (req.nextUrl.searchParams.get("q") ?? "").trim();
   const loc = (req.nextUrl.searchParams.get("loc") ?? "").trim();
   if (!query) {
-    return new Response(JSON.stringify({ photoUrl: null }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ photoUrl: null, reason: "no-query" }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
   }
 
   const textQuery = loc ? `${query} ${loc}` : query;
   try {
-    // Step 1: text search → first matching place's photo references.
     const searchRes = await fetch(`${PLACES_BASE}:searchText`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        // Field mask: only request what we need. Cheaper + faster.
         "X-Goog-FieldMask": "places.id,places.displayName,places.photos",
       },
       body: JSON.stringify({
         textQuery,
         maxResultCount: 1,
-        // Bias toward "best fit" for tourist/dining venues.
         rankPreference: "RELEVANCE",
       }),
-      // Cache the lookup for a day — venue photos don't change often
-      // and this keeps API spend bounded.
       next: { revalidate: 86_400 },
     });
     if (!searchRes.ok) {
-      return new Response(JSON.stringify({ photoUrl: null }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      // Loud logging — this is the key diagnostic surface when photos
+      // don't show. Google's error body tells you exactly why (API not
+      // enabled, key restricted, etc.). Strip the API key from any
+      // accidental echo before logging.
+      const errText = (await searchRes.text().catch(() => ""))
+        .replace(apiKey, "[REDACTED_KEY]")
+        .slice(0, 500);
+      console.warn(
+        `[places/photo] Google searchText ${searchRes.status} for "${textQuery}": ${errText}`,
+      );
+      return new Response(
+        JSON.stringify({
+          photoUrl: null,
+          reason: `google-${searchRes.status}`,
+          detail: errText.slice(0, 200),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
     }
     type SearchResponse = {
       places?: Array<{
@@ -70,16 +82,15 @@ export async function GET(req: NextRequest) {
     const first = searchJson.places?.[0];
     const photoName = first?.photos?.[0]?.name;
     if (!photoName) {
-      return new Response(JSON.stringify({ photoUrl: null }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      console.info(
+        `[places/photo] No photo found for "${textQuery}" (Google returned ${searchJson.places?.length ?? 0} places, ${first?.photos?.length ?? 0} photos).`,
+      );
+      return new Response(
+        JSON.stringify({ photoUrl: null, reason: "no-photo" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
     }
 
-    // Step 2: photo media URL. Google's photo endpoint returns the
-    // bytes directly when called server-side, but we redirect the
-    // client to the media URL so the browser can cache + render
-    // without proxying through our server.
     const photoUrl =
       `https://places.googleapis.com/v1/${photoName}/media` +
       `?key=${encodeURIComponent(apiKey)}&maxWidthPx=1200`;
@@ -88,16 +99,21 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        // Browser-side cache for the same lookup. Same TTL as our
-        // server-side revalidate so the layers agree.
         "Cache-Control": "public, max-age=86400, immutable",
       },
     });
   } catch (err) {
-    console.warn("[places/photo] threw:", err);
-    return new Response(JSON.stringify({ photoUrl: null }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    console.warn(
+      `[places/photo] fetch threw for "${textQuery}":`,
+      err instanceof Error ? err.message : err,
+    );
+    return new Response(
+      JSON.stringify({
+        photoUrl: null,
+        reason: "exception",
+        detail: err instanceof Error ? err.message : String(err),
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
   }
 }
