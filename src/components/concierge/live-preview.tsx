@@ -1057,6 +1057,38 @@ function ItineraryItemDialog({
   onDeleted: () => void;
 }) {
   const [deleting, setDeleting] = React.useState(false);
+  const [photoUrl, setPhotoUrl] = React.useState<string | null>(null);
+  const [photoLoading, setPhotoLoading] = React.useState(false);
+  const [photoFailed, setPhotoFailed] = React.useState(false);
+
+  // Fetch a Google Places hero photo when the dialog opens. We bias the
+  // search with the location string (e.g. "Drum & Quill Pub Village of
+  // Pinehurst") which usually nails the right venue even for restaurants
+  // and pubs that share names. Cached for a day server-side + browser.
+  React.useEffect(() => {
+    if (!open) return;
+    setPhotoUrl(null);
+    setPhotoFailed(false);
+    // Skip photo lookup for purely logistical items where a venue photo
+    // wouldn't make sense (e.g. "Drive Pinehurst → RDU + rental return").
+    const skipTypes = new Set(["TRANSPORT", "CAR"]);
+    if (skipTypes.has(item.type)) return;
+    const query = item.title;
+    if (!query) return;
+    const loc = item.location ?? "";
+    setPhotoLoading(true);
+    const params = new URLSearchParams({ q: query });
+    if (loc) params.set("loc", loc);
+    fetch(`/api/places/photo?${params.toString()}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.photoUrl) setPhotoUrl(data.photoUrl as string);
+        else setPhotoFailed(true);
+      })
+      .catch(() => setPhotoFailed(true))
+      .finally(() => setPhotoLoading(false));
+  }, [open, item.title, item.location, item.type]);
+
   const startTime = item.startTime ? new Date(item.startTime) : null;
   const fmtDate = (d: Date) =>
     d.toLocaleDateString(undefined, {
@@ -1098,6 +1130,25 @@ function ItineraryItemDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md p-0 overflow-hidden">
+        {/* Hero photo from Google Places — only renders when we got
+            one back. Skeleton while loading; nothing if the place
+            didn't match or photos are disabled. */}
+        {photoLoading && (
+          <div className="aspect-[16/9] bg-surface-raised animate-pulse" />
+        )}
+        {!photoLoading && photoUrl && !photoFailed && (
+          <div className="relative aspect-[16/9] bg-surface-raised overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photoUrl}
+              alt={item.title}
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={() => setPhotoFailed(true)}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-background/40 to-transparent pointer-events-none" />
+          </div>
+        )}
+
         <header className="px-6 py-4 border-b border-border/50 bg-[hsl(var(--navy))]/5">
           <div className="flex items-center gap-3">
             <div className="size-10 rounded-xl bg-surface-raised grid place-items-center shrink-0">
