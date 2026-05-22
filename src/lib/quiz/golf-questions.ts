@@ -331,6 +331,11 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "economy", label: "Economy", glyph: "🪑" },
       { value: "best_deal", label: "Best deal", description: "Cheapest reasonable", glyph: "💰" },
     ],
+    // If the user already said "Best rate — I don't care" on the
+    // airline question, asking what cabin they want is exactly the
+    // question they just refused to answer. Skip — we default to
+    // economy at submit time (see quizAnswersToConstraints).
+    shouldShow: (a) => a.airlinePreference !== "best_rate",
   },
   {
     kind: "single-select",

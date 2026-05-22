@@ -122,7 +122,15 @@ export async function POST(
     (answers.originAirport as string | undefined) === "custom"
       ? ((answers.originAirportCustom as string | undefined) ?? "").toUpperCase()
       : ((answers.originAirport as string | undefined) ?? "").toUpperCase();
-  const cabinAnswer = (answers.cabinClass as string | undefined) ?? "business";
+  // Cabin: if the user picked "Best rate" on the airline question we
+  // skipped the cabin screen entirely — default to economy (the
+  // cheapest option) so the flight search honors their "I don't care,
+  // cheapest please" intent end-to-end.
+  const airlinePref = answers.airlinePreference as string | undefined;
+  const cabinAnswer =
+    airlinePref === "best_rate"
+      ? "economy"
+      : ((answers.cabinClass as string | undefined) ?? "business");
   const cabin: "first" | "business" | "premium_economy" | "economy" =
     cabinAnswer === "first"
       ? "first"
