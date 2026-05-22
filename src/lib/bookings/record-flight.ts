@@ -40,21 +40,53 @@ export async function recordFlightBooking(args: RecordFlightArgs) {
     });
   }
 
-  // Auto-supersede: when a new flight is ticketed on this trip, mark any
-  // already-confirmed flight bookings as CANCELLED so the Live Trip shows
-  // the most recent option instead of stacking duplicates. The AI typically
-  // does this after finding a better deal — the workspace should reflect
-  // that immediately without the user having to clean up the old row.
+  // Auto-supersede: when a new flight is ticketed on this trip, cancel
+  // any already-confirmed flight bookings — both in our DB and on
+  // Duffel's side so the airline doesn't think the customer has two
+  // active reservations. Duffel cancellation is best-effort: if it
+  // fails (network blip, already cancelled, etc.) we still proceed
+  // with the local-state cleanup so the workspace reflects reality.
   const supersededAt = new Date();
   const supersededBy = args.bookingReference;
-  await db.booking.updateMany({
+  const priorBookings = await db.booking.findMany({
     where: {
       tripId: args.tripId,
       type: "FLIGHT",
       status: "CONFIRMED",
     },
-    data: { status: "CANCELLED" },
+    select: { id: true, providerReference: true, metadata: true },
   });
+  for (const prior of priorBookings) {
+    // Best-effort Duffel cancel — never let a partner API failure
+    // block recording the new booking.
+    if (prior.providerReference) {
+      try {
+        const { cancelOrder } = await import(
+          "@/lib/bookings/providers/duffel-cancel"
+        );
+        const result = await cancelOrder(prior.providerReference);
+        if (!result.ok) {
+          console.warn(
+            `[supersede] Duffel cancel for ${prior.providerReference} failed:`,
+            result.error,
+          );
+        }
+      } catch (err) {
+        console.warn(`[supersede] Duffel cancel threw:`, err);
+      }
+    }
+    await db.booking.update({
+      where: { id: prior.id },
+      data: {
+        status: "CANCELLED",
+        metadata: {
+          ...((prior.metadata as Record<string, unknown> | null) ?? {}),
+          supersededAt: supersededAt.toISOString(),
+          supersededBy,
+        },
+      },
+    });
+  }
   const supersededItems = await db.itineraryItem.findMany({
     where: {
       itinerary: { tripId: args.tripId },

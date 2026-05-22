@@ -253,6 +253,28 @@ const FLIGHT_BOOK_TOOL: Anthropic.Tool = {
   },
 };
 
+const FLIGHT_CANCEL_TOOL: Anthropic.Tool = {
+  name: "cancel_flight",
+  description:
+    "Cancel a previously-booked Duffel flight order. Use this when the user wants to undo a flight booking, or when you've booked a replacement and want to clean up the original. Two modes: (1) confirm=false (default) quotes the refund WITHOUT cancelling — use this first for non-sandbox bookings so the user sees what they get back, then re-call with confirm=true if they say go. (2) confirm=true cancels immediately — use this for sandbox bookings (no real money to refund) or when the user has already explicitly authorised the cancellation. The `bookingId` is the booking row id from the trip workspace; pass that and we'll look up the Duffel order id. Returns the refund amount (in cents) and currency.",
+  input_schema: {
+    type: "object",
+    properties: {
+      bookingId: {
+        type: "string",
+        description:
+          "The Pyltrix booking id (NOT the Duffel order id and NOT the airline confirmation code). You'll see this in the booking metadata or by looking at the Live Trip workspace.",
+      },
+      confirm: {
+        type: "boolean",
+        description:
+          "false = quote the refund only (default). true = quote AND immediately confirm the cancellation. For sandbox bookings always pass true since there's no real refund to preview.",
+      },
+    },
+    required: ["bookingId"],
+  },
+};
+
 const HOTEL_BOOK_TOOL: Anthropic.Tool = {
   name: "book_hotel",
   description:
@@ -509,6 +531,7 @@ export async function* streamReplyEvents(
       tools: [
         FLIGHT_TOOL,
         FLIGHT_BOOK_TOOL,
+        FLIGHT_CANCEL_TOOL,
         HOTEL_TOOL,
         HOTEL_BOOK_TOOL,
         TEE_TIME_BOOK_TOOL,
@@ -818,6 +841,7 @@ export async function* streamReplyTokens(
       tools: [
         FLIGHT_TOOL,
         FLIGHT_BOOK_TOOL,
+        FLIGHT_CANCEL_TOOL,
         HOTEL_TOOL,
         HOTEL_BOOK_TOOL,
         TEE_TIME_BOOK_TOOL,
@@ -929,6 +953,7 @@ async function executeToolInner(
 ): Promise<string> {
   if (name === "search_hotels") return executeHotelSearch(input);
   if (name === "book_flight") return executeBookFlight(input, ctx);
+  if (name === "cancel_flight") return executeCancelFlight(input, ctx);
   if (name === "book_hotel") return executeBookHotel(input, ctx);
   if (name === "book_tee_time") return executeBookTeeTime(input, ctx);
   if (name === "book_restaurant") return executeBookRestaurant(input, ctx);
@@ -1142,6 +1167,127 @@ async function executeBookFlight(
     note: result.isSandbox
       ? "Saved to trip itinerary. This is a Duffel sandbox booking — surface the confirmation honestly but note real airline verification activates with a live key."
       : "Saved to trip itinerary. Surface the booking reference to the user.",
+  });
+}
+
+async function executeCancelFlight(
+  input: unknown,
+  ctx: { tripId?: string },
+): Promise<string> {
+  if (!ctx.tripId) {
+    return JSON.stringify({
+      error: "cancel_flight requires trip context — internal wiring issue.",
+    });
+  }
+  const parsed = input as { bookingId?: string; confirm?: boolean } | null;
+  if (!parsed || typeof parsed.bookingId !== "string") {
+    return JSON.stringify({
+      error: "invalid input — need bookingId (the Pyltrix booking row id).",
+    });
+  }
+  const confirm = parsed.confirm === true;
+
+  const booking = await db.booking.findFirst({
+    where: { id: parsed.bookingId, tripId: ctx.tripId, type: "FLIGHT" },
+    select: {
+      id: true,
+      providerReference: true,
+      confirmationCode: true,
+      status: true,
+      cost: true,
+      metadata: true,
+      itineraryItemId: true,
+    },
+  });
+  if (!booking) {
+    return JSON.stringify({
+      error: `No flight booking found with id ${parsed.bookingId} on this trip. Confirm the bookingId from the workspace.`,
+    });
+  }
+  if (booking.status === "CANCELLED") {
+    return JSON.stringify({
+      error: `Booking ${booking.confirmationCode ?? booking.id} is already cancelled.`,
+    });
+  }
+  const orderId = booking.providerReference;
+  if (!orderId) {
+    return JSON.stringify({
+      error: "Booking has no Duffel order id — can't cancel via Duffel.",
+    });
+  }
+  const meta = (booking.metadata ?? {}) as Record<string, unknown>;
+  const isSandbox = Boolean(meta.isSandbox);
+
+  // Quote first
+  const { quoteCancellation, confirmCancellation } = await import(
+    "@/lib/bookings/providers/duffel-cancel"
+  );
+  const quoted = await quoteCancellation(orderId);
+  if (!quoted.ok) {
+    return JSON.stringify({ error: quoted.error });
+  }
+  const refundUSD = Math.round(quoted.quote.refundAmount / 100);
+
+  if (!confirm) {
+    return JSON.stringify({
+      ok: true,
+      quoted: true,
+      bookingId: booking.id,
+      confirmationCode: booking.confirmationCode,
+      refundAmountUSD: refundUSD,
+      refundCurrency: quoted.quote.refundCurrency,
+      refundTo: quoted.quote.refundTo,
+      isSandbox,
+      note: isSandbox
+        ? `Sandbox booking — refund quote is $${refundUSD} (cosmetic, no real charge ever hit a card). Call cancel_flight again with confirm=true to actually cancel.`
+        : `Refund quote: $${refundUSD} ${quoted.quote.refundCurrency}, returned to ${quoted.quote.refundTo ?? "original payment method"}. Tell the user the refund amount in one sentence and ask if they want you to confirm the cancellation. If they say yes, call cancel_flight again with confirm=true.`,
+    });
+  }
+
+  // Confirm
+  const confirmed = await confirmCancellation(quoted.quote.cancellationId);
+  if (!confirmed.ok) {
+    return JSON.stringify({ error: confirmed.error });
+  }
+
+  // Mirror state in our DB
+  await db.booking.update({
+    where: { id: booking.id },
+    data: { status: "CANCELLED" },
+  });
+  if (booking.itineraryItemId) {
+    const item = await db.itineraryItem.findUnique({
+      where: { id: booking.itineraryItemId },
+      select: { metadata: true },
+    });
+    await db.itineraryItem.update({
+      where: { id: booking.itineraryItemId },
+      data: {
+        confirmationState: "CANCELLED",
+        status: "Cancelled",
+        metadata: {
+          ...((item?.metadata as Record<string, unknown> | null) ?? {}),
+          cancelledAt: new Date().toISOString(),
+          cancelledVia: "duffel",
+          duffelCancellationId: confirmed.cancellationId,
+          refundAmount: confirmed.refundAmount,
+        },
+      },
+    });
+  }
+
+  return JSON.stringify({
+    ok: true,
+    cancelled: true,
+    bookingId: booking.id,
+    confirmationCode: booking.confirmationCode,
+    refundAmountUSD: Math.round(confirmed.refundAmount / 100),
+    refundCurrency: confirmed.refundCurrency,
+    refundTo: confirmed.refundTo,
+    isSandbox,
+    note: isSandbox
+      ? `Sandbox cancellation confirmed. The booking is removed from the workspace. No real money to refund — when you flip to a live Duffel key, this same flow issues real refunds.`
+      : `Cancellation confirmed. Refund of $${Math.round(confirmed.refundAmount / 100)} ${confirmed.refundCurrency} initiated to ${confirmed.refundTo ?? "original payment method"}. Tell the user concisely.`,
   });
 }
 

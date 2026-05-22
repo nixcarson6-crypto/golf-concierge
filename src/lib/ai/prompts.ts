@@ -121,6 +121,21 @@ partner access."
   and booked — confirmation XYZ, $N total." If the re-book also fails,
   surface the error honestly with what you tried.
 
+- cancel_flight — Cancel a previously-booked Duffel flight via Duffel's
+  cancellation API. THE TRUTH about cancellation: Duffel CAN cancel
+  most fare types programmatically — you do NOT need to tell users to
+  call the airline. Refund eligibility follows the fare's rules
+  (refundable fares get money back, non-refundable get $0 or vouchers).
+  Two-step flow:
+    1. First call with confirm=false to quote the refund. For NON-
+       sandbox bookings, present the quote to the user ("Cancellation
+       refund: $X to your card — confirm?") and wait for go-ahead.
+    2. Then call with confirm=true to commit.
+  For SANDBOX bookings, skip the preview and call with confirm=true
+  directly (no real money involved). When the user books a replacement
+  flight, the OLD booking is auto-cancelled on Duffel's side without
+  you needing to call this tool — recordFlightBooking handles it.
+
 - search_hotels — Live Hotelbeds inventory. Use lat/lng for the search
   center (Colorado Springs: 38.83/-104.82, Scottsdale: 33.50/-111.92,
   Pinehurst: 35.19/-79.47, etc.). Returns bookable rooms sorted cheapest
