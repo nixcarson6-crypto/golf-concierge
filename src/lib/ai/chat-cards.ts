@@ -218,6 +218,99 @@ export function parseHotelSearchResult(raw: string): HotelCard[] {
  * clipboard separately). Returns null for sandbox/test bookings where
  * the PNR isn't claimable on the airline's side anyway.
  */
+type AirlineEntry = {
+  /** IATA airline code (e.g. "AA", "BA"). */
+  code: string;
+  /** Substrings to match in the carrier name (lowercase). */
+  nameMatches: string[];
+  /** Manage-trip / lookup URL. */
+  url: string;
+  /** Human label for the verify button, e.g. "Open aa.com". */
+  label: string;
+};
+
+// Manage-trip landing pages for every airline we expect to see via Duffel.
+// Airlines killed URL pre-fill of PNR years ago for security, so these all
+// land on the lookup form — the caller copies the PNR to clipboard so it's
+// a single paste. Order doesn't matter; we match by exact code first, then
+// by name substring.
+const AIRLINE_REGISTRY: AirlineEntry[] = [
+  // US carriers
+  { code: "AA", nameMatches: ["american"], url: "https://www.aa.com/managetrip/manage-trip.do", label: "Open aa.com" },
+  { code: "DL", nameMatches: ["delta"], url: "https://www.delta.com/mytrips", label: "Open delta.com" },
+  { code: "UA", nameMatches: ["united"], url: "https://www.united.com/en/us/manageres/mytrips", label: "Open united.com" },
+  { code: "WN", nameMatches: ["southwest"], url: "https://www.southwest.com/air/manage-reservation/", label: "Open southwest.com" },
+  { code: "AS", nameMatches: ["alaska"], url: "https://www.alaskaair.com/booking/reservation-lookup", label: "Open alaskaair.com" },
+  { code: "B6", nameMatches: ["jetblue"], url: "https://www.jetblue.com/manage-trips", label: "Open jetblue.com" },
+  { code: "F9", nameMatches: ["frontier"], url: "https://www.flyfrontier.com/booking/my-trip", label: "Open flyfrontier.com" },
+  { code: "NK", nameMatches: ["spirit"], url: "https://www.spirit.com/check-in", label: "Open spirit.com" },
+  { code: "HA", nameMatches: ["hawaiian"], url: "https://www.hawaiianairlines.com/manage", label: "Open hawaiianair.com" },
+  { code: "G4", nameMatches: ["allegiant"], url: "https://www.allegiantair.com/manage-travel", label: "Open allegiantair.com" },
+  { code: "SY", nameMatches: ["sun country"], url: "https://suncountry.com/manage-my-booking", label: "Open suncountry.com" },
+  { code: "MX", nameMatches: ["breeze"], url: "https://www.flybreeze.com/manage-trip", label: "Open flybreeze.com" },
+
+  // Canada
+  { code: "AC", nameMatches: ["air canada"], url: "https://www.aircanada.com/us/en/aco/home/book/manage-bookings.html", label: "Open aircanada.com" },
+  { code: "WS", nameMatches: ["westjet"], url: "https://www.westjet.com/en-us/manage-trips", label: "Open westjet.com" },
+  { code: "PD", nameMatches: ["porter"], url: "https://www.flyporter.com/en-ca/manage-booking", label: "Open flyporter.com" },
+
+  // UK & Europe — Delta SkyTeam / Star Alliance / OneWorld common partners
+  { code: "BA", nameMatches: ["british airways"], url: "https://www.britishairways.com/travel/managemybooking/public/en_us", label: "Open britishairways.com" },
+  { code: "VS", nameMatches: ["virgin atlantic"], url: "https://www.virginatlantic.com/gb/en/manage-your-booking.html", label: "Open virginatlantic.com" },
+  { code: "EI", nameMatches: ["aer lingus"], url: "https://www.aerlingus.com/manage-booking/", label: "Open aerlingus.com" },
+  { code: "LH", nameMatches: ["lufthansa"], url: "https://www.lufthansa.com/us/en/manage-bookings", label: "Open lufthansa.com" },
+  { code: "AF", nameMatches: ["air france"], url: "https://wwws.airfrance.us/manage/identification", label: "Open airfrance.com" },
+  { code: "KL", nameMatches: ["klm"], url: "https://www.klm.com/manage-booking", label: "Open klm.com" },
+  { code: "IB", nameMatches: ["iberia"], url: "https://www.iberia.com/us/manage-your-flights/", label: "Open iberia.com" },
+  { code: "AY", nameMatches: ["finnair"], url: "https://www.finnair.com/en/manage-booking", label: "Open finnair.com" },
+  { code: "SK", nameMatches: ["sas", "scandinavian"], url: "https://www.flysas.com/en/manage-my-booking/", label: "Open flysas.com" },
+  { code: "LX", nameMatches: ["swiss"], url: "https://www.swiss.com/us/en/manage-your-booking", label: "Open swiss.com" },
+  { code: "OS", nameMatches: ["austrian"], url: "https://www.austrian.com/Info/Booking/MyBookings.aspx", label: "Open austrian.com" },
+  { code: "TP", nameMatches: ["tap portugal", "tap air"], url: "https://www.flytap.com/en-us/manage-booking", label: "Open flytap.com" },
+  { code: "TK", nameMatches: ["turkish airlines"], url: "https://www.turkishairlines.com/en-us/flights/manage-booking/", label: "Open turkishairlines.com" },
+  { code: "FR", nameMatches: ["ryanair"], url: "https://www.ryanair.com/us/en/check-in", label: "Open ryanair.com" },
+  { code: "U2", nameMatches: ["easyjet"], url: "https://www.easyjet.com/en/manage-bookings", label: "Open easyjet.com" },
+
+  // Middle East
+  { code: "EK", nameMatches: ["emirates"], url: "https://www.emirates.com/us/english/manage-booking/manage-my-booking.aspx", label: "Open emirates.com" },
+  { code: "QR", nameMatches: ["qatar"], url: "https://www.qatarairways.com/en-us/manage-booking/", label: "Open qatarairways.com" },
+  { code: "EY", nameMatches: ["etihad"], url: "https://www.etihad.com/en-us/manage", label: "Open etihad.com" },
+
+  // Asia-Pacific
+  { code: "SQ", nameMatches: ["singapore airlines"], url: "https://www.singaporeair.com/en_UK/us/plan-travel/manage-booking/", label: "Open singaporeair.com" },
+  { code: "CX", nameMatches: ["cathay"], url: "https://www.cathaypacific.com/cx/en_US/manage-booking.html", label: "Open cathaypacific.com" },
+  { code: "NH", nameMatches: ["ana", "all nippon"], url: "https://www.ana.co.jp/en/us/book-plan/reservation-management/", label: "Open ana.co.jp" },
+  { code: "JL", nameMatches: ["japan airlines", "jal"], url: "https://www.jal.co.jp/us/en/inter/reservation/management/", label: "Open jal.co.jp" },
+  { code: "KE", nameMatches: ["korean air"], url: "https://www.koreanair.com/us/en/booking/manage-booking", label: "Open koreanair.com" },
+  { code: "OZ", nameMatches: ["asiana"], url: "https://flyasiana.com/C/US/EN/contents/reservation-management", label: "Open flyasiana.com" },
+  { code: "QF", nameMatches: ["qantas"], url: "https://www.qantas.com/us/en/manage-booking.html", label: "Open qantas.com" },
+  { code: "VA", nameMatches: ["virgin australia"], url: "https://www.virginaustralia.com/au/en/manage/manage-booking/", label: "Open virginaustralia.com" },
+  { code: "NZ", nameMatches: ["air new zealand"], url: "https://www.airnewzealand.com/manage-booking", label: "Open airnewzealand.com" },
+  { code: "TG", nameMatches: ["thai airways"], url: "https://www.thaiairways.com/en/manage_my_booking/manage_my_booking.page", label: "Open thaiairways.com" },
+  { code: "MH", nameMatches: ["malaysia airlines"], url: "https://www.malaysiaairlines.com/us/en/plan-your-trip/manage-booking.html", label: "Open malaysiaairlines.com" },
+  { code: "CI", nameMatches: ["china airlines"], url: "https://www.china-airlines.com/us/en/manage/manage-booking-status", label: "Open china-airlines.com" },
+  { code: "BR", nameMatches: ["eva air"], url: "https://www.evaair.com/en-us/manage-my-trip/", label: "Open evaair.com" },
+
+  // Latin America
+  { code: "LA", nameMatches: ["latam"], url: "https://www.latamairlines.com/us/en/manage-trips", label: "Open latamairlines.com" },
+  { code: "AM", nameMatches: ["aeromexico"], url: "https://www.aeromexico.com/en-us/your-trip", label: "Open aeromexico.com" },
+  { code: "AV", nameMatches: ["avianca"], url: "https://www.avianca.com/en/check-and-manage-flight/manage-your-flight/", label: "Open avianca.com" },
+  { code: "CM", nameMatches: ["copa"], url: "https://www.copaair.com/en-us/manage-your-trip/", label: "Open copaair.com" },
+
+  // Africa
+  { code: "ET", nameMatches: ["ethiopian"], url: "https://www.ethiopianairlines.com/aa/book/manage-trip", label: "Open ethiopianairlines.com" },
+  { code: "SA", nameMatches: ["south african"], url: "https://www.flysaa.com/manage-flight/manage-booking", label: "Open flysaa.com" },
+];
+
+/**
+ * Build a link to the airline's "manage trip" landing page. Airlines have
+ * stopped honoring query-param pre-fill (it just lands on a 404), so we
+ * no longer try to deep-link the PNR — we send the user to the stable
+ * manage-trip page and they paste the PNR (which the caller copies to
+ * clipboard separately). Covers ~50 carriers globally; for anything
+ * unknown we fall back to a Google search for the airline's manage-trip
+ * page so the user is never stuck. Returns null for sandbox bookings.
+ */
 export function airlineVerifyUrl(
   airline: string,
   airlineCode: string | null | undefined,
@@ -225,38 +318,33 @@ export function airlineVerifyUrl(
   _pnr: string,
   opts: { sandbox?: boolean } = {},
 ): { url: string; label: string } | null {
-  // No real booking exists on the airline's side for sandbox/test
-  // bookings — surfacing a verify button would just lead to "not found".
   if (opts.sandbox) return null;
 
   const code = (airlineCode ?? "").toUpperCase();
   const name = (airline ?? "").toLowerCase();
 
-  if (code === "AA" || name.includes("american")) {
-    return { url: "https://www.aa.com/managetrip/manage-trip.do", label: "Open aa.com" };
+  // Exact IATA code match first — fastest and least error-prone.
+  if (code) {
+    const byCode = AIRLINE_REGISTRY.find((a) => a.code === code);
+    if (byCode) return { url: byCode.url, label: byCode.label };
   }
-  if (code === "DL" || name.includes("delta")) {
-    return { url: "https://www.delta.com/mytrips", label: "Open delta.com" };
+  // Fall back to name substring (handles cases where Duffel gives us a
+  // marketing name like "American Airlines" but no IATA code).
+  if (name) {
+    const byName = AIRLINE_REGISTRY.find((a) =>
+      a.nameMatches.some((m) => name.includes(m)),
+    );
+    if (byName) return { url: byName.url, label: byName.label };
   }
-  if (code === "UA" || name.includes("united")) {
-    return { url: "https://www.united.com/en/us/manageres/mytrips", label: "Open united.com" };
+  // Unknown carrier: Google search for their manage-trip page. Better than
+  // nothing — the customer types nothing, just clicks the first result.
+  if (airline && airline.trim().length > 0) {
+    const query = encodeURIComponent(`${airline} manage booking`);
+    return {
+      url: `https://www.google.com/search?q=${query}`,
+      label: `Find ${airline} manage trip`,
+    };
   }
-  if (code === "WN" || name.includes("southwest")) {
-    return { url: "https://www.southwest.com/air/manage-reservation/", label: "Open southwest.com" };
-  }
-  if (code === "AS" || name.includes("alaska")) {
-    return { url: "https://www.alaskaair.com/booking/reservation-lookup", label: "Open alaskaair.com" };
-  }
-  if (code === "B6" || name.includes("jetblue")) {
-    return { url: "https://www.jetblue.com/manage-trips", label: "Open jetblue.com" };
-  }
-  if (code === "F9" || name.includes("frontier")) {
-    return { url: "https://www.flyfrontier.com/booking/my-trip", label: "Open flyfrontier.com" };
-  }
-  if (code === "NK" || name.includes("spirit")) {
-    return { url: "https://www.spirit.com/check-in", label: "Open spirit.com" };
-  }
-  // Unknown carrier — return null so we just show in-app details.
   return null;
 }
 
