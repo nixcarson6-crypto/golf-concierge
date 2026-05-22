@@ -68,6 +68,21 @@ export function FlightBookingModal({
   // Initialise passengers with the user's saved profile for the lead
   // slot, blanks for the rest. Stored as state so edits persist while
   // the user is typing.
+  // Phones saved to the profile might be in pretty-formatted form
+  // ("+1 (212) 555-0100") or even sans plus sign ("2125550100"). The
+  // booking validator demands strict E.164 (^\+\d{8,15}$), so normalize
+  // on the way IN so the pre-filled form is valid out of the box.
+  const normalizePhone = (raw: string | null | undefined): string => {
+    if (!raw) return "";
+    const digits = raw.replace(/[^\d]/g, "");
+    if (digits.length === 0) return "";
+    // US default: 10 digits → +1XXXXXXXXXX. 11 digits starting with 1
+    // → keep as is. Otherwise just stick a + in front of the digits.
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+    return `+${digits}`;
+  };
+
   const initialPassengers = React.useMemo<PassengerForm[]>(() => {
     const list: PassengerForm[] = [];
     for (let i = 0; i < passengerCount; i++) {
@@ -81,7 +96,7 @@ export function FlightBookingModal({
               ? profile.gender
               : "",
           email: defaultEmail ?? "",
-          phone_number: profile.phone ?? "",
+          phone_number: normalizePhone(profile.phone),
         });
       } else {
         list.push(blank());
@@ -94,6 +109,7 @@ export function FlightBookingModal({
   const [passengers, setPassengers] =
     React.useState<PassengerForm[]>(initialPassengers);
   const [submitting, setSubmitting] = React.useState(false);
+  const [savingProfile, setSavingProfile] = React.useState(false);
 
   React.useEffect(() => {
     // Reset when reopened so a stale half-filled state doesn't bleed
@@ -166,6 +182,57 @@ export function FlightBookingModal({
       toast.error("Network error — try again.");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  /**
+   * "Save & close" path: persists whatever the user has typed into
+   * their User profile (best-effort per-field) WITHOUT booking. Lets
+   * people back out of the auto-book modal without losing what they
+   * just typed — next time they come to book, it's pre-filled.
+   */
+  const saveProfileAndClose = async () => {
+    if (savingProfile) return;
+    const lead = passengers[0];
+    if (!lead) {
+      onOpenChange(false);
+      return;
+    }
+    // Build the payload from whatever fields the user has filled in.
+    // Send only valid values — the endpoint rejects bad shapes
+    // per-field, but we don't want one bad field to drop a good one.
+    const payload: Record<string, string> = {};
+    if (lead.given_name.trim()) payload.legalGivenName = lead.given_name.trim();
+    if (lead.family_name.trim())
+      payload.legalFamilyName = lead.family_name.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(lead.born_on))
+      payload.dateOfBirth = lead.born_on;
+    if (lead.gender === "m" || lead.gender === "f")
+      payload.gender = lead.gender;
+    if (/^\+\d{8,15}$/.test(lead.phone_number))
+      payload.phone = lead.phone_number;
+
+    if (Object.keys(payload).length === 0) {
+      onOpenChange(false);
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const res = await fetch("/api/me/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        toast.success("Saved your traveler info — book any time.");
+      } else {
+        toast.error("Couldn't save your info. Try again.");
+      }
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setSavingProfile(false);
+      onOpenChange(false);
     }
   };
 
@@ -274,20 +341,41 @@ export function FlightBookingModal({
             </section>
           ))}
 
-          <section className="flex items-center justify-between gap-2 pt-2 border-t border-border/40">
+          <section className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-border/40">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting || savingProfile}
+              className="shrink-0"
+            >
+              Cancel
+            </Button>
+            {/* Save & close: persist the form to the user profile without
+                booking. The escape hatch for users who hit the auto-open
+                modal but aren't ready to commit to the flight yet — what
+                they type still gets saved for next time. */}
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
+              onClick={saveProfileAndClose}
+              disabled={submitting || savingProfile}
+              className="shrink-0"
             >
-              Cancel
+              {savingProfile ? (
+                <>
+                  <Loader2 className="size-3 mr-1.5 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Done"
+              )}
             </Button>
             <Button
               size="sm"
               onClick={submit}
-              disabled={!allValid || submitting}
-              className="bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
+              disabled={!allValid || submitting || savingProfile}
+              className="shrink-0 bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
             >
               {submitting ? (
                 <>

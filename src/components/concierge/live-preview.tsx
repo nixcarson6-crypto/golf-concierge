@@ -1150,7 +1150,7 @@ function ItineraryItemDialog({
         )}
 
         <header className="px-6 py-4 border-b border-border/50 bg-[hsl(var(--navy))]/5">
-          <div className="flex items-center gap-3">
+          <div className="flex items-start gap-3">
             <div className="size-10 rounded-xl bg-surface-raised grid place-items-center shrink-0">
               <ItineraryItemIcon type={item.type} className="size-5" />
             </div>
@@ -1163,7 +1163,11 @@ function ItineraryItemDialog({
                   </span>
                 )}
               </p>
-              <DialogTitle className="text-base font-semibold leading-tight truncate">
+              {/* Title was truncating mid-word on long item names
+                  ("Downtime — pool, Seven Falls, or Garden of the Go…").
+                  Let it wrap to 3 lines instead so customers can actually
+                  read what the AI suggested. */}
+              <DialogTitle className="text-base font-semibold leading-tight line-clamp-3">
                 {item.title}
               </DialogTitle>
             </div>
@@ -1207,12 +1211,13 @@ function ItineraryItemDialog({
             </div>
           )}
 
-          <section className="flex items-center justify-between gap-2 pt-2">
+          <section className="flex flex-wrap items-center justify-between gap-2 pt-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
               disabled={deleting}
+              className="shrink-0"
             >
               Close
             </Button>
@@ -1221,7 +1226,7 @@ function ItineraryItemDialog({
               size="sm"
               onClick={deleteItem}
               disabled={deleting}
-              className="text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/10 border-[hsl(var(--destructive))]/30"
+              className="shrink-0 whitespace-nowrap text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/10 border-[hsl(var(--destructive))]/30"
             >
               {deleting ? (
                 <Loader2 className="size-3 mr-1.5 animate-spin" />
