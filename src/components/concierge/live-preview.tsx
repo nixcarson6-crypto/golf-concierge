@@ -26,12 +26,18 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, formatCurrency, formatDateRange } from "@/lib/utils";
 import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { BookingDetailsDialog } from "./booking-details-dialog";
 import { SuggestedFlightDialog } from "./suggested-flight-dialog";
 import { FlightBookingModal } from "./flight-booking-modal";
 import type {
   WorkspaceBooking,
   WorkspaceItinerary,
+  WorkspaceItineraryItem,
   WorkspaceTrip,
   WorkspaceMe,
   SuggestedFlightOffer,
@@ -88,6 +94,11 @@ export function LivePreview({
       </header>
 
       <ScrollArea className="flex-1">
+        <TotalsBanner
+          itinerary={itinerary}
+          bookings={bookings}
+          suggestedFlights={trip.suggestedFlights}
+        />
         {trip.suggestedFlights && trip.suggestedFlights.offers.length > 0 && (
           <SuggestedFlightsSection
             tripId={tripId}
@@ -96,7 +107,7 @@ export function LivePreview({
           />
         )}
         {itinerary && itinerary.items.length > 0 && (
-          <ItineraryDaysSection itinerary={itinerary} />
+          <ItineraryDaysSection tripId={tripId} itinerary={itinerary} />
         )}
         {groups.length === 0 ? (
           !trip.suggestedFlights && (!itinerary || itinerary.items.length === 0) ? (
@@ -788,14 +799,123 @@ function SuggestedFlightsSection({
   );
 }
 
+/**
+ * Trip-level totals summary. Sits between the header and the action
+ * sections so the customer always sees the running cost and the
+ * planned-vs-booked status at a glance.
+ *
+ *   Estimated total = sum of itinerary item costs (planned, not yet
+ *     paid). Updates immediately when an item is deleted because
+ *     deleting removes the row.
+ *   Booked = sum of confirmation-priced bookings (real money committed).
+ */
+function TotalsBanner({
+  itinerary,
+  bookings,
+  suggestedFlights,
+}: {
+  itinerary: WorkspaceItinerary | null;
+  bookings: WorkspaceBooking[];
+  suggestedFlights: WorkspaceTrip["suggestedFlights"];
+}) {
+  const itineraryTotal =
+    itinerary?.items.reduce((sum, it) => sum + (it.cost ?? 0), 0) ?? 0;
+  const bookedTotal = bookings
+    .filter((b) => b.status === "CONFIRMED")
+    .reduce((sum, b) => sum + (b.cost ?? 0), 0);
+  const cheapestSuggestedFlight =
+    suggestedFlights && suggestedFlights.offers.length > 0
+      ? Math.min(...suggestedFlights.offers.map((o) => o.totalAmount))
+      : 0;
+  // Best-case full-trip estimate: planned itinerary + cheapest flight
+  // option if not yet booked. We don't double-count: if a flight is
+  // booked, the booking row already includes that cost; the cheapest-
+  // suggested layer only contributes when there's no real booking yet.
+  const hasBookedFlight = bookings.some(
+    (b) => b.type === "FLIGHT" && b.status === "CONFIRMED",
+  );
+  const flightProvision = hasBookedFlight ? 0 : cheapestSuggestedFlight;
+  const grandTotal = itineraryTotal + flightProvision;
+
+  if (grandTotal === 0 && bookedTotal === 0) return null;
+
+  return (
+    <div className="mx-4 mt-4 mb-2 rounded-2xl border border-[hsl(var(--copper))]/30 bg-[hsl(var(--copper))]/5 p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none">
+            Trip total estimate
+          </p>
+          <p className="mt-1.5 text-2xl font-semibold tabular-nums text-foreground">
+            ${Math.round(grandTotal / 100).toLocaleString()}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none">
+            Booked so far
+          </p>
+          <p className="mt-1.5 text-sm font-medium tabular-nums text-[hsl(var(--emerald))]">
+            ${Math.round(bookedTotal / 100).toLocaleString()}
+          </p>
+        </div>
+      </div>
+      <p className="mt-2 text-[10px] text-muted-foreground leading-snug">
+        Estimate updates as you delete items or lock in real bookings. Flights
+        show the cheapest option until you confirm one.
+      </p>
+    </div>
+  );
+}
+
+/** Map ItineraryItemType → Lucide icon. Replaces the old emoji glyphs
+ *  for a cleaner, brand-consistent look that scales with text. */
+function ItineraryItemIcon({
+  type,
+  className,
+}: {
+  type: string;
+  className?: string;
+}) {
+  const cls = cn("size-4 text-foreground/80", className);
+  switch (type) {
+    case "FLIGHT":
+      return <Plane className={cls} />;
+    case "HOTEL":
+      return <BedDouble className={cls} />;
+    case "GOLF":
+      return <Flag className={cls} />;
+    case "MEAL":
+    case "RESTAURANT":
+      return <Utensils className={cls} />;
+    case "TRANSPORT":
+    case "CAR":
+      return <Car className={cls} />;
+    case "SPA":
+      return <Waves className={cls} />;
+    case "EXPERIENCE":
+    case "ACTIVITY":
+      return <Activity className={cls} />;
+    case "NIGHTLIFE":
+      return <Martini className={cls} />;
+    default:
+      return <Sparkles className={cls} />;
+  }
+}
+
 function ItineraryDaysSection({
+  tripId,
   itinerary,
 }: {
+  tripId: string;
   itinerary: WorkspaceItinerary;
 }) {
+  const qc = useQueryClient();
+  const [activeItem, setActiveItem] =
+    React.useState<WorkspaceItineraryItem | null>(null);
+
   // Group by date (YYYY-MM-DD); items without a date go to "Trip plan".
   const byDay = React.useMemo(() => {
-    const map = new Map<string, typeof itinerary.items>();
+    const map = new Map<string, WorkspaceItineraryItem[]>();
     for (const it of itinerary.items) {
       const dayKey = it.startTime
         ? new Date(it.startTime).toISOString().slice(0, 10)
@@ -804,7 +924,6 @@ function ItineraryDaysSection({
       list.push(it);
       map.set(dayKey, list);
     }
-    // Sort items within each day by start time.
     for (const [, list] of map) {
       list.sort((a, b) => {
         if (!a.startTime) return 1;
@@ -812,7 +931,6 @@ function ItineraryDaysSection({
         return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
       });
     }
-    // Sort days chronologically; "no-date" goes last.
     return [...map.entries()].sort(([a], [b]) => {
       if (a === "no-date") return 1;
       if (b === "no-date") return -1;
@@ -840,82 +958,231 @@ function ItineraryDaysSection({
     });
   };
 
-  const typeGlyph: Record<string, string> = {
-    FLIGHT: "✈️",
-    HOTEL: "🏨",
-    GOLF: "⛳",
-    MEAL: "🍽️",
-    TRANSPORT: "🚗",
-    EXPERIENCE: "✨",
-    SPA: "💆",
-    OTHER: "📍",
-  };
-
   return (
-    <div className="px-4 pt-4 pb-3 space-y-4">
-      <div className="flex items-center justify-between px-1">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          Your trip plan
-        </p>
-        {itinerary.perPersonCost != null && (
-          <p className="text-[10px] text-muted-foreground tabular-nums">
-            ${Math.round(itinerary.perPersonCost).toLocaleString()} pp est.
+    <>
+      <div className="px-4 pt-4 pb-3 space-y-4">
+        <div className="flex items-center justify-between px-1">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            Your trip plan
           </p>
-        )}
-      </div>
-      {byDay.map(([dayKey, items]) => (
-        <div key={dayKey} className="space-y-1.5">
-          <p className="text-xs font-semibold text-foreground/80 px-1">
-            {fmtDay(dayKey)}
-          </p>
-          <div className="space-y-1.5">
-            {items.map((it) => {
-              const time = fmtTime(it.startTime);
-              const glyph = typeGlyph[it.type] ?? "📍";
-              return (
-                <div
-                  key={it.id}
-                  className="rounded-xl border border-border/60 bg-surface-raised/60 px-3 py-2.5"
-                >
-                  <div className="flex items-start gap-2.5">
-                    <span className="text-lg leading-none shrink-0 mt-0.5">
-                      {glyph}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p className="text-sm font-medium leading-snug truncate">
-                          {it.title}
-                        </p>
-                        {time && (
-                          <p className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                            {time}
+          {itinerary.perPersonCost != null && (
+            <p className="text-[10px] text-muted-foreground tabular-nums">
+              ${Math.round(itinerary.perPersonCost).toLocaleString()} pp est.
+            </p>
+          )}
+        </div>
+        {byDay.map(([dayKey, items]) => (
+          <div key={dayKey} className="space-y-1.5">
+            <p className="text-xs font-semibold text-foreground/80 px-1">
+              {fmtDay(dayKey)}
+            </p>
+            <div className="space-y-1.5">
+              {items.map((it) => {
+                const time = fmtTime(it.startTime);
+                return (
+                  <button
+                    key={it.id}
+                    type="button"
+                    onClick={() => setActiveItem(it)}
+                    className="w-full text-left rounded-xl border border-border/60 bg-surface-raised/60 px-3 py-2.5 hover:border-[hsl(var(--copper))]/40 hover:bg-surface-raised transition"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <span className="size-8 rounded-lg bg-surface-raised grid place-items-center shrink-0 mt-0.5">
+                        <ItineraryItemIcon type={it.type} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="text-sm font-medium leading-snug truncate">
+                            {it.title}
+                          </p>
+                          {time && (
+                            <p className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                              {time}
+                            </p>
+                          )}
+                        </div>
+                        {it.location && (
+                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                            {it.location}
+                          </p>
+                        )}
+                        {it.description && (
+                          <p className="text-[11px] text-foreground/70 mt-1 leading-snug line-clamp-2">
+                            {it.description}
+                          </p>
+                        )}
+                        {it.cost != null && it.cost > 0 && (
+                          <p className="text-[10px] text-muted-foreground tabular-nums mt-1">
+                            ${Math.round(it.cost / 100).toLocaleString()}
                           </p>
                         )}
                       </div>
-                      {it.location && (
-                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                          {it.location}
-                        </p>
-                      )}
-                      {it.description && (
-                        <p className="text-[11px] text-foreground/70 mt-1 leading-snug line-clamp-2">
-                          {it.description}
-                        </p>
-                      )}
-                      {it.cost != null && it.cost > 0 && (
-                        <p className="text-[10px] text-muted-foreground tabular-nums mt-1">
-                          ${Math.round(it.cost / 100).toLocaleString()}
-                        </p>
-                      )}
                     </div>
-                  </div>
-                </div>
-              );
-            })}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+        ))}
+      </div>
+      {activeItem && (
+        <ItineraryItemDialog
+          open={!!activeItem}
+          onOpenChange={(o) => {
+            if (!o) setActiveItem(null);
+          }}
+          item={activeItem}
+          tripId={tripId}
+          onDeleted={() => {
+            setActiveItem(null);
+            void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function ItineraryItemDialog({
+  open,
+  onOpenChange,
+  item,
+  tripId,
+  onDeleted,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  item: WorkspaceItineraryItem;
+  tripId: string;
+  onDeleted: () => void;
+}) {
+  const [deleting, setDeleting] = React.useState(false);
+  const startTime = item.startTime ? new Date(item.startTime) : null;
+  const fmtDate = (d: Date) =>
+    d.toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    });
+  const fmtTime = (d: Date) =>
+    d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+  const deleteItem = async () => {
+    if (deleting) return;
+    if (
+      !confirm(
+        `Remove "${item.title}" from the trip? This also cancels any booking tied to it.`,
+      )
+    ) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch(
+        `/api/trips/${tripId}/itinerary-items/${item.id}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        toast.error("Couldn't delete that item.");
+        return;
+      }
+      toast.success("Removed from your trip.");
+      onDeleted();
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md p-0 overflow-hidden">
+        <header className="px-6 py-4 border-b border-border/50 bg-[hsl(var(--navy))]/5">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-xl bg-surface-raised grid place-items-center shrink-0">
+              <ItineraryItemIcon type={item.type} className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none mb-1">
+                {item.type}
+                {item.confirmationState === "CONFIRMED" && (
+                  <span className="ml-2 text-[hsl(var(--emerald))]">
+                    · Booked
+                  </span>
+                )}
+              </p>
+              <DialogTitle className="text-base font-semibold leading-tight truncate">
+                {item.title}
+              </DialogTitle>
+            </div>
+          </div>
+        </header>
+
+        <div className="px-6 py-5 space-y-4">
+          {(item.location || startTime) && (
+            <div className="text-sm space-y-1">
+              {startTime && (
+                <p className="text-foreground/80">
+                  {fmtDate(startTime)} · {fmtTime(startTime)}
+                </p>
+              )}
+              {item.location && (
+                <p className="text-muted-foreground">{item.location}</p>
+              )}
+            </div>
+          )}
+          {item.description && (
+            <p className="text-sm text-foreground/80 leading-relaxed">
+              {item.description}
+            </p>
+          )}
+          {item.aiRationale && (
+            <div className="rounded-xl border border-border/60 bg-surface-raised/50 px-4 py-3">
+              <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+                Why this pick
+              </p>
+              <p className="text-xs text-foreground/80 leading-relaxed">
+                {item.aiRationale}
+              </p>
+            </div>
+          )}
+          {item.cost != null && item.cost > 0 && (
+            <div className="flex items-baseline justify-between text-sm pt-2 border-t border-border/40">
+              <span className="text-muted-foreground">Cost</span>
+              <span className="font-semibold tabular-nums">
+                ${Math.round(item.cost / 100).toLocaleString()}
+              </span>
+            </div>
+          )}
+
+          <section className="flex items-center justify-between gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              disabled={deleting}
+            >
+              Close
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={deleteItem}
+              disabled={deleting}
+              className="text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/10 border-[hsl(var(--destructive))]/30"
+            >
+              {deleting ? (
+                <Loader2 className="size-3 mr-1.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3 mr-1.5" />
+              )}
+              Remove from trip
+            </Button>
+          </section>
         </div>
-      ))}
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
