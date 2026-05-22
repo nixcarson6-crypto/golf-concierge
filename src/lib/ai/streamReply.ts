@@ -497,7 +497,10 @@ export async function* streamReplyEvents(
   }));
 
   let full = "";
-  for (let round = 0; round < 4; round++) {
+  // Cap tool-use rounds defensively so a misbehaving model can't loop forever.
+  // 8 leaves room for: book → expired → re-search → present → user confirms →
+  // book → success — a realistic chain after a stale fare.
+  for (let round = 0; round < 8; round++) {
     const stream = client.messages.stream({
       model: modelFor("orchestrator"),
       max_tokens: opts.maxTokens ?? 800,
@@ -806,7 +809,7 @@ export async function* streamReplyTokens(
 
   let full = "";
   // Cap tool-use rounds defensively so a misbehaving model can't loop forever.
-  for (let round = 0; round < 4; round++) {
+  for (let round = 0; round < 8; round++) {
     const stream = client.messages.stream({
       model: modelFor("orchestrator"),
       max_tokens: opts.maxTokens ?? 800,

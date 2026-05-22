@@ -155,20 +155,37 @@ export async function POST(
           }
         }
 
+        // Never save an empty assistant message — it leaves the user staring
+        // at silence and confuses the AI on the next turn (it sees an
+        // unanswered user message and loops). If the stream produced cards
+        // but no prose, lead with a generic acknowledgement. If neither
+        // text nor cards, explain the snag and ask the user to retry.
+        let finalContent = full.trim();
+        if (!finalContent) {
+          finalContent =
+            cards.length > 0
+              ? "Here's what I pulled — pick one and I'll lock it in."
+              : "I hit a snag mid-thought. Mind asking that again, or being a touch more specific?";
+          console.warn(
+            `[stream] empty reply saved with fallback (cards=${cards.length}, tripId=${tripId})`,
+          );
+        }
+
         await db.chatMessage.create({
           data: {
             tripId,
             role: "ASSISTANT",
-            content: full,
+            content: finalContent,
             metadata: {
               kind: "stream",
               cards: cards.length > 0 ? cards : undefined,
+              fallback: finalContent !== full.trim() || undefined,
             },
           },
         });
         nudge(tripId);
 
-        send({ type: "done", full, cards });
+        send({ type: "done", full: finalContent, cards });
       } catch (err) {
         // If the AI said something before the error, save it so the
         // customer can at least read what was streamed rather than seeing
