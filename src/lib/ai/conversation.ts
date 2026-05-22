@@ -435,7 +435,7 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
  * existing title is one of the placeholder / form-default strings — never
  * overrides a name the user typed themselves.
  */
-function autoTitle(args: {
+export function autoTitle(args: {
   currentTitle: string;
   constraints: TripConstraints;
 }): string | null {
