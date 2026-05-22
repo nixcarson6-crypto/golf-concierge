@@ -16,8 +16,10 @@ import {
   ChevronDown,
   Copy,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import type { ItineraryItemType } from "@prisma/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,7 +95,7 @@ export function LivePreview({
               </p>
             </div>
             {groups.map((g) => (
-              <ChecklistRow key={g.key} group={g} />
+              <ChecklistRow key={g.key} group={g} tripId={tripId} />
             ))}
           </div>
         )}
@@ -269,7 +271,7 @@ function groupBookings(bookings: WorkspaceBooking[]): ChecklistGroup[] {
   });
 }
 
-function ChecklistRow({ group }: { group: ChecklistGroup }) {
+function ChecklistRow({ group, tripId }: { group: ChecklistGroup; tripId: string }) {
   const [open, setOpen] = React.useState(false);
   const Icon = iconFor(group.category);
 
@@ -332,6 +334,7 @@ function ChecklistRow({ group }: { group: ChecklistGroup }) {
               key={b.id}
               booking={b}
               category={group.category}
+              tripId={tripId}
             />
           ))}
         </div>
@@ -342,12 +345,41 @@ function ChecklistRow({ group }: { group: ChecklistGroup }) {
 
 function BookingDetail({
   booking,
+  tripId,
 }: {
   booking: WorkspaceBooking;
   category: ChecklistCategory;
+  tripId: string;
 }) {
+  const qc = useQueryClient();
   const [copied, setCopied] = React.useState(false);
   const [detailOpen, setDetailOpen] = React.useState(false);
+  const [removing, setRemoving] = React.useState(false);
+
+  const handleRemove = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (removing) return;
+    const ok = window.confirm(
+      booking.isSandbox
+        ? "Remove this booking from the workspace? (Sandbox booking — no real money to refund.)"
+        : `Remove this booking from the workspace?\n\nThis clears it from your trip view but does NOT cancel the reservation with the airline / hotel. To get a refund or credit, contact the provider directly using your confirmation number.`,
+    );
+    if (!ok) return;
+    setRemoving(true);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/bookings/${booking.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`Remove failed (${res.status})`);
+      await qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+      toast.success("Booking removed from workspace.");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Couldn't remove the booking.",
+      );
+      setRemoving(false);
+    }
+  };
 
   const copyRef = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -431,6 +463,28 @@ function BookingDetail({
           Pencilled in — we&apos;ll lock this with the partner once API access lands.
         </p>
       )}
+
+      <div className="pt-1.5 flex items-center justify-end">
+        <button
+          type="button"
+          onClick={handleRemove}
+          disabled={removing}
+          className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground/80 hover:text-destructive transition disabled:opacity-50 disabled:hover:text-muted-foreground/80"
+          title="Remove from workspace. Does not cancel with the provider."
+        >
+          {removing ? (
+            <>
+              <Loader2 className="size-3 animate-spin" />
+              Removing
+            </>
+          ) : (
+            <>
+              <Trash2 className="size-3" />
+              Remove
+            </>
+          )}
+        </button>
+      </div>
 
       {canShowDetails && (
         <BookingDetailsDialog

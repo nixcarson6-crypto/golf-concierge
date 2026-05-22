@@ -40,6 +40,44 @@ export async function recordFlightBooking(args: RecordFlightArgs) {
     });
   }
 
+  // Auto-supersede: when a new flight is ticketed on this trip, mark any
+  // already-confirmed flight bookings as CANCELLED so the Live Trip shows
+  // the most recent option instead of stacking duplicates. The AI typically
+  // does this after finding a better deal — the workspace should reflect
+  // that immediately without the user having to clean up the old row.
+  const supersededAt = new Date();
+  const supersededBy = args.bookingReference;
+  await db.booking.updateMany({
+    where: {
+      tripId: args.tripId,
+      type: "FLIGHT",
+      status: "CONFIRMED",
+    },
+    data: { status: "CANCELLED" },
+  });
+  const supersededItems = await db.itineraryItem.findMany({
+    where: {
+      itinerary: { tripId: args.tripId },
+      type: "FLIGHT",
+      confirmationState: "CONFIRMED",
+    },
+    select: { id: true, metadata: true },
+  });
+  for (const it of supersededItems) {
+    await db.itineraryItem.update({
+      where: { id: it.id },
+      data: {
+        confirmationState: "CANCELLED",
+        status: "Superseded",
+        metadata: {
+          ...((it.metadata as Record<string, unknown> | null) ?? {}),
+          supersededAt: supersededAt.toISOString(),
+          supersededBy,
+        },
+      },
+    });
+  }
+
   const item = await db.itineraryItem.create({
     data: {
       itineraryId: itinerary.id,

@@ -64,10 +64,32 @@ export async function POST(
     role: (m.role === "ASSISTANT" ? "assistant" : "user") as "user" | "assistant",
     content: m.content,
   }));
-  // Anthropic requires the first message to be role "user". The trip is seeded
-  // with an assistant welcome message, so drop any leading assistant turns.
+  // Sanitize for Opus 4.7's strict alternation:
+  //  1. Drop any leading assistant turns (must start with user).
+  //  2. Drop any trailing assistant turns (must end with user — Opus 4.7
+  //     rejects with "does not support assistant message prefill" otherwise).
+  //  3. Merge consecutive same-role messages so user/assistant alternate.
+  //  4. Drop empty-content messages — Anthropic rejects "" content blocks.
   const firstUserIdx = rawHistory.findIndex((m) => m.role === "user");
-  const history = firstUserIdx === -1 ? [] : rawHistory.slice(firstUserIdx);
+  const fromFirstUser =
+    firstUserIdx === -1 ? [] : rawHistory.slice(firstUserIdx);
+  let trimmed = fromFirstUser;
+  while (
+    trimmed.length > 0 &&
+    trimmed[trimmed.length - 1].role === "assistant"
+  ) {
+    trimmed = trimmed.slice(0, -1);
+  }
+  const history: Array<{ role: "user" | "assistant"; content: string }> = [];
+  for (const m of trimmed) {
+    if (!m.content.trim()) continue;
+    const last = history[history.length - 1];
+    if (last && last.role === m.role) {
+      last.content = `${last.content}\n\n${m.content}`;
+    } else {
+      history.push({ role: m.role, content: m.content });
+    }
+  }
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
