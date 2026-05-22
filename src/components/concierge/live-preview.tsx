@@ -26,10 +26,12 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, formatCurrency, formatDateRange } from "@/lib/utils";
 import { BookingDetailsDialog } from "./booking-details-dialog";
+import { SuggestedFlightDialog } from "./suggested-flight-dialog";
 import type {
   WorkspaceBooking,
   WorkspaceItinerary,
   WorkspaceTrip,
+  SuggestedFlightOffer,
 } from "./workspace";
 
 export function LivePreview({
@@ -506,11 +508,15 @@ function BookingDetail({
 }
 
 function SuggestedFlightsSection({
+  tripId,
   suggested,
 }: {
   tripId: string;
   suggested: NonNullable<WorkspaceTrip["suggestedFlights"]>;
 }) {
+  const [activeOffer, setActiveOffer] =
+    React.useState<SuggestedFlightOffer | null>(null);
+
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
@@ -533,101 +539,133 @@ function SuggestedFlightsSection({
     return `${h}h ${m.toString().padStart(2, "0")}m`;
   };
 
+  // Booking handoff: fire a message into the concierge chat asking for
+  // this specific Duffel offer to be ticketed. The chat already knows
+  // how to collect passenger details and complete the booking — this
+  // is the bridge from "I see this option" → "ticket it for me".
+  const requestBooking = async (offer: SuggestedFlightOffer) => {
+    const total = Math.round(offer.totalAmount / 100);
+    const msg = `Book the ${offer.airlineName} option I picked from the side panel — $${total} total. Duffel offer id: ${offer.id}. Please ask me for any passenger details you still need.`;
+    try {
+      await fetch(`/api/trips/${tripId}/messages/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: msg }),
+      });
+      toast.success("Asked the concierge to ticket it — check the chat.");
+    } catch {
+      toast.error("Couldn't reach the concierge. Try again in a second.");
+    }
+  };
+
   return (
-    <div className="px-4 pt-4 pb-3 space-y-2.5">
-      <div className="flex items-center justify-between px-1">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          Pick your flight
-        </p>
-        <p className="text-[10px] text-muted-foreground tabular-nums">
-          {suggested.origin} ⇄ {suggested.destination} ·{" "}
-          {suggested.passengers}{" "}
-          {suggested.passengers === 1 ? "pax" : "pax"} ·{" "}
-          {suggested.cabin.replace("_", " ")}
-        </p>
-      </div>
-      {suggested.offers.map((offer, idx) => {
-        const total = Math.round(offer.totalAmount / 100);
-        const out = offer.slices[0];
-        const ret = offer.slices[1];
-        return (
-          <div
-            key={offer.id}
-            className="rounded-2xl border border-border/60 bg-surface-raised/70 p-3 hover:border-foreground/30 transition"
-          >
-            <div className="flex items-baseline justify-between gap-2 mb-2">
-              <p className="font-semibold text-sm leading-none truncate">
-                {offer.airlineName}
-                {idx === 0 && (
-                  <span className="ml-2 text-[10px] uppercase tracking-widest text-[hsl(var(--copper))] font-medium">
-                    best fit
+    <>
+      <div className="px-4 pt-4 pb-3 space-y-2.5">
+        <div className="flex items-center justify-between px-1">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            Pick your flight
+          </p>
+          <p className="text-[10px] text-muted-foreground tabular-nums">
+            {suggested.origin} ⇄ {suggested.destination} ·{" "}
+            {suggested.passengers}{" "}
+            {suggested.passengers === 1 ? "pax" : "pax"} ·{" "}
+            {suggested.cabin.replace("_", " ")}
+          </p>
+        </div>
+        {suggested.offers.map((offer, idx) => {
+          const total = Math.round(offer.totalAmount / 100);
+          const out = offer.slices[0];
+          const ret = offer.slices[1];
+          return (
+            <button
+              key={offer.id}
+              type="button"
+              onClick={() => setActiveOffer(offer)}
+              className="w-full text-left rounded-2xl border border-border/60 bg-surface-raised/70 p-3 hover:border-[hsl(var(--copper))]/50 hover:bg-surface-raised transition"
+            >
+              <div className="flex items-baseline justify-between gap-2 mb-2">
+                <p className="font-semibold text-sm leading-none truncate">
+                  {offer.airlineName}
+                  {idx === 0 && (
+                    <span className="ml-2 text-[10px] uppercase tracking-widest text-[hsl(var(--copper))] font-medium">
+                      best fit
+                    </span>
+                  )}
+                </p>
+                <p className="text-base font-semibold tabular-nums">
+                  ${total.toLocaleString()}
+                </p>
+              </div>
+              {out && (
+                <div className="text-xs text-foreground/85 flex items-center gap-2 leading-snug">
+                  <span className="tabular-nums font-mono">{out.origin}</span>
+                  <span className="text-muted-foreground/70">
+                    {fmtTime(out.departing)}
                   </span>
-                )}
-              </p>
-              <p className="text-base font-semibold tabular-nums">
-                ${total.toLocaleString()}
-              </p>
-            </div>
-            {out && (
-              <div className="text-xs text-foreground/85 flex items-center gap-2 leading-snug">
-                <span className="tabular-nums font-mono">{out.origin}</span>
-                <span className="text-muted-foreground/70">
-                  {fmtTime(out.departing)}
-                </span>
-                <span className="text-muted-foreground/40">→</span>
-                <span className="tabular-nums font-mono">
-                  {out.destination}
-                </span>
-                <span className="text-muted-foreground/70">
-                  {fmtTime(out.arriving)}
-                </span>
-                <span className="ml-auto text-muted-foreground/60 text-[10px]">
-                  {fmtDate(out.departing)} · {fmtDuration(out.durationMinutes)} ·{" "}
-                  {out.stops === 0
-                    ? "nonstop"
-                    : `${out.stops} stop${out.stops > 1 ? "s" : ""}`}
+                  <span className="text-muted-foreground/40">→</span>
+                  <span className="tabular-nums font-mono">
+                    {out.destination}
+                  </span>
+                  <span className="text-muted-foreground/70">
+                    {fmtTime(out.arriving)}
+                  </span>
+                  <span className="ml-auto text-muted-foreground/60 text-[10px]">
+                    {fmtDate(out.departing)} ·{" "}
+                    {fmtDuration(out.durationMinutes)} ·{" "}
+                    {out.stops === 0
+                      ? "nonstop"
+                      : `${out.stops} stop${out.stops > 1 ? "s" : ""}`}
+                  </span>
+                </div>
+              )}
+              {ret && (
+                <div className="mt-1 text-xs text-foreground/85 flex items-center gap-2 leading-snug">
+                  <span className="tabular-nums font-mono">{ret.origin}</span>
+                  <span className="text-muted-foreground/70">
+                    {fmtTime(ret.departing)}
+                  </span>
+                  <span className="text-muted-foreground/40">→</span>
+                  <span className="tabular-nums font-mono">
+                    {ret.destination}
+                  </span>
+                  <span className="text-muted-foreground/70">
+                    {fmtTime(ret.arriving)}
+                  </span>
+                  <span className="ml-auto text-muted-foreground/60 text-[10px]">
+                    {fmtDate(ret.departing)} ·{" "}
+                    {fmtDuration(ret.durationMinutes)} ·{" "}
+                    {ret.stops === 0
+                      ? "nonstop"
+                      : `${ret.stops} stop${ret.stops > 1 ? "s" : ""}`}
+                  </span>
+                </div>
+              )}
+              <div className="mt-2.5 flex items-center justify-between gap-2">
+                <p className="text-[10px] text-muted-foreground">
+                  ${Math.round(offer.perPassengerAmount / 100).toLocaleString()}{" "}
+                  per traveller
+                </p>
+                <span className="text-[11px] font-medium px-3 py-1 rounded-full border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/10 text-[hsl(var(--copper))]">
+                  View &amp; book →
                 </span>
               </div>
-            )}
-            {ret && (
-              <div className="mt-1 text-xs text-foreground/85 flex items-center gap-2 leading-snug">
-                <span className="tabular-nums font-mono">{ret.origin}</span>
-                <span className="text-muted-foreground/70">
-                  {fmtTime(ret.departing)}
-                </span>
-                <span className="text-muted-foreground/40">→</span>
-                <span className="tabular-nums font-mono">
-                  {ret.destination}
-                </span>
-                <span className="text-muted-foreground/70">
-                  {fmtTime(ret.arriving)}
-                </span>
-                <span className="ml-auto text-muted-foreground/60 text-[10px]">
-                  {fmtDate(ret.departing)} · {fmtDuration(ret.durationMinutes)} ·{" "}
-                  {ret.stops === 0
-                    ? "nonstop"
-                    : `${ret.stops} stop${ret.stops > 1 ? "s" : ""}`}
-                </span>
-              </div>
-            )}
-            <div className="mt-2.5 flex items-center justify-between gap-2">
-              <p className="text-[10px] text-muted-foreground">
-                ${Math.round(offer.perPassengerAmount / 100).toLocaleString()}{" "}
-                per traveller
-              </p>
-              <button
-                type="button"
-                disabled
-                title="Booking flow lands next — confirm in chat for now."
-                className="text-[11px] font-medium px-3 py-1 rounded-full border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/10 text-[hsl(var(--copper))] hover:bg-[hsl(var(--copper))]/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Book this
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </div>
+            </button>
+          );
+        })}
+      </div>
+      {activeOffer && (
+        <SuggestedFlightDialog
+          open={!!activeOffer}
+          onOpenChange={(o) => {
+            if (!o) setActiveOffer(null);
+          }}
+          offer={activeOffer}
+          passengers={suggested.passengers}
+          cabin={suggested.cabin}
+          onBookRequested={requestBooking}
+        />
+      )}
+    </>
   );
 }
 

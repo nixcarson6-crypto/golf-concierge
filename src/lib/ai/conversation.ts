@@ -435,6 +435,41 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
  * existing title is one of the placeholder / form-default strings — never
  * overrides a name the user typed themselves.
  */
+/**
+ * Squeeze freeform destination input down to just the place name.
+ * Quiz users type how they speak ("Let's go to Pinehurst and stay at
+ * their resort.") — we strip the conversational filler so the trip
+ * title is "Pinehurst", not the whole sentence. Heuristic-based so
+ * we don't burn a model call on every quiz submission.
+ */
+export function cleanDestination(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let s = raw.trim();
+  if (!s) return null;
+  // Strip leading conversational phrases.
+  s = s.replace(
+    /^(let'?s\s+(?:go|head|fly|travel)\s+to|i\s+(?:want|wanna|would\s+like|need)\s+to\s+(?:go|head|fly|travel)\s+to|take\s+me\s+to|we\s+(?:should|want\s+to|wanna|need\s+to)\s+(?:go|head|fly|travel)\s+to|i'?d\s+like\s+to\s+(?:go|head|fly|travel)\s+to|going\s+to|trip\s+to|book\s+(?:us|me)\s+to|plan\s+(?:a\s+trip\s+to|me\s+a\s+trip\s+to)|how\s+about|let'?s\s+do|let'?s\s+try)\s+/i,
+    "",
+  );
+  // Strip trailing phrases that describe what to do AT the destination.
+  s = s.replace(
+    /\s+(?:and|to|where\s+we'?ll|so\s+we\s+can)\s+(?:stay|sleep|book|play|golf|do|stay\s+at|stay\s+in|hang\s+out|relax|chill).*$/i,
+    "",
+  );
+  s = s.replace(/\s+for\s+(?:a\s+)?(?:weekend|week|trip|vacation|getaway|few\s+days|long\s+weekend|guys'?\s+trip|buddies'?\s+trip).*$/i, "");
+  s = s.replace(/\s+with\s+.*$/i, "");
+  // Strip terminal punctuation.
+  s = s.replace(/[.!?,;:]+$/g, "").trim();
+  // If the user typed something like "the carolina at pinehurst", keep
+  // it — that's a meaningful resort name. Don't over-truncate.
+  if (s.length > 60) {
+    // Last-ditch: take everything up to the first comma or "and".
+    const cut = s.split(/,|\s+and\s+/i)[0];
+    if (cut && cut.length >= 3) s = cut.trim();
+  }
+  return s.length > 0 ? s : null;
+}
+
 export function autoTitle(args: {
   currentTitle: string;
   constraints: TripConstraints;
@@ -446,7 +481,7 @@ export function autoTitle(args: {
     /^new trip$/i.test(args.currentTitle.trim());
   if (!isPlaceholder) return null;
 
-  const dest = args.constraints.destination?.trim();
+  const dest = cleanDestination(args.constraints.destination);
   const group = args.constraints.groupSize;
   const startMonth = args.constraints.startDate
     ? new Date(args.constraints.startDate).toLocaleString("en-US", {

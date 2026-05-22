@@ -37,6 +37,13 @@ export type SuggestedFlightOffer = {
     durationMinutes: number;
     stops: number;
     cabin: string;
+    segments?: Array<{
+      flightNumber: string;
+      origin: string;
+      destination: string;
+      departing: string;
+      arriving: string;
+    }>;
   }>;
   expiresAt: string | null;
 };

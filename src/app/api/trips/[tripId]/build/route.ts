@@ -12,7 +12,11 @@ import { requireUser } from "@/lib/auth";
 import { quizAnswersToConstraints } from "@/lib/quiz/golf-questions";
 import { runDestinationAgent } from "@/lib/ai/agents/destination";
 import { runItineraryAgent } from "@/lib/ai/agents/itinerary";
-import { persistItinerary, autoTitle } from "@/lib/ai/conversation";
+import {
+  persistItinerary,
+  autoTitle,
+  cleanDestination,
+} from "@/lib/ai/conversation";
 import { nudge } from "@/lib/events";
 import { searchFlights } from "@/lib/bookings/providers/duffel-search";
 
@@ -35,7 +39,13 @@ export async function POST(
   const parsed = bodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) return new Response("invalid body", { status: 400 });
 
-  const constraints = quizAnswersToConstraints(parsed.data.answers);
+  const rawConstraints = quizAnswersToConstraints(parsed.data.answers);
+  // Clean up freeform destination text ("Let's go to Pinehurst..." → "Pinehurst")
+  // so the trip title and downstream agents work with the place name only.
+  const constraints = {
+    ...rawConstraints,
+    destination: cleanDestination(rawConstraints.destination),
+  };
   const newTitle = autoTitle({ currentTitle: trip.title, constraints });
 
   // Persist the constraints + new title so the trip header reflects the
