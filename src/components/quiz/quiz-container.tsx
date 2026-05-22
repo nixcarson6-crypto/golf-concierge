@@ -78,9 +78,12 @@ export function QuizContainer({ tripId }: { tripId: string }) {
         const txt = await res.text().catch(() => "");
         throw new Error(txt || `Build failed: ${res.status}`);
       }
-      // Server handles redirect logic on its side, but we always send the
-      // user to the trip page where the freshly-generated plan now lives.
-      router.push(`/trips/${tripId}`);
+      // Land on the trip workspace with autoBook=1 so the booking modal
+      // auto-opens for the best-fit flight (one-click confirm if the
+      // user has a saved traveler profile). The user just told us
+      // everything they wanted — don't make them click a Book button
+      // they already implied.
+      router.push(`/trips/${tripId}?autoBook=1`);
       router.refresh();
     } catch (err) {
       console.error("[quiz submit]", err);

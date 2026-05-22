@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, formatCurrency, formatDateRange } from "@/lib/utils";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BookingDetailsDialog } from "./booking-details-dialog";
 import { SuggestedFlightDialog } from "./suggested-flight-dialog";
 import { FlightBookingModal } from "./flight-booking-modal";
@@ -540,6 +541,8 @@ function SuggestedFlightsSection({
   suggested: NonNullable<WorkspaceTrip["suggestedFlights"]>;
   me: WorkspaceMe;
 }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeOffer, setActiveOffer] =
     React.useState<SuggestedFlightOffer | null>(null);
   const [bookingOffer, setBookingOffer] =
@@ -547,6 +550,22 @@ function SuggestedFlightsSection({
   const [refining, setRefining] = React.useState<FlightRefineModifier | null>(
     null,
   );
+
+  // Auto-open the booking modal when the user just landed here from
+  // the quiz (?autoBook=1). The "best fit" offer (first in the list)
+  // is pre-selected; for users with a complete saved profile this is
+  // effectively a one-click confirm. We strip the query param right
+  // after so a refresh doesn't re-trigger.
+  React.useEffect(() => {
+    if (searchParams?.get("autoBook") !== "1") return;
+    if (bookingOffer || activeOffer) return;
+    if (!suggested.offers.length) return;
+    setBookingOffer(suggested.offers[0]);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("autoBook");
+    router.replace(url.pathname + url.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Per-card refinement: zero AI cost. Hits the refine-flights endpoint
   // which re-runs Duffel with adjusted params + client-side filters and

@@ -386,6 +386,11 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       label: "Or describe in your own words",
       placeholder: "e.g. quiet during the day, lively after dinner",
     },
+    // Skip when the user named a specific destination — most named
+    // resorts (The Breakers, Pinehurst, Bandon) carry their own
+    // implicit vibe. The "Anything else?" free-text at the end picks
+    // up nuance if the user wants it.
+    shouldShow: (a) => !hasSpecificDestination(a),
   },
 
   // ── Section 3: The extras ──────────────────────────────────────────────
