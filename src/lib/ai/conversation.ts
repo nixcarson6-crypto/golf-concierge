@@ -337,6 +337,8 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
       .map((i) => i.title.toLowerCase()),
   );
 
+  const tripOwner = await db.trip.findUnique({ where: { id: tripId }, select: { ownerId: true } });
+
   return db.$transaction(async (tx) => {
     await tx.itinerary.updateMany({
       where: { tripId, status: "CURRENT" },
@@ -390,11 +392,11 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
       },
     });
 
-    if (ai.changes?.length) {
+    if (ai.changes?.length && tripOwner) {
       await tx.notification.createMany({
         data: ai.changes.slice(0, 3).map((change) => ({
           tripId,
-          userId: "system",
+          userId: tripOwner.ownerId,
           type: "ITINERARY_REVISED" as const,
           title: "Itinerary updated",
           message: change,
