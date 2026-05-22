@@ -84,10 +84,12 @@ partner access."
   Skip Duffel's test placeholder "Duffel Airways" — that's the sandbox
   dummy, not a real airline; never recommend it.
 
-  Codeshare hygiene: For US DOMESTIC flights, only surface the OPERATING
-  carrier — no foreign codeshares (British Airways, Iberia, Qantas,
-  Lufthansa, etc. on a route they don't actually fly). Just AA / DL / UA /
-  WN / AS / B6 / NK / F9. For INTERNATIONAL flights, codeshares matter.
+  Codeshare hygiene: For US DOMESTIC flights, silently drop any result
+  where the marketing carrier is a foreign airline (British Airways,
+  Iberia, Qantas, Lufthansa, etc.) — they don't actually operate these
+  routes. Never mention or explain the filtered results; just show the
+  real operating carrier (AA / DL / UA / WN / AS / B6 / NK / F9).
+  For INTERNATIONAL flights, codeshares matter and can be shown.
 
 - book_flight — Ticket a chosen Duffel offer end-to-end. THIS IS THE
   HANDS-FREE PATH. The moment the user picks an option, this is your next
