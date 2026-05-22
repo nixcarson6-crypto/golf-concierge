@@ -507,6 +507,25 @@ function BookingDetail({
   );
 }
 
+type FlightRefineModifier =
+  | "cheaper"
+  | "nonstop"
+  | "earlier"
+  | "later"
+  | "different_airline";
+
+const REFINE_CHIPS: Array<{
+  id: FlightRefineModifier;
+  label: string;
+  glyph?: string;
+}> = [
+  { id: "cheaper", label: "Cheaper", glyph: "💰" },
+  { id: "nonstop", label: "Nonstop only", glyph: "✈️" },
+  { id: "earlier", label: "Earlier", glyph: "🌅" },
+  { id: "later", label: "Later", glyph: "🌆" },
+  { id: "different_airline", label: "Different airline", glyph: "🔄" },
+];
+
 function SuggestedFlightsSection({
   tripId,
   suggested,
@@ -516,6 +535,40 @@ function SuggestedFlightsSection({
 }) {
   const [activeOffer, setActiveOffer] =
     React.useState<SuggestedFlightOffer | null>(null);
+  const [refining, setRefining] = React.useState<FlightRefineModifier | null>(
+    null,
+  );
+
+  // Per-card refinement: zero AI cost. Hits the refine-flights endpoint
+  // which re-runs Duffel with adjusted params + client-side filters and
+  // overwrites the trip's suggestedFlights block. The workspace query
+  // gets invalidated by the SSE nudge so cards refresh in place.
+  const refine = async (modifier: FlightRefineModifier) => {
+    if (refining) return;
+    setRefining(modifier);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/refine-flights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modifier }),
+      });
+      const data = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; count?: number }
+        | null;
+      if (!res.ok || data?.error) {
+        toast.error(data?.error ?? "Couldn't refine the flight options.");
+      } else {
+        const label = REFINE_CHIPS.find((c) => c.id === modifier)?.label ?? "";
+        toast.success(
+          `Updated ${data?.count ?? 0} ${label.toLowerCase()} options.`,
+        );
+      }
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setRefining(null);
+    }
+  };
 
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
@@ -571,6 +624,33 @@ function SuggestedFlightsSection({
             {suggested.passengers === 1 ? "pax" : "pax"} ·{" "}
             {suggested.cabin.replace("_", " ")}
           </p>
+        </div>
+        {/* Refinement chips: re-run search with adjusted filters. No AI
+            cost — these are the primary lever for "what if?" without
+            burning model tokens on every tweak. */}
+        <div className="flex flex-wrap gap-1.5 px-1">
+          {REFINE_CHIPS.map((chip) => {
+            const isLoading = refining === chip.id;
+            return (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => refine(chip.id)}
+                disabled={!!refining}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium border transition",
+                  "border-border/60 bg-surface-raised/60 text-foreground/80",
+                  "hover:border-foreground/30 hover:bg-surface-raised",
+                  "disabled:opacity-50 disabled:cursor-not-allowed",
+                  isLoading &&
+                    "border-[hsl(var(--copper))]/50 bg-[hsl(var(--copper))]/10",
+                )}
+              >
+                {chip.glyph && <span>{chip.glyph}</span>}
+                {isLoading ? "Searching…" : chip.label}
+              </button>
+            );
+          })}
         </div>
         {suggested.offers.map((offer, idx) => {
           const total = Math.round(offer.totalAmount / 100);
