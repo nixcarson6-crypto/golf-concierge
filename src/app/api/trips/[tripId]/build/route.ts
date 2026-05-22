@@ -159,6 +159,29 @@ export async function POST(
         maxOffers: 5,
       });
       if (result.ok) {
+        // Honor airline preference if the user picked one: re-sort so
+        // the preferred carrier surfaces first when fares are close.
+        // Duffel doesn't filter by airline server-side; this is purely
+        // a UX bias on top of "cheapest" so the user gets their
+        // airline if it's available without losing options.
+        const preferred = (
+          (parsed.data.answers.airlinePreference as string | undefined) ===
+          "custom"
+            ? ((parsed.data.answers.airlinePreferenceCustom as string | undefined) ?? "")
+            : ((parsed.data.answers.airlinePreference as string | undefined) ?? "")
+        ).toUpperCase();
+        const offers =
+          preferred && preferred !== "BEST_RATE"
+            ? [...result.offers].sort((a, b) => {
+                const aMatch = a.airlineIataCode.toUpperCase() === preferred ||
+                  a.airlineName.toUpperCase().includes(preferred);
+                const bMatch = b.airlineIataCode.toUpperCase() === preferred ||
+                  b.airlineName.toUpperCase().includes(preferred);
+                if (aMatch && !bMatch) return -1;
+                if (!aMatch && bMatch) return 1;
+                return a.totalAmount - b.totalAmount;
+              })
+            : result.offers;
         // Keep top 3 — enough for choice without analysis paralysis.
         suggestedFlights = {
           fetchedAt: new Date().toISOString(),
@@ -166,7 +189,7 @@ export async function POST(
           destination: destinationIATA,
           cabin,
           passengers: groupSize,
-          offers: result.offers.slice(0, 3),
+          offers: offers.slice(0, 3),
         };
         const existing =
           (

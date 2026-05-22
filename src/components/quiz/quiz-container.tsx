@@ -213,7 +213,18 @@ export function QuizContainer({ tripId }: { tripId: string }) {
             <MultiSelectView
               question={currentQuestion}
               value={answers[currentQuestion.id] as string[] | undefined}
+              freeText={
+                currentQuestion.freeTextField
+                  ? (answers[currentQuestion.freeTextField.writesTo] as
+                      | string
+                      | undefined)
+                  : undefined
+              }
               onChange={(v) => setAnswer(currentQuestion.id, v)}
+              onFreeTextChange={(v) => {
+                if (!currentQuestion.freeTextField) return;
+                setAnswer(currentQuestion.freeTextField.writesTo, v);
+              }}
               onContinue={advance}
             />
           )}

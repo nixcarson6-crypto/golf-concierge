@@ -106,12 +106,16 @@ export function SingleSelectView({
 export function MultiSelectView({
   question,
   value,
+  freeText,
   onChange,
+  onFreeTextChange,
   onContinue,
 }: {
   question: Extract<QuizQuestion, { kind: "multi-select" }>;
   value: string[] | undefined;
+  freeText?: string;
   onChange: (value: string[]) => void;
+  onFreeTextChange?: (value: string) => void;
   onContinue: () => void;
 }) {
   const selected = value ?? [];
@@ -123,8 +127,13 @@ export function MultiSelectView({
       onChange([...selected, v]);
     }
   };
+  const hasFreeText = (freeText ?? "").trim().length > 0;
+  // minSelect can be satisfied by either picking options OR typing in the
+  // free-text field — that's the universal escape hatch.
   const canContinue =
-    !question.minSelect || selected.length >= question.minSelect;
+    !question.minSelect ||
+    selected.length >= question.minSelect ||
+    hasFreeText;
 
   return (
     <div className="max-w-2xl mx-auto w-full space-y-5">
@@ -165,6 +174,24 @@ export function MultiSelectView({
           );
         })}
       </div>
+
+      {question.freeTextField && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 text-xs uppercase tracking-widest text-muted-foreground/70">
+            <div className="flex-1 h-px bg-border/60" />
+            <span>{question.freeTextField.label}</span>
+            <div className="flex-1 h-px bg-border/60" />
+          </div>
+          <input
+            type="text"
+            value={freeText ?? ""}
+            onChange={(e) => onFreeTextChange?.(e.target.value)}
+            placeholder={question.freeTextField.placeholder}
+            className="w-full rounded-xl border border-border bg-surface-raised px-4 py-3 text-base"
+          />
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
           {selected.length} selected

@@ -6,6 +6,16 @@
  * existing destination + itinerary agents can run on them without any
  * LLM-side constraint extraction. Saves ~70-80% of per-trip API cost
  * vs the chat flow.
+ *
+ * Smart skipping: every question can declare a `shouldShow` predicate
+ * so we don't ask the user something they've already answered another
+ * way (e.g. once they've typed "Pinehurst" we skip course-style /
+ * difficulty / lodging-tier — Pinehurst already implies all of those).
+ *
+ * Universal free-text escape hatch: every single-select and multi-select
+ * question can declare a `freeTextField` so the user can type a
+ * response when none of the options fit. The text writes into a
+ * companion answer key that the build endpoint can read.
  */
 
 export type QuizSection = {
@@ -61,6 +71,16 @@ export type QuizQuestion =
       options: QuizOption[];
       minSelect?: number;
       maxSelect?: number;
+      /**
+       * Optional free-text input below the cards — for things the
+       * preset options don't cover. The text writes into `writesTo`
+       * (separate from the multi-select array itself).
+       */
+      freeTextField?: {
+        writesTo: string;
+        label: string;
+        placeholder?: string;
+      };
       shouldShow?: (answers: QuizAnswers) => boolean;
     }
   | {
@@ -100,6 +120,20 @@ export type QuizQuestion =
 export type QuizAnswers = Record<string, unknown>;
 
 /* -------------------------------------------------------------------------- */
+/* Shared predicates                                                           */
+/* -------------------------------------------------------------------------- */
+
+const hasSpecificDestination = (a: QuizAnswers): boolean =>
+  typeof a.destination === "string" && (a.destination as string).trim().length > 0;
+
+const hasFullDateRange = (a: QuizAnswers): boolean => {
+  const d = a.dates as { start?: string; end?: string } | undefined;
+  return Boolean(d?.start && d?.end);
+};
+
+const isSolo = (a: QuizAnswers): boolean => a.groupSize === "1";
+
+/* -------------------------------------------------------------------------- */
 /* Golf travel question set                                                    */
 /* -------------------------------------------------------------------------- */
 
@@ -118,6 +152,12 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "6", label: "5–8 players", glyph: "🍻" },
       { value: "12", label: "9+ players", glyph: "🎉" },
     ],
+    freeTextField: {
+      writesTo: "groupSizeCustom",
+      selectsValue: "custom",
+      label: "Or type an exact number",
+      placeholder: "e.g. 3",
+    },
   },
   {
     kind: "single-select",
@@ -126,14 +166,19 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     title: "Who's going?",
     subtitle: "Helps us tune the vibe.",
     options: [
-      { value: "solo", label: "Just me", glyph: "🧍" },
       { value: "buddies", label: "Buddies trip", glyph: "🍺" },
       { value: "couple", label: "With my partner", glyph: "💞" },
       { value: "family", label: "Family", glyph: "👨‍👩‍👧" },
       { value: "business", label: "Business / clients", glyph: "💼" },
       { value: "mixed", label: "Mixed crew", glyph: "🎭" },
     ],
-    shouldShow: (a) => a.groupSize !== "1",
+    freeTextField: {
+      writesTo: "whoCustom",
+      selectsValue: "custom",
+      label: "Or describe in your own words",
+      placeholder: "e.g. college roommates reunion",
+    },
+    shouldShow: (a) => !isSolo(a),
   },
   {
     kind: "date-range",
@@ -154,6 +199,36 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "week", label: "A full week", description: "7+ nights", glyph: "🏖️" },
       { value: "flexible", label: "Flexible", description: "Let the trip decide", glyph: "🔄" },
     ],
+    // Skip if the user already gave us both depart + return dates —
+    // length is implicit from those.
+    shouldShow: (a) => !hasFullDateRange(a),
+  },
+  {
+    kind: "single-select",
+    id: "originAirport",
+    sectionId: "trip",
+    title: "Where are you flying from?",
+    subtitle: "We'll search live fares from this airport.",
+    options: [
+      { value: "DFW", label: "Dallas/Fort Worth", description: "DFW", glyph: "✈️" },
+      { value: "DAL", label: "Dallas Love", description: "DAL", glyph: "✈️" },
+      { value: "ATL", label: "Atlanta", description: "ATL", glyph: "✈️" },
+      { value: "ORD", label: "Chicago O'Hare", description: "ORD", glyph: "✈️" },
+      { value: "LAX", label: "Los Angeles", description: "LAX", glyph: "✈️" },
+      { value: "JFK", label: "New York JFK", description: "JFK", glyph: "✈️" },
+      { value: "LGA", label: "New York LaGuardia", description: "LGA", glyph: "✈️" },
+      { value: "EWR", label: "Newark", description: "EWR", glyph: "✈️" },
+      { value: "BOS", label: "Boston", description: "BOS", glyph: "✈️" },
+      { value: "MIA", label: "Miami", description: "MIA", glyph: "✈️" },
+      { value: "SFO", label: "San Francisco", description: "SFO", glyph: "✈️" },
+      { value: "SEA", label: "Seattle", description: "SEA", glyph: "✈️" },
+    ],
+    freeTextField: {
+      writesTo: "originAirportCustom",
+      selectsValue: "custom",
+      label: "Or type a different airport (IATA code, e.g. AUS, DEN, PHX)",
+      placeholder: "3-letter airport code",
+    },
   },
   {
     kind: "slider",
@@ -201,6 +276,14 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "desert", label: "Desert", description: "Troon, Whisper Rock, Scottsdale", glyph: "🌵" },
       { value: "hidden_gem", label: "Hidden gem", description: "Off the beaten path", glyph: "💎" },
     ],
+    freeTextField: {
+      writesTo: "courseStyleNotes",
+      label: "Anything else about the course style?",
+      placeholder: "e.g. water hazards, dramatic elevation, walking-friendly",
+    },
+    // Skip when the user already named a destination — the courses
+    // there are what they are.
+    shouldShow: (a) => !hasSpecificDestination(a),
   },
   {
     kind: "single-select",
@@ -212,32 +295,28 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "fair", label: "Fair test", description: "Engaging without being punishing", glyph: "⚖️" },
       { value: "championship", label: "Championship test", description: "I want to be challenged", glyph: "🔥" },
     ],
+    shouldShow: (a) => !hasSpecificDestination(a),
   },
   {
     kind: "single-select",
-    id: "originAirport",
+    id: "airlinePreference",
     sectionId: "vibe",
-    title: "Where are you flying from?",
-    subtitle: "We'll search live fares from this airport.",
+    title: "Airline preference?",
+    subtitle: "We'll prefer this carrier when fares are competitive.",
     options: [
-      { value: "DFW", label: "Dallas/Fort Worth", description: "DFW", glyph: "✈️" },
-      { value: "DAL", label: "Dallas Love", description: "DAL", glyph: "✈️" },
-      { value: "ATL", label: "Atlanta", description: "ATL", glyph: "✈️" },
-      { value: "ORD", label: "Chicago O'Hare", description: "ORD", glyph: "✈️" },
-      { value: "LAX", label: "Los Angeles", description: "LAX", glyph: "✈️" },
-      { value: "JFK", label: "New York JFK", description: "JFK", glyph: "✈️" },
-      { value: "LGA", label: "New York LaGuardia", description: "LGA", glyph: "✈️" },
-      { value: "EWR", label: "Newark", description: "EWR", glyph: "✈️" },
-      { value: "BOS", label: "Boston", description: "BOS", glyph: "✈️" },
-      { value: "MIA", label: "Miami", description: "MIA", glyph: "✈️" },
-      { value: "SFO", label: "San Francisco", description: "SFO", glyph: "✈️" },
-      { value: "SEA", label: "Seattle", description: "SEA", glyph: "✈️" },
+      { value: "best_rate", label: "Best rate — I don't care", description: "Cheapest reasonable", glyph: "💰" },
+      { value: "AA", label: "American", glyph: "🅰️" },
+      { value: "DL", label: "Delta", glyph: "🔺" },
+      { value: "UA", label: "United", glyph: "🔵" },
+      { value: "WN", label: "Southwest", glyph: "💛" },
+      { value: "AS", label: "Alaska", glyph: "🐻" },
+      { value: "B6", label: "JetBlue", glyph: "🟦" },
     ],
     freeTextField: {
-      writesTo: "originAirportCustom",
+      writesTo: "airlinePreferenceCustom",
       selectsValue: "custom",
-      label: "Or type a different airport (IATA code, e.g. AUS, DEN, PHX)",
-      placeholder: "3-letter airport code",
+      label: "Or type the airline you prefer",
+      placeholder: "e.g. Hawaiian, Frontier, Spirit",
     },
   },
   {
@@ -264,6 +343,15 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "boutique", label: "Boutique / character", description: "Smaller, distinctive, design-forward", glyph: "🎨" },
       { value: "premium", label: "4-star, smart-spend", description: "Comfortable, not flashy", glyph: "🛏️" },
     ],
+    freeTextField: {
+      writesTo: "lodgingNotes",
+      selectsValue: "custom",
+      label: "Or name the property you want",
+      placeholder: "e.g. The Carolina at Pinehurst, The Lodge at Bandon",
+    },
+    // Skip when the user already named a destination — most named
+    // golf destinations have an implied flagship property.
+    shouldShow: (a) => !hasSpecificDestination(a),
   },
   {
     kind: "single-select",
@@ -277,6 +365,12 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "family", label: "Family-friendly", description: "Kid-safe, varied", glyph: "🏊" },
       { value: "business", label: "Business polish", description: "Clients-grade, formal-ready", glyph: "🤝" },
     ],
+    freeTextField: {
+      writesTo: "vibeCustom",
+      selectsValue: "custom",
+      label: "Or describe in your own words",
+      placeholder: "e.g. quiet during the day, lively after dinner",
+    },
   },
 
   // ── Section 3: The extras ──────────────────────────────────────────────
@@ -295,6 +389,11 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "wine", label: "Wine-focused", glyph: "🍷" },
       { value: "seafood", label: "Seafood", glyph: "🦞" },
     ],
+    freeTextField: {
+      writesTo: "diningNotes",
+      label: "Anything specific — restaurants, cuisines, allergies?",
+      placeholder: "e.g. shellfish allergy, must include sushi night",
+    },
   },
   {
     kind: "multi-select",
@@ -312,6 +411,11 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "shooting", label: "Sporting clays", glyph: "🎯" },
       { value: "shopping", label: "Shopping", glyph: "🛍️" },
     ],
+    freeTextField: {
+      writesTo: "activitiesNotes",
+      label: "Or anything else you'd want to do",
+      placeholder: "e.g. clay shooting, distillery tour, wine tasting",
+    },
   },
   {
     kind: "single-select",
@@ -324,6 +428,12 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "private_driver", label: "Private driver", description: "Door-to-door, no driving", glyph: "🚘" },
       { value: "rideshare", label: "Uber / rideshare", glyph: "📱" },
     ],
+    freeTextField: {
+      writesTo: "transportCustom",
+      selectsValue: "custom",
+      label: "Or specify (e.g. limo, helicopter transfer)",
+      placeholder: "e.g. helicopter from JFK to East Hampton",
+    },
   },
   {
     kind: "free-text",
@@ -343,7 +453,15 @@ export const GOLF_QUIZ: QuizQuestion[] = [
 import type { TripConstraints } from "@/lib/ai/schemas";
 
 export function quizAnswersToConstraints(answers: QuizAnswers): TripConstraints {
-  const groupSize = answers.groupSize ? parseInt(answers.groupSize as string, 10) : null;
+  // Group size: prefer the custom-typed value if "custom" was chosen.
+  let groupSize: number | null = null;
+  if (answers.groupSize === "custom" && answers.groupSizeCustom) {
+    const n = parseInt(answers.groupSizeCustom as string, 10);
+    if (!Number.isNaN(n) && n > 0) groupSize = n;
+  } else if (answers.groupSize) {
+    groupSize = parseInt(answers.groupSize as string, 10);
+  }
+
   const budgetPerPerson = answers.budgetPerPerson
     ? (answers.budgetPerPerson as number)
     : null;
@@ -370,44 +488,44 @@ export function quizAnswersToConstraints(answers: QuizAnswers): TripConstraints 
 
   const dates = answers.dates as { start?: string; end?: string } | undefined;
 
-  // Aggregate freeform notes from quiz answers the structured fields don't cover.
+  // Aggregate freeform notes — everything we don't have a structured
+  // home for AND every free-text fallback the user filled in. The
+  // itinerary agent reads these.
   const noteFragments: string[] = [];
-  if (answers.who && answers.who !== "solo") {
-    noteFragments.push(`Group type: ${answers.who}`);
+  const pushIf = (label: string, value: unknown) => {
+    if (typeof value === "string" && value.trim().length > 0) {
+      noteFragments.push(`${label}: ${value.trim()}`);
+    } else if (Array.isArray(value) && value.length > 0) {
+      noteFragments.push(`${label}: ${value.join(", ")}`);
+    }
+  };
+  if (answers.who && answers.who !== "solo" && answers.who !== "custom") {
+    pushIf("Group type", answers.who);
   }
-  if (answers.tripLength) {
-    noteFragments.push(`Length preference: ${answers.tripLength}`);
+  pushIf("Group type (custom)", answers.whoCustom);
+  if (answers.tripLength) pushIf("Length preference", answers.tripLength);
+  if (answers.destinationMode) pushIf("Destination mode", answers.destinationMode);
+  pushIf("Course style", answers.courseStyle);
+  pushIf("Course style notes", answers.courseStyleNotes);
+  if (answers.difficulty) pushIf("Difficulty", answers.difficulty);
+  if (answers.cabinClass) pushIf("Cabin class", answers.cabinClass);
+  if (answers.airlinePreference && answers.airlinePreference !== "best_rate") {
+    pushIf("Airline preference", answers.airlinePreference);
   }
-  if (answers.destinationMode) {
-    noteFragments.push(`Destination mode: ${answers.destinationMode}`);
+  pushIf("Airline preference (custom)", answers.airlinePreferenceCustom);
+  if (lodging && lodging !== "custom") pushIf("Lodging tier", lodging);
+  pushIf("Lodging notes", answers.lodgingNotes);
+  if (vibe && vibe !== "custom") pushIf("Energy", vibe);
+  pushIf("Energy (custom)", answers.vibeCustom);
+  pushIf("Dining", answers.dining);
+  pushIf("Dining notes", answers.diningNotes);
+  pushIf("Activities", answers.activities);
+  pushIf("Activities notes", answers.activitiesNotes);
+  if (answers.transport && answers.transport !== "custom") {
+    pushIf("Ground transport", answers.transport);
   }
-  if (Array.isArray(answers.courseStyle) && answers.courseStyle.length) {
-    noteFragments.push(`Course style: ${(answers.courseStyle as string[]).join(", ")}`);
-  }
-  if (answers.difficulty) {
-    noteFragments.push(`Difficulty: ${answers.difficulty}`);
-  }
-  if (answers.cabinClass) {
-    noteFragments.push(`Cabin class: ${answers.cabinClass}`);
-  }
-  if (lodging) {
-    noteFragments.push(`Lodging tier: ${lodging}`);
-  }
-  if (vibe) {
-    noteFragments.push(`Energy: ${vibe}`);
-  }
-  if (Array.isArray(answers.dining) && answers.dining.length) {
-    noteFragments.push(`Dining: ${(answers.dining as string[]).join(", ")}`);
-  }
-  if (Array.isArray(answers.activities) && answers.activities.length) {
-    noteFragments.push(`Activities: ${(answers.activities as string[]).join(", ")}`);
-  }
-  if (answers.transport) {
-    noteFragments.push(`Ground transport: ${answers.transport}`);
-  }
-  if (answers.notes && (answers.notes as string).trim().length > 0) {
-    noteFragments.push(`Notes: ${(answers.notes as string).trim()}`);
-  }
+  pushIf("Ground transport (custom)", answers.transportCustom);
+  pushIf("Notes", answers.notes);
 
   return {
     destination: (answers.destination as string | undefined) ?? null,
