@@ -80,7 +80,19 @@ async function main() {
 
 function diagnose(status: number, body: string) {
   const b = body.toLowerCase();
-  if (status === 403 && b.includes("has not been used")) {
+  if (status === 403 && b.includes("api_key_service_blocked")) {
+    console.error(
+      "👉 FIX: Your server key works, but its 'API restrictions' list\n" +
+        "   doesn't include Places API (New). Two-minute fix:\n" +
+        "   1. Open https://console.cloud.google.com/apis/credentials\n" +
+        "   2. Click the server key (the one in .env.local).\n" +
+        "   3. Scroll to 'API restrictions'.\n" +
+        "   4. Add 'Places API (New)' to the allowed list (there's\n" +
+        "      usually 'Places API' AND 'Places API (New)' — pick the\n" +
+        "      one with (New); that's what our code uses).\n" +
+        "   5. Save. Wait ~30 seconds. Re-run pnpm check:places.",
+    );
+  } else if (status === 403 && b.includes("has not been used")) {
     console.error(
       "👉 FIX: 'Places API (New)' isn't enabled in your Google Cloud project.\n" +
         "   Open this URL, click Enable, wait ~30 seconds, retry:\n" +
