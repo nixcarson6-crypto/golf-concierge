@@ -14,6 +14,7 @@
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "db:seed": "dotenv -e .env.local -- tsx prisma/seed.ts",
     "check:env": "dotenv -e .env.local -- tsx scripts/check-env.ts",
+    "check:places": "dotenv -e .env.local -- tsx scripts/check-places.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
