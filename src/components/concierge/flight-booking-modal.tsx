@@ -352,15 +352,14 @@ export function FlightBookingModal({
               Cancel
             </Button>
             {/* Save & close: persist the form to the user profile without
-                booking. The escape hatch for users who hit the auto-open
-                modal but aren't ready to commit to the flight yet — what
-                they type still gets saved for next time. */}
+                booking. Booking happens later via the suggested-flight
+                card → itinerary dialog → real ticketing flow. This modal
+                is now a pure "save my traveler info" surface. */}
             <Button
-              variant="outline"
               size="sm"
               onClick={saveProfileAndClose}
               disabled={submitting || savingProfile}
-              className="shrink-0"
+              className="shrink-0 bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
             >
               {savingProfile ? (
                 <>
@@ -369,21 +368,6 @@ export function FlightBookingModal({
                 </>
               ) : (
                 "Done"
-              )}
-            </Button>
-            <Button
-              size="sm"
-              onClick={submit}
-              disabled={!allValid || submitting || savingProfile}
-              className="shrink-0 bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="size-3 mr-1.5 animate-spin" />
-                  Ticketing…
-                </>
-              ) : (
-                <>Book for ${total.toLocaleString()}</>
               )}
             </Button>
           </section>
