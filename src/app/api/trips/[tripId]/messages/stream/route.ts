@@ -111,9 +111,35 @@ export async function POST(
           tripId,
           userId: user.id,
         });
+        // Hard cap on a single generator step so a wedged tool (e.g.
+        // Duffel hanging, Anthropic deadlocked, Prisma stuck on a dead
+        // connection) can't silently freeze the whole stream. The
+        // client-side silence watchdog gives us a second line of
+        // defence at 30s; this server-side cap fires earlier so we
+        // get to send a clean error event before the connection dies.
+        const STEP_TIMEOUT_MS = 25_000;
+        const stepWithTimeout = async () => {
+          let timer: ReturnType<typeof setTimeout> | null = null;
+          const timeout = new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "concierge step timed out — partner API or DB stalled",
+                  ),
+                ),
+              STEP_TIMEOUT_MS,
+            );
+          });
+          try {
+            return await Promise.race([gen.next(), timeout]);
+          } finally {
+            if (timer) clearTimeout(timer);
+          }
+        };
         // eslint-disable-next-line no-constant-condition
         while (true) {
-          const { value, done } = await gen.next();
+          const { value, done } = await stepWithTimeout();
           if (done) {
             full = (value as string) ?? full;
             break;

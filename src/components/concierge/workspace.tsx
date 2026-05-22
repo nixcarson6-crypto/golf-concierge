@@ -296,9 +296,34 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
         const decoder = new TextDecoder();
         let buffer = "";
         let full = "";
+        // Silence-watchdog: if no SSE event arrives for 30s the stream
+        // is wedged (DB hang, Anthropic timeout, partner-API stall).
+        // Bail loudly so the user sees a real error instead of an
+        // indefinite spinner. Reset every time we DO get an event.
+        const SILENCE_TIMEOUT_MS = 30_000;
+        let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+        const resetSilenceTimer = () => {
+          if (silenceTimer) clearTimeout(silenceTimer);
+          silenceTimer = setTimeout(() => {
+            void reader.cancel().catch(() => {});
+          }, SILENCE_TIMEOUT_MS);
+        };
+        resetSilenceTimer();
         while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
+          let chunk: ReadableStreamReadResult<Uint8Array>;
+          try {
+            chunk = await reader.read();
+          } catch {
+            throw new Error(
+              "Lost connection to the concierge. The server stopped responding mid-reply — try again.",
+            );
+          }
+          const { value, done } = chunk;
+          if (done) {
+            if (silenceTimer) clearTimeout(silenceTimer);
+            break;
+          }
+          resetSilenceTimer();
           buffer += decoder.decode(value, { stream: true });
           const events = buffer.split("\n\n");
           buffer = events.pop() ?? "";
@@ -378,6 +403,11 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       } catch (err) {
         if (previous) qc.setQueryData(["workspace", tripId], previous);
         console.error("[chat stream]", err);
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Concierge didn't respond. Try again.",
+        );
       } finally {
         setSendingChat(false);
         setStreamingReply(null);
