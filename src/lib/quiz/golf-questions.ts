@@ -131,7 +131,17 @@ const hasFullDateRange = (a: QuizAnswers): boolean => {
   return Boolean(d?.start && d?.end);
 };
 
-const isSolo = (a: QuizAnswers): boolean => a.groupSize === "1";
+const isSolo = (a: QuizAnswers): boolean => {
+  // Solo if they picked "Just me" OR typed an exact number 1 in the
+  // free-text override. Without checking the custom path we'd ask
+  // "Who's going?" to someone who already said they're alone.
+  if (a.groupSize === "1") return true;
+  if (a.groupSize === "custom") {
+    const n = parseInt((a.groupSizeCustom as string | undefined) ?? "", 10);
+    if (n === 1) return true;
+  }
+  return false;
+};
 
 /* -------------------------------------------------------------------------- */
 /* Golf travel question set                                                    */

@@ -118,10 +118,17 @@ export async function POST(
   // we can't determine a destination airport we skip — the rest of the
   // plan is still useful.
   const answers = parsed.data.answers;
-  const originFromQuiz =
+  // Origin airport: handle the free-text "custom" path defensively —
+  // users may type "AUS", "aus", " aus ", "Austin", or "p d x". Trim,
+  // uppercase, and only accept exactly 3 alpha chars (an IATA code).
+  // Anything else falls through to skipping the flight search rather
+  // than searching DFW→AUSTIN and getting nothing.
+  const rawOrigin =
     (answers.originAirport as string | undefined) === "custom"
-      ? ((answers.originAirportCustom as string | undefined) ?? "").toUpperCase()
-      : ((answers.originAirport as string | undefined) ?? "").toUpperCase();
+      ? ((answers.originAirportCustom as string | undefined) ?? "")
+      : ((answers.originAirport as string | undefined) ?? "");
+  const cleanedOrigin = rawOrigin.replace(/\s+/g, "").toUpperCase();
+  const originFromQuiz = /^[A-Z]{3}$/.test(cleanedOrigin) ? cleanedOrigin : "";
   // Cabin: if the user picked "Best rate" on the airline question we
   // skipped the cabin screen entirely — default to economy (the
   // cheapest option) so the flight search honors their "I don't care,

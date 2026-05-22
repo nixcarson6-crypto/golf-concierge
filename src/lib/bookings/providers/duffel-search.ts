@@ -151,6 +151,20 @@ function summarizeOffer(o: DuffelOffer): FlightOfferSummary | null {
   const paxCount = o.passengers?.length || 1;
 
   const iata = o.owner?.iata_code ?? "";
+  const ownerName = (o.owner?.name ?? "").toLowerCase();
+  // Hard filter Duffel's sandbox placeholder carrier — it's not a real
+  // airline, no real route, no real ticket. Surfacing it in the
+  // workspace embarrasses us. The chat prompts already say to skip
+  // "Duffel Airways"; this enforces the same at the search layer so
+  // every caller (build endpoint, refine, agentic chat) benefits.
+  if (
+    iata === "ZZ" ||
+    iata === "DA" ||
+    ownerName === "duffel airways" ||
+    ownerName.startsWith("duffel ")
+  ) {
+    return null;
+  }
   const firstLeg = o.slices[0];
   const lastLeg = o.slices[o.slices.length - 1];
   const firstSegDep =
