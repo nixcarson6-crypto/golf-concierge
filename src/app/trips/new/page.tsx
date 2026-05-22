@@ -29,5 +29,5 @@ export default async function NewTripPage() {
       },
     },
   });
-  redirect(`/trips/${trip.id}/build`);
+  redirect(`/build/${trip.id}`);
 }

@@ -118,7 +118,7 @@ export function QuizContainer({ tripId }: { tripId: string }) {
   return (
     <div className="min-h-dvh bg-concierge-radial flex flex-col">
       {/* Top bar: back + progress + section chips */}
-      <div className="px-4 sm:px-6 pt-4 pb-3 border-b border-border/40 backdrop-blur-sm bg-background/60 sticky top-0 z-10">
+      <div className="px-4 sm:px-6 pt-4 pb-3 border-b border-border/40 backdrop-blur-sm bg-background/80 sticky top-0 z-50">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center gap-3 mb-3">
             <button
