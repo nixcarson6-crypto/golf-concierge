@@ -71,10 +71,18 @@ export type WorkspaceTrip = {
 export type WorkspaceMe = {
   id: string;
   name: string | null;
+  email: string;
   imageUrl: string | null;
   role: TripRole;
   myApproval: ApprovalStatus | null;
   myPayment: PaymentStatus | null;
+  profile: {
+    legalGivenName: string | null;
+    legalFamilyName: string | null;
+    dateOfBirth: string | null;
+    gender: string | null;
+    phone: string | null;
+  };
 };
 
 export type WorkspaceMember = {
@@ -504,6 +512,7 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     <LivePreview
       tripId={tripId}
       trip={snapshot.trip}
+      me={snapshot.me}
       itinerary={snapshot.itinerary}
       bookings={snapshot.bookings ?? []}
     />

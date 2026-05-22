@@ -27,21 +27,25 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn, formatCurrency, formatDateRange } from "@/lib/utils";
 import { BookingDetailsDialog } from "./booking-details-dialog";
 import { SuggestedFlightDialog } from "./suggested-flight-dialog";
+import { FlightBookingModal } from "./flight-booking-modal";
 import type {
   WorkspaceBooking,
   WorkspaceItinerary,
   WorkspaceTrip,
+  WorkspaceMe,
   SuggestedFlightOffer,
 } from "./workspace";
 
 export function LivePreview({
   tripId,
   trip,
+  me,
   itinerary,
   bookings = [],
 }: {
   tripId: string;
   trip: WorkspaceTrip;
+  me: WorkspaceMe;
   itinerary: WorkspaceItinerary | null;
   bookings?: WorkspaceBooking[];
 }) {
@@ -87,6 +91,7 @@ export function LivePreview({
           <SuggestedFlightsSection
             tripId={tripId}
             suggested={trip.suggestedFlights}
+            me={me}
           />
         )}
         {groups.length === 0 ? (
@@ -529,11 +534,15 @@ const REFINE_CHIPS: Array<{
 function SuggestedFlightsSection({
   tripId,
   suggested,
+  me,
 }: {
   tripId: string;
   suggested: NonNullable<WorkspaceTrip["suggestedFlights"]>;
+  me: WorkspaceMe;
 }) {
   const [activeOffer, setActiveOffer] =
+    React.useState<SuggestedFlightOffer | null>(null);
+  const [bookingOffer, setBookingOffer] =
     React.useState<SuggestedFlightOffer | null>(null);
   const [refining, setRefining] = React.useState<FlightRefineModifier | null>(
     null,
@@ -570,6 +579,15 @@ function SuggestedFlightsSection({
     }
   };
 
+  // Open the booking modal for a specific offer. Replaces the old
+  // "send a chat message" detour — the modal collects the passenger
+  // fields once (pre-filled from the user's saved profile if they've
+  // booked before) and hits /book-flight directly.
+  const openBookingFor = (offer: SuggestedFlightOffer) => {
+    setActiveOffer(null);
+    setBookingOffer(offer);
+  };
+
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
@@ -590,25 +608,6 @@ function SuggestedFlightsSection({
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return `${h}h ${m.toString().padStart(2, "0")}m`;
-  };
-
-  // Booking handoff: fire a message into the concierge chat asking for
-  // this specific Duffel offer to be ticketed. The chat already knows
-  // how to collect passenger details and complete the booking — this
-  // is the bridge from "I see this option" → "ticket it for me".
-  const requestBooking = async (offer: SuggestedFlightOffer) => {
-    const total = Math.round(offer.totalAmount / 100);
-    const msg = `Book the ${offer.airlineName} option I picked from the side panel — $${total} total. Duffel offer id: ${offer.id}. Please ask me for any passenger details you still need.`;
-    try {
-      await fetch(`/api/trips/${tripId}/messages/stream`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: msg }),
-      });
-      toast.success("Asked the concierge to ticket it — check the chat.");
-    } catch {
-      toast.error("Couldn't reach the concierge. Try again in a second.");
-    }
   };
 
   return (
@@ -742,7 +741,25 @@ function SuggestedFlightsSection({
           offer={activeOffer}
           passengers={suggested.passengers}
           cabin={suggested.cabin}
-          onBookRequested={requestBooking}
+          onBookRequested={openBookingFor}
+        />
+      )}
+      {bookingOffer && (
+        <FlightBookingModal
+          open={!!bookingOffer}
+          onOpenChange={(o) => {
+            if (!o) setBookingOffer(null);
+          }}
+          tripId={tripId}
+          offer={bookingOffer}
+          passengerCount={suggested.passengers}
+          cabin={suggested.cabin}
+          profile={me.profile}
+          defaultEmail={me.email}
+          onBooked={() => {
+            // Workspace query will pick up the new booking via the
+            // realtime nudge fired by the booking endpoint.
+          }}
         />
       )}
     </>

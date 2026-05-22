@@ -100,10 +100,21 @@ export async function GET(
     me: {
       id: me.id,
       name: me.name,
+      email: me.email,
       imageUrl: me.imageUrl,
       role: access.role,
       myApproval: myMember?.approvalStatus ?? null,
       myPayment: myMember?.paymentStatus ?? null,
+      // Saved traveler profile — used by the one-click booking modal
+      // to pre-fill the passenger form so customers don't re-enter
+      // their DOB/email/phone on every booking.
+      profile: {
+        legalGivenName: me.legalGivenName,
+        legalFamilyName: me.legalFamilyName,
+        dateOfBirth: me.dateOfBirth?.toISOString().slice(0, 10) ?? null,
+        gender: me.gender,
+        phone: me.phone,
+      },
     },
     messages: messages.map((m) => ({
       id: m.id,
