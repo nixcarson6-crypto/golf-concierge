@@ -18,6 +18,12 @@ export function anthropic(): Anthropic {
     defaultHeaders: {
       "anthropic-version": "2023-06-01",
     },
+    // Anthropic returns 529 ("overloaded") during traffic spikes. The SDK
+    // retries 408/409/429/5xx with exponential backoff + jitter — bumping
+    // from the default 2 to 5 absorbs brief overload windows without the
+    // user seeing a dead chat.
+    maxRetries: 5,
+    timeout: 120_000,
   });
   return _client;
 }
