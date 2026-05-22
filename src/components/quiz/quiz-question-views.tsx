@@ -12,49 +12,89 @@ import type { QuizQuestion } from "@/lib/quiz/golf-questions";
 export function SingleSelectView({
   question,
   value,
+  freeText,
   onAnswer,
+  onFreeTextChange,
+  onFreeTextSubmit,
 }: {
   question: Extract<QuizQuestion, { kind: "single-select" }>;
   value: string | undefined;
+  freeText?: string;
   onAnswer: (value: string) => void;
+  onFreeTextChange?: (value: string) => void;
+  onFreeTextSubmit?: () => void;
 }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 max-w-2xl mx-auto w-full">
-      {question.options.map((opt) => {
-        const selected = value === opt.value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onAnswer(opt.value)}
-            className={cn(
-              "group relative text-left rounded-2xl border bg-surface-raised/70 px-5 py-4 transition",
-              "hover:border-foreground/40 hover:bg-surface-raised hover:scale-[1.01]",
-              selected
-                ? "border-[hsl(var(--copper))] bg-[hsl(var(--copper))]/8 ring-2 ring-[hsl(var(--copper))]/30"
-                : "border-border/60",
-            )}
-          >
-            <div className="flex items-start gap-3">
-              {opt.glyph && (
-                <span className="text-2xl leading-none shrink-0 mt-0.5">
-                  {opt.glyph}
-                </span>
+    <div className="max-w-2xl mx-auto w-full space-y-5">
+      <div className="grid gap-3 sm:grid-cols-2">
+        {question.options.map((opt) => {
+          const selected = value === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onAnswer(opt.value)}
+              className={cn(
+                "group relative text-left rounded-2xl border bg-surface-raised/70 px-5 py-4 transition",
+                "hover:border-foreground/40 hover:bg-surface-raised hover:scale-[1.01]",
+                selected
+                  ? "border-[hsl(var(--copper))] bg-[hsl(var(--copper))]/8 ring-2 ring-[hsl(var(--copper))]/30"
+                  : "border-border/60",
               )}
-              <div className="min-w-0">
-                <p className="font-semibold text-foreground leading-snug">
-                  {opt.label}
-                </p>
-                {opt.description && (
-                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                    {opt.description}
-                  </p>
+            >
+              <div className="flex items-start gap-3">
+                {opt.glyph && (
+                  <span className="text-2xl leading-none shrink-0 mt-0.5">
+                    {opt.glyph}
+                  </span>
                 )}
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground leading-snug">
+                    {opt.label}
+                  </p>
+                  {opt.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                      {opt.description}
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
-          </button>
-        );
-      })}
+            </button>
+          );
+        })}
+      </div>
+
+      {question.freeTextField && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 text-xs uppercase tracking-widest text-muted-foreground/70">
+            <div className="flex-1 h-px bg-border/60" />
+            <span>{question.freeTextField.label}</span>
+            <div className="flex-1 h-px bg-border/60" />
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={freeText ?? ""}
+              onChange={(e) => onFreeTextChange?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (freeText ?? "").trim()) {
+                  e.preventDefault();
+                  onFreeTextSubmit?.();
+                }
+              }}
+              placeholder={question.freeTextField.placeholder}
+              className="flex-1 rounded-xl border border-border bg-surface-raised px-4 py-3 text-base"
+            />
+            <Button
+              onClick={() => onFreeTextSubmit?.()}
+              disabled={!(freeText ?? "").trim()}
+              size="lg"
+            >
+              Continue
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

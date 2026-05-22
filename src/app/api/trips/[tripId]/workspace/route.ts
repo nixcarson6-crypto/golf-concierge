@@ -90,6 +90,12 @@ export async function GET(
       budgetTotal: trip.budgetTotal,
       budgetPerPerson: trip.budgetPerPerson,
       status: trip.status,
+      // Quiz-supplied flight options ready to book — written by the
+      // /build endpoint after a live Duffel search. Null until the
+      // quiz finishes or if we couldn't determine origin/destination.
+      suggestedFlights:
+        (trip.constraints as Record<string, unknown> | null)?.suggestedFlights ??
+        null,
     },
     me: {
       id: me.id,

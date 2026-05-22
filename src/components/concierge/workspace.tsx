@@ -22,6 +22,25 @@ import type {
   NotificationType,
 } from "@prisma/client";
 
+export type SuggestedFlightOffer = {
+  id: string;
+  totalAmount: number;
+  currency: string;
+  perPassengerAmount: number;
+  airlineName: string;
+  airlineIataCode: string;
+  slices: Array<{
+    origin: string;
+    destination: string;
+    departing: string;
+    arriving: string;
+    durationMinutes: number;
+    stops: number;
+    cabin: string;
+  }>;
+  expiresAt: string | null;
+};
+
 export type WorkspaceTrip = {
   id: string;
   title: string;
@@ -32,6 +51,14 @@ export type WorkspaceTrip = {
   budgetTotal: number | null;
   budgetPerPerson: number | null;
   status: TripStatus;
+  suggestedFlights: {
+    fetchedAt: string;
+    origin: string;
+    destination: string;
+    cabin: string;
+    passengers: number;
+    offers: SuggestedFlightOffer[];
+  } | null;
 };
 
 export type WorkspaceMe = {

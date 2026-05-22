@@ -14,6 +14,7 @@ import { runDestinationAgent } from "@/lib/ai/agents/destination";
 import { runItineraryAgent } from "@/lib/ai/agents/itinerary";
 import { persistItinerary, autoTitle } from "@/lib/ai/conversation";
 import { nudge } from "@/lib/events";
+import { searchFlights } from "@/lib/bookings/providers/duffel-search";
 
 const bodySchema = z.object({
   answers: z.record(z.unknown()),
@@ -100,11 +101,111 @@ export async function POST(
   await persistItinerary(tripId, itineraryOutput);
   nudge(tripId);
 
+  // Step 3: run a live flight search so the result page can show real
+  // bookable options. We use the user's quiz-supplied origin airport
+  // and pull the destination IATA from whichever FLIGHT item the
+  // itinerary agent emitted (it's instructed to set metadata.to). If
+  // we can't determine a destination airport we skip — the rest of the
+  // plan is still useful.
+  const answers = parsed.data.answers;
+  const originFromQuiz =
+    (answers.originAirport as string | undefined) === "custom"
+      ? ((answers.originAirportCustom as string | undefined) ?? "").toUpperCase()
+      : ((answers.originAirport as string | undefined) ?? "").toUpperCase();
+  const cabinAnswer = (answers.cabinClass as string | undefined) ?? "business";
+  const cabin: "first" | "business" | "premium_economy" | "economy" =
+    cabinAnswer === "first"
+      ? "first"
+      : cabinAnswer === "premium_economy"
+        ? "premium_economy"
+        : cabinAnswer === "economy" || cabinAnswer === "best_deal"
+          ? "economy"
+          : "business";
+
+  // Look for a destination IATA on any FLIGHT item the AI just emitted.
+  const flightItem = itineraryOutput.items.find((it) => it.type === "FLIGHT");
+  const flightMeta = (flightItem?.metadata ?? {}) as {
+    to?: string;
+    from?: string;
+  };
+  const destinationIATA = (flightMeta.to ?? "").toUpperCase();
+
+  let suggestedFlights: unknown = null;
+  if (
+    originFromQuiz &&
+    originFromQuiz.length === 3 &&
+    destinationIATA &&
+    destinationIATA.length === 3 &&
+    constraints.startDate &&
+    constraints.endDate
+  ) {
+    try {
+      const groupSize = constraints.groupSize ?? 1;
+      const result = await searchFlights({
+        slices: [
+          {
+            origin: originFromQuiz,
+            destination: destinationIATA,
+            departureDate: constraints.startDate,
+          },
+          {
+            origin: destinationIATA,
+            destination: originFromQuiz,
+            departureDate: constraints.endDate,
+          },
+        ],
+        passengers: groupSize,
+        cabin,
+        maxOffers: 5,
+      });
+      if (result.ok) {
+        // Keep top 3 — enough for choice without analysis paralysis.
+        suggestedFlights = {
+          fetchedAt: new Date().toISOString(),
+          origin: originFromQuiz,
+          destination: destinationIATA,
+          cabin,
+          passengers: groupSize,
+          offers: result.offers.slice(0, 3),
+        };
+        const existing =
+          (
+            await db.trip.findUnique({
+              where: { id: tripId },
+              select: { constraints: true },
+            })
+          )?.constraints ?? {};
+        await db.trip.update({
+          where: { id: tripId },
+          data: {
+            constraints: {
+              ...(existing as Record<string, unknown>),
+              suggestedFlights,
+            } as object,
+          },
+        });
+        nudge(tripId);
+      } else {
+        console.warn(`[build] flight search returned error:`, result.error);
+      }
+    } catch (err) {
+      // Flight search failure shouldn't break the build — the user
+      // still has a full itinerary; they just won't see live flight
+      // options on the result page.
+      console.error("[build] flight search threw:", err);
+    }
+  } else {
+    console.info(
+      `[build] skipping flight search (origin=${originFromQuiz}, dest=${destinationIATA}, dates=${constraints.startDate}/${constraints.endDate})`,
+    );
+  }
+
   return new Response(
     JSON.stringify({
       ok: true,
       tripId,
       destination: chosenDestination,
+      suggestedFlights,
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );

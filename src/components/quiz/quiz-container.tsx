@@ -177,11 +177,34 @@ export function QuizContainer({ tripId }: { tripId: string }) {
             <SingleSelectView
               question={currentQuestion}
               value={answers[currentQuestion.id] as string | undefined}
+              freeText={
+                currentQuestion.freeTextField
+                  ? (answers[currentQuestion.freeTextField.writesTo] as
+                      | string
+                      | undefined)
+                  : undefined
+              }
               onAnswer={(v) => {
                 setAnswer(currentQuestion.id, v);
+                // Picking an option clears any half-typed free-text input
+                // so the resulting answer is unambiguous.
+                if (currentQuestion.freeTextField) {
+                  setAnswer(currentQuestion.freeTextField.writesTo, "");
+                }
                 // Auto-advance on single-select (Hungry Root pattern). Give
                 // the selected-state animation a beat to land first.
                 setTimeout(() => advance(), 180);
+              }}
+              onFreeTextChange={(v) => {
+                if (!currentQuestion.freeTextField) return;
+                setAnswer(currentQuestion.freeTextField.writesTo, v);
+              }}
+              onFreeTextSubmit={() => {
+                if (!currentQuestion.freeTextField) return;
+                // Filling the free-text input acts as picking the
+                // declared option — keeps downstream branching simple.
+                setAnswer(currentQuestion.id, currentQuestion.freeTextField.selectsValue);
+                advance();
               }}
             />
           )}

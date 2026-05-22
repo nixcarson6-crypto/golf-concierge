@@ -37,6 +37,18 @@ export type QuizQuestion =
       title: string;
       subtitle?: string;
       options: QuizOption[];
+      /**
+       * If set, render an optional text input below the option cards.
+       * Filling it writes to `freeTextField.writesTo` and auto-selects
+       * `freeTextField.selectsValue` on this question. Lets a single
+       * screen offer "pick from these" + "or type your own".
+       */
+      freeTextField?: {
+        writesTo: string;
+        selectsValue: string;
+        label: string;
+        placeholder?: string;
+      };
       /** If set, this question is skipped unless the predicate passes. */
       shouldShow?: (answers: QuizAnswers) => boolean;
     }
@@ -162,20 +174,17 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     id: "destinationMode",
     sectionId: "vibe",
     title: "Where?",
-    subtitle: "Pick a destination, or let us match one.",
+    subtitle: "Type a destination, or let us match one.",
     options: [
-      { value: "specific", label: "I have a destination in mind", glyph: "📍" },
       { value: "suggest", label: "Surprise me", description: "We'll pick the strongest fit", glyph: "✨" },
       { value: "top3", label: "Show me top 3", description: "We'll rank options, you choose", glyph: "🏆" },
     ],
-  },
-  {
-    kind: "free-text",
-    id: "destination",
-    sectionId: "vibe",
-    title: "Which destination?",
-    placeholder: "e.g. Pinehurst, Scottsdale, Bandon Dunes, Vermont",
-    shouldShow: (a) => a.destinationMode === "specific",
+    freeTextField: {
+      writesTo: "destination",
+      selectsValue: "specific",
+      label: "Or type the destination you want",
+      placeholder: "e.g. Pinehurst, Scottsdale, Bandon Dunes, Vermont",
+    },
   },
   {
     kind: "multi-select",
@@ -203,6 +212,33 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       { value: "fair", label: "Fair test", description: "Engaging without being punishing", glyph: "⚖️" },
       { value: "championship", label: "Championship test", description: "I want to be challenged", glyph: "🔥" },
     ],
+  },
+  {
+    kind: "single-select",
+    id: "originAirport",
+    sectionId: "vibe",
+    title: "Where are you flying from?",
+    subtitle: "We'll search live fares from this airport.",
+    options: [
+      { value: "DFW", label: "Dallas/Fort Worth", description: "DFW", glyph: "✈️" },
+      { value: "DAL", label: "Dallas Love", description: "DAL", glyph: "✈️" },
+      { value: "ATL", label: "Atlanta", description: "ATL", glyph: "✈️" },
+      { value: "ORD", label: "Chicago O'Hare", description: "ORD", glyph: "✈️" },
+      { value: "LAX", label: "Los Angeles", description: "LAX", glyph: "✈️" },
+      { value: "JFK", label: "New York JFK", description: "JFK", glyph: "✈️" },
+      { value: "LGA", label: "New York LaGuardia", description: "LGA", glyph: "✈️" },
+      { value: "EWR", label: "Newark", description: "EWR", glyph: "✈️" },
+      { value: "BOS", label: "Boston", description: "BOS", glyph: "✈️" },
+      { value: "MIA", label: "Miami", description: "MIA", glyph: "✈️" },
+      { value: "SFO", label: "San Francisco", description: "SFO", glyph: "✈️" },
+      { value: "SEA", label: "Seattle", description: "SEA", glyph: "✈️" },
+    ],
+    freeTextField: {
+      writesTo: "originAirportCustom",
+      selectsValue: "custom",
+      label: "Or type a different airport (IATA code, e.g. AUS, DEN, PHX)",
+      placeholder: "3-letter airport code",
+    },
   },
   {
     kind: "single-select",
