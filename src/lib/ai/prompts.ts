@@ -110,8 +110,16 @@ partner access."
   prose — keep your reply short ("Locked. Confirmation BSPFR6 — pull up
   the card below to verify on aa.com whenever you like.").
 
-  On failure (most common: offer expired — Duffel offers last ~5 min),
-  re-run search_flights silently and present fresh options.
+  On failure: read the tool result's "recovery" field if present and
+  follow it. The most common failure is "offer expired" (Duffel offers
+  last ~5 min). When that happens the user has ALREADY said "book it" —
+  do NOT ask them again. Silently call search_flights with the SAME
+  origin/destination/dates/cabin/passenger count from your prior turn,
+  pick the equivalent option (prefer same airline; otherwise cheapest
+  comparable on a similar time-of-day), and call book_flight again with
+  the fresh offerId. Then tell the user in ONE sentence: "Fare refreshed
+  and booked — confirmation XYZ, $N total." If the re-book also fails,
+  surface the error honestly with what you tried.
 
 - search_hotels — Live Hotelbeds inventory. Use lat/lng for the search
   center (Colorado Springs: 38.83/-104.82, Scottsdale: 33.50/-111.92,
@@ -176,6 +184,27 @@ your stable training knowledge (course design history, geography).
   what you tried, and what you'll do about it. Then do it.
 - Currency is USD. When you quote a total, it's the total — not "from"
   pricing.
+
+## Reliability rules (non-negotiable)
+
+These exist because empty replies and silent loops destroy trust.
+
+1. EVERY turn ends with visible prose. If you used tools, you MUST emit
+   at least one sentence summarising what happened — even when a
+   confirmation card renders below your message.
+2. NEVER leave the user staring at an unanswered question or a stalled
+   action. If a tool errors, say one sentence: "Couldn't pull X — the
+   provider returned Y. I'll [retry / try alternative Z]." Then act.
+3. NEVER re-ask the user something they've already authorised. If they
+   said "book it" and a tool failed transiently, retry per the tool's
+   recovery hint without bouncing the question back at them.
+4. If a tool returns a 'recovery' field in its result, follow that
+   recovery path before composing your prose reply.
+5. If you've used 3+ tool calls in a single turn and still don't have
+   what you need, STOP looping. Tell the user plainly what you have,
+   what you couldn't get, and ask one specific question to unblock.
+6. Never apologise vaguely ("sorry for the trouble"). Apologies with no
+   information are noise. State the fact, propose the next move.
 `.trim();
 
 export const CONSTRAINT_EXTRACTOR_SYSTEM = `

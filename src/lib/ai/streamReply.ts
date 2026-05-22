@@ -208,7 +208,7 @@ const FLIGHT_TOOL: Anthropic.Tool = {
 const FLIGHT_BOOK_TOOL: Anthropic.Tool = {
   name: "book_flight",
   description:
-    "Ticket a Duffel flight offer the user has chosen. Call this AFTER the user explicitly confirms which option to book (e.g. 'book the AA option', 'book it'). You must collect passenger details from the user first — given name, family name, date of birth (YYYY-MM-DD), gender (m/f), email, and phone number in E.164 format (e.g. +12125550100) — one set per passenger on the offer. The `offerId` is the `id` field from the search_flights result. On success, the booking is persisted to the trip and appears in the Live Trip panel. On failure (most commonly: offer expired after a few minutes), re-run search_flights and present fresh options.",
+    "Ticket a Duffel flight offer the user has chosen. Call this AFTER the user explicitly confirms which option to book (e.g. 'book the AA option', 'book it'). You must collect passenger details from the user first — given name, family name, date of birth (YYYY-MM-DD), gender (m/f), email, and phone number in E.164 format (e.g. +12125550100) — one set per passenger on the offer. The `offerId` is the `id` field from the search_flights result. On success, the booking is persisted to the trip and appears in the Live Trip panel. ON EXPIRED OFFER: the user already authorised the booking — do NOT re-ask. Re-run search_flights with the same criteria from your prior reply, pick the equivalent option (prefer same airline), and call book_flight again with the fresh offerId. The result will include a 'recovery' hint when applicable — follow it.",
   input_schema: {
     type: "object",
     properties: {
@@ -884,7 +884,45 @@ export async function* streamReplyTokens(
   return full;
 }
 
+/**
+ * Run a tool with a hard timeout and an outermost try/catch. Every tool
+ * MUST return a string (the JSON content for the tool_result block). A
+ * provider that hangs, throws, or returns garbage gets normalized into
+ * a structured error so the AI can react in prose instead of crashing
+ * the stream. This is the single chokepoint that keeps the chat alive
+ * when a partner API misbehaves.
+ */
 async function executeTool(
+  name: string,
+  input: unknown,
+  ctx: { tripId?: string; userId?: string },
+): Promise<string> {
+  const TOOL_TIMEOUT_MS = 35_000;
+  try {
+    return await Promise.race([
+      executeToolInner(name, input, ctx),
+      new Promise<string>((resolve) =>
+        setTimeout(
+          () =>
+            resolve(
+              JSON.stringify({
+                error: `${name} timed out after ${TOOL_TIMEOUT_MS / 1000}s — partner API stalled. Tell the user one short sentence and propose a next step (retry, swap, or skip).`,
+              }),
+            ),
+          TOOL_TIMEOUT_MS,
+        ),
+      ),
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[executeTool ${name}] threw:`, msg);
+    return JSON.stringify({
+      error: `${name} failed: ${msg.slice(0, 300)}`,
+    });
+  }
+}
+
+async function executeToolInner(
   name: string,
   input: unknown,
   ctx: { tripId?: string; userId?: string },
@@ -1054,7 +1092,14 @@ async function executeBookFlight(
   });
 
   if (!result.ok) {
-    return JSON.stringify({ error: result.error });
+    const expired = /expired|expires|stale|no longer/i.test(result.error);
+    return JSON.stringify({
+      error: result.error,
+      expired: expired || undefined,
+      recovery: expired
+        ? "Duffel offers expire ~5 minutes after search. DO NOT ask the user to reconfirm — they already said book it. Immediately call search_flights with the SAME origin, destination, dates, cabin and passenger count from your prior reply, pick the equivalent option (same airline preferred; cheapest comparable if not available), and call book_flight again with the new offerId. Then tell the user in one sentence: 'Fare refreshed and booked — confirmation XYZ, $N total.'"
+        : "Tool failed. Tell the user one short sentence about what happened and propose a concrete next step.",
+    });
   }
 
   try {
