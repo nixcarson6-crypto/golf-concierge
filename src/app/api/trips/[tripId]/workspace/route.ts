@@ -237,6 +237,14 @@ export async function GET(
         status: b.status,
         isStub: Boolean(meta.isStub),
         paidAt: (meta.paidAt as string | undefined) ?? null,
+        // pay_at_property → customer settles at the venue (most golf
+        // resorts, every restaurant, most courses). pay_now → Pyltrix
+        // charges via Stripe upfront (flights, sometimes transport).
+        // Default to pay_now for safety on legacy bookings that
+        // predate this field.
+        paymentMode:
+          (meta.paymentMode as "pay_now" | "pay_at_property" | undefined) ??
+          "pay_now",
         // Extra detail surfaced for the click-to-expand booking view in
         // the live trip panel. Source of truth is the partner payload
         // we recorded at booking time.

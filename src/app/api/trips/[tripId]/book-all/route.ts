@@ -219,17 +219,20 @@ export async function POST(
       // booking so it surfaces under the Booked list with the right
       // status. Real partner integration replaces this with a true
       // confirmation when those keys land.
+      // Reservations vs payments: most golf resorts, courses, and
+      // every restaurant secure a booking with name/contact only and
+      // charge at check-in / when you dine. Mark these so the Pay
+      // CTA doesn't try to charge for them.
+      //   pay_at_property → customer pays at the venue
+      //   pay_now         → Pyltrix charges via Stripe (flights, some
+      //                     transport)
+      const paymentMode: "pay_at_property" | "pay_now" =
+        category === "transport" ? "pay_now" : "pay_at_property";
       const stubRef = `STUB-${category.toUpperCase()}-${item.id.slice(-8)}`;
       await db.booking.create({
         data: {
           tripId,
           itineraryItemId: item.id,
-          // Provider enum doesn't carry sandbox-only labels for the
-          // partners we're pending on (Hotelbeds, Lightspeed, etc.).
-          // Use OPENTABLE for restaurants (matches the enum), GOLFNOW
-          // for golf, and INTERNAL elsewhere — isStub=true in metadata
-          // is the source of truth for "pencilled, not yet a real
-          // partner confirmation."
           provider:
             category === "golf"
               ? "GOLFNOW"
@@ -244,6 +247,7 @@ export async function POST(
           confirmedAt: new Date(),
           metadata: {
             isStub: true,
+            paymentMode,
             stubReason: `Awaiting ${category} partner API access`,
             itemTitle: item.title,
             itemLocation: item.location,

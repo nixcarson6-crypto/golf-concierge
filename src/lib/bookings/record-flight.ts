@@ -146,6 +146,11 @@ export async function recordFlightBooking(args: RecordFlightArgs) {
         passengerNames: args.passengerNames ?? [],
         bookedSlices: args.bookedSlices ?? [],
         isSandbox: args.isSandbox ?? false,
+        // Flight tickets are paid upfront — Pyltrix charges via Stripe
+        // (production) or via Duffel's test balance (sandbox).
+        // Restaurants, most resort hotels, and tee times settle at
+        // the venue; those carry paymentMode: "pay_at_property".
+        paymentMode: "pay_now",
       },
     },
   });

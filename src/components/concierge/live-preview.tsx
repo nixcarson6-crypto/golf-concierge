@@ -1513,10 +1513,21 @@ function CartFooter({
 }) {
   const [submitting, setSubmitting] = React.useState(false);
 
-  const unpaid = bookings.filter((b) => !b.paidAt && (b.cost ?? 0) > 0);
-  const total = unpaid.reduce((sum, b) => sum + (b.cost ?? 0), 0);
+  // Only charge for bookings that are pay-now (flights, sometimes
+  // transport). Hotels / golf / dinners settle at the property and
+  // MUST NOT be on this total — Pyltrix never runs the customer's
+  // card for those.
+  const payNow = bookings.filter(
+    (b) =>
+      !b.paidAt && (b.cost ?? 0) > 0 && b.paymentMode === "pay_now",
+  );
+  const payAtVenue = bookings.filter(
+    (b) => (b.cost ?? 0) > 0 && b.paymentMode === "pay_at_property",
+  );
+  const total = payNow.reduce((sum, b) => sum + (b.cost ?? 0), 0);
+  const venueTotal = payAtVenue.reduce((sum, b) => sum + (b.cost ?? 0), 0);
 
-  if (unpaid.length === 0) return null;
+  if (payNow.length === 0 && payAtVenue.length === 0) return null;
 
   const onPay = async () => {
     setSubmitting(true);
@@ -1541,30 +1552,49 @@ function CartFooter({
   };
 
   return (
-    <div className="border-t border-border/60 bg-surface/80 backdrop-blur-xl px-5 py-3.5 flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
-          Total due
-        </p>
-        <p className="text-display text-lg num-tabular leading-tight">
-          {formatCurrency(total / 100)}
-        </p>
-      </div>
-      <Button
-        variant="navy"
-        size="sm"
-        onClick={onPay}
-        disabled={submitting}
-        className="shrink-0"
-      >
-        {submitting ? (
-          <>
-            <Loader2 className="size-4 animate-spin" /> Starting…
-          </>
+    <div className="border-t border-border/60 bg-surface/80 backdrop-blur-xl px-5 py-3.5 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            Due now
+          </p>
+          <p className="text-display text-lg num-tabular leading-tight">
+            {formatCurrency(total / 100)}
+          </p>
+        </div>
+        {payNow.length > 0 ? (
+          <Button
+            variant="navy"
+            size="sm"
+            onClick={onPay}
+            disabled={submitting}
+            className="shrink-0"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> Starting…
+              </>
+            ) : (
+              <>Pay {formatCurrency(total / 100)}</>
+            )}
+          </Button>
         ) : (
-          <>Pay {formatCurrency(total / 100)}</>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            Nothing to charge upfront
+          </span>
         )}
-      </Button>
+      </div>
+      {payAtVenue.length > 0 && (
+        <p className="text-[11px] text-muted-foreground leading-snug">
+          <span className="font-medium text-foreground/80">
+            {formatCurrency(venueTotal / 100)}
+          </span>{" "}
+          settles at the property ({payAtVenue.length}{" "}
+          {payAtVenue.length === 1 ? "reservation" : "reservations"} —
+          hotels, courses, dining typically charge at check-in or when
+          you dine).
+        </p>
+      )}
     </div>
   );
 }

@@ -179,6 +179,7 @@ export type WorkspaceBooking = {
   status: string;
   isStub: boolean;
   paidAt: string | null;
+  paymentMode: "pay_now" | "pay_at_property";
   // Optional rich details surfaced for the expandable booking view in
   // the Live Trip panel. Set when present on the partner payload.
   vendor: string | null;
