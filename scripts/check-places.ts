@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+export {};
 /**
  * Sanity-check the Google Places (New) server key. Run with:
  *

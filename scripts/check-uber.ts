@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
+export {};
 /**
  * Sanity-check the Uber Guest Rides credentials in .env.local. Run with:
  *
