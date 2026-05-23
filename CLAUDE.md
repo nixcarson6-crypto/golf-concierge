@@ -8,11 +8,19 @@
 
 **Pyltrix** — AI-driven luxury golf travel booking platform (OTA).
 
-One conversational interface plans + books complete golf trips: flights,
-hotels, tee times, ground transport, dining, travel insurance. The chat is
-the primary surface; a "Live Trip" side panel fills in as the AI commits
-details. The founder is **Carson Nix** (nixcarson6@gmail.com, solo founder,
-pre-launch).
+Customers answer a structured **Hungry Root-style quiz** (15 questions across
+3 sections) and the AI generates a complete bookable trip in one pass:
+flights, lodging, courses, dining, ground transport. A **result page** then
+lets them swap items, see venue photos, and click **"Book all"** to commit
+everything. The founder is **Carson Nix** (nixcarson6@gmail.com, solo
+founder, pre-launch).
+
+**Major UX pivot (recent):** The original chat-based intake has been
+**removed**. Chat workspace still exists in code (`workspace.tsx` still
+imports `ConciergeChat`) but is no longer rendered — the LivePreview is the
+full result page. Don't re-introduce chat without checking; Carson
+deliberately killed it ("people think we're a ChatGPT wrapper, plus API
+costs were 10x").
 
 ## Stack
 
@@ -21,48 +29,62 @@ pre-launch).
 - **DB**: Neon Postgres + Prisma (NOT Supabase — we tried, picked Neon for
   branching). Schema in `prisma/schema.prisma`
 - **AI**: Anthropic Claude — `claude-opus-4-7` for orchestration,
-  `claude-haiku-4-5-20251001` for fast scoring. Hand-rolled orchestrator
-  in `src/lib/ai/`
+  `claude-haiku-4-5-20251001` for fast scoring + per-card swap suggestions.
+  Hand-rolled orchestrator in `src/lib/ai/`
 - **Payments**: Stripe (not yet integrated end-to-end)
-- **Maps**: Google Maps Platform
+- **Maps**: Google Maps Platform (Places API New — venue photos in the
+  itinerary item dialog)
 - **Web search**: Tavily (primary) + Anthropic-hosted web_search (fallback)
-- **Booking partners**: Duffel (flights), Hotelbeds (hotels), Lightspeed
-  Golf / GolfNow (tee times), CarTrawler (rental cars — covers Avis/Hertz
-  so we don't need them separately), OpenTable + Yelp Fusion (restaurants),
-  Trawick (travel insurance), Uber for Business via Central (ground)
+- **Booking partners**: Duffel (flights — live), Hotelbeds (hotels — pending),
+  Lightspeed Golf / GolfNow (tee times — pending), Uber Guest Rides for
+  ground transport (default; CarTrawler parked as fallback), OpenTable + Yelp
+  Fusion (restaurants — Yelp data live, OpenTable pending), Trawick (insurance
+  — pending)
 
 ## Layout
 
 ```
 src/
-├── app/                  # Next.js routes (pages + API)
-│   ├── api/trips/[tripId]/messages/stream/  # SSE chat endpoint
-│   └── trips/[tripId]/   # Workspace pages
-├── components/concierge/ # Chat UI, live preview, chat cards
+├── app/
+│   ├── api/
+│   │   ├── trips/[tripId]/
+│   │   │   ├── build/              # Quiz → trip generation
+│   │   │   ├── book-all/           # Master commit step
+│   │   │   ├── book-flight/        # Direct Duffel booking from modal
+│   │   │   ├── refine-flights/     # Cheaper/Nonstop/Earlier/Later/Different
+│   │   │   ├── itinerary-items/[itemId]/  # DELETE + /swap
+│   │   │   └── workspace/          # Snapshot used by result page
+│   │   ├── me/profile/             # PATCH saved traveler info
+│   │   └── places/photo/           # Google Places hero photos
+│   ├── build/[tripId]/             # Quiz route (NEW front door)
+│   ├── trips/new/                  # Creates DRAFT, redirects to /build/[id]
+│   ├── trips/[tripId]/             # Result page (LivePreview only)
+│   └── dashboard/                  # Routes to /trips/[id] or /build/[id]
+├── components/
+│   ├── quiz/                       # QuizContainer, question views, loading
+│   └── concierge/                  # LivePreview, dialogs, booking modal
 ├── lib/
-│   ├── ai/               # Orchestrator, streamReply, agents, prompts
-│   │   ├── streamReply.ts       # The main streaming generator
-│   │   ├── chat-cards.ts        # Tool-result -> ChatCard parsers
-│   │   └── agents/              # Per-domain agents (destination, itinerary, etc.)
-│   ├── bookings/providers/      # One file per booking partner
-│   └── env.ts            # Central env access with required/optional flags
-└── prisma/schema.prisma  # Full data model
+│   ├── ai/                         # Orchestrator, agents, prompts
+│   ├── bookings/providers/         # Duffel search/book/cancel, etc.
+│   └── quiz/golf-questions.ts      # 15-question data-driven flow
+└── prisma/schema.prisma
 ```
 
 ## Dev workflow (Windows / PowerShell)
 
 ```powershell
-git pull origin claude/google-maps-chat-data-XqLnu   # main working branch
+git pull origin claude/google-maps-chat-data-XqLnu
 pnpm install
-pnpm db:push        # syncs Prisma schema to Neon (uses dotenv-cli to read .env.local)
-pnpm check:env      # verifies env vars + DB connection — RUN THIS FIRST when debugging
+pnpm db:push        # syncs Prisma schema to Neon
+pnpm check:env      # verifies env vars + DB connection — RUN FIRST when debugging
+pnpm check:places   # verifies Google Places (New) key works
 pnpm dev            # localhost:3000
 pnpm typecheck      # tsc --noEmit
 ```
 
-`pnpm db:push`, `db:migrate`, `db:studio`, `db:seed` all go through
-`dotenv-cli` (`dotenv -e .env.local -- prisma ...`) because Prisma CLI
-otherwise only reads `.env`, not `.env.local`.
+`pnpm db:push`, `db:migrate`, `db:studio`, `db:seed`, `check:env`,
+`check:places` all go through `dotenv-cli` because Prisma CLI + Node scripts
+otherwise read `.env` only, not `.env.local`.
 
 ## API key status (live)
 
@@ -70,22 +92,24 @@ otherwise only reads `.env`, not `.env.local`.
 
 | Provider | Status | Notes |
 |---|---|---|
-| Anthropic | ✅ | Required for AI chat to respond |
-| Neon (DB) | ✅ | `DATABASE_URL` = pooled, `DIRECT_URL` = direct (no `-pooler`) |
-| Clerk | ✅ | Real test keys; keyless mode also works with NO keys |
-| Duffel | ✅ | Test mode key, flights work |
-| Tavily | ✅ | Web search tool wired into orchestrator |
-| Google Maps | ✅ | Trip map + place lookup |
-| Yelp Fusion | ✅ | Restaurant data (search/details), can't book directly |
-| Stripe | ❌ | Required for any payment flow |
-| Resend | ❌ | Required for invite/confirmation emails |
-| Hotelbeds | ⏳ emailed | Primary hotel inventory |
+| Anthropic | ✅ | Required. Opus 4.7 + Haiku 4.5 |
+| Neon (DB) | ✅ | `DATABASE_URL` = pooled (with `?connection_limit=5&pool_timeout=30` set in code), `DIRECT_URL` = direct |
+| Clerk | ✅ | Real test keys |
+| Duffel | ✅ test mode | Live flight searches work; bookings are sandbox PNRs. Apply for live mode at duffel.com dashboard — usually approved in 1-3 days |
+| Tavily | ✅ | Web search |
+| Google Maps (client) | ✅ | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` — trip map widget |
+| Google Maps (server) | ✅ | `GOOGLE_MAPS_SERVER_API_KEY` — Places photo lookup. Places API (New) must be enabled at project AND key restriction level (see `pnpm check:places`) |
+| Yelp Fusion | ✅ | Restaurant data only — can't book |
+| Stripe | ❌ | Bottleneck for any real money flow. Sign up takes 30 min |
+| Resend | ❌ | Invite/confirmation emails |
+| Hotelbeds | ⏳ emailed | Hotel inventory |
 | OpenTable | ⏳ emailed | Real restaurant reservations |
-| GolfNow | ❌ | The big US tee-time inventory — apply ASAP |
-| Lightspeed Golf (Chronogolf) | ⏳ filled out intake form | Independent course tee times |
-| CarTrawler | ⏳ applied | Aggregates Avis/Hertz/Enterprise/Budget |
-| Trawick | 📝 filling out forms | Travel insurance — selected OTA, Travel Accident/Travel Agency/Limited Lines license |
-| Uber for Business | ⏳ account created, requested Central API access | Programmatic guest rides |
+| GolfNow | ❌ | Apply ASAP — biggest US tee-time inventory |
+| Lightspeed Golf (Chronogolf) | ⏳ intake form filed | Independent courses |
+| CarTrawler | ⏳ applied — **PARKED** | Pivoted to Uber-first; CarTrawler is fallback if/when approved |
+| Trawick | 📝 filling out forms | Travel insurance |
+| Uber Guest Rides API | ⏳ Central API access requested | The actual ground-transport integration. developer.uber.com/dashboard. Sandbox lets you build pre-approval — production needs the U4B grant |
+| CJ Affiliate (publisher 7962835) | ⏳ Hertz application pending | Affiliate-link fallbacks for rentals/hotels/courses while direct integrations land. Apply to Marriott, Hyatt, Booking, Expedia, GolfNow, OpenTable in same dashboard |
 
 ## Working branch
 
@@ -94,44 +118,95 @@ hasn't been merged in a while.
 
 ## Recent decisions / context
 
-- **Notepad is banned for env editing.** It mangles encoding/quotes and has
-  caused multiple hours of debugging. Use VS Code. There's a `pnpm check:env`
-  script (`scripts/check-env.ts`) that runs a live SELECT 1 against the DB
-  and prints ✅/⚪/❌ for every env var — always run this before assuming
-  env is good.
-- **CarTrawler obsoletes Avis/Hertz** as separate integrations.
-- **Clerk keyless dev mode** is used when no Clerk keys are present. The
-  auth helper in `src/lib/auth.ts` rebinds Users by email when Clerk IDs
-  change between sessions (necessary because keyless mints new IDs each time).
-- **Chat improvements landed**: inline `FlightCard`/`HotelCard`/`TeeTimeCard`
-  inside assistant bubbles, streaming tool indicators ("Searching flights
-  DFW → COS…" pills), smooth streaming (no markdown reparse per token),
-  clickable follow-ups. See `src/components/concierge/chat-cards.tsx` and
-  `src/lib/ai/chat-cards.ts`.
-- **AI tools live now**: `search_flights`, `book_flight`, `search_hotels`,
-  `book_hotel`, `book_tee_time`, `book_restaurant`, `book_car`,
-  `tavily_search`, `web_search`. When a provider key is missing the tool
-  returns an honest error; the AI surfaces "not wired up yet" rather than
-  faking confirmations.
+- **Quiz replaced the chat as the front door.** `/trips/new` → creates DRAFT,
+  redirects to `/build/[id]`. 15 questions across "The trip / Course & vibe
+  / The extras" sections with smart-skipping (typed destination skips
+  course-style / difficulty / lodging / vibe questions). `/api/trips/[id]/build`
+  runs destination + itinerary agents in a single pass + a live Duffel
+  search. Quiz answers → `quizAnswersToConstraints` → existing agents.
+- **Result page** at `/trips/[id]` is just the LivePreview (workspace chrome
+  + chat killed). Shows: TotalsBanner ($X estimate + booked-so-far), "Pick
+  your flight" cards with Cheaper/Nonstop/Earlier/Later/Different airline
+  refinement chips, day-by-day itinerary with clickable item cards (open
+  ItineraryItemDialog with hero photo + "Find alternative" + "Remove from
+  trip"), and a copper **"Book all"** CTA that books real Duffel flights +
+  records stub bookings for everything else. Once any booking exists the
+  Pay CartFooter takes over.
+- **Pricing rules are strict.** AI may only set `cost` on FLIGHT, LODGING,
+  TEE_TIME, TRANSPORT items — never on DINING, SPA, ACTIVITY, NIGHTLIFE,
+  FREE_TIME (those are unknowable up-front). `persistItinerary` defends this
+  even if the prompt drifts: cost gets nulled, totals recomputed from the
+  priced set only.
+- **Reservations ≠ payments.** Every Booking row carries
+  `metadata.paymentMode = "pay_now" | "pay_at_property"`. Hotels, golf,
+  dining default to pay_at_property; flights and rental cars default to
+  pay_now. The Pay CTA only totals pay_now bookings. Footer shows the
+  pay_at_property total separately as "$X settles at the property."
+- **Uber-first ground transport.** Quiz transport question leads with
+  "Uber — Pyltrix default." Itinerary prompt explicitly defaults to Uber
+  Black/LUX for every transfer in any market (including the "remote" golf
+  destinations — Pinehurst, Bandon, Streamsong, Greenbrier, Equinox).
+  CarTrawler chase paused; rental car only when user explicitly picks
+  `rental_*` in the quiz.
+- **Auto-book modal after quiz was removed.** Customers land on the result
+  page first, swap/review items, then hit Book All. The auto-open was
+  perceived as aggressive ("it doesn't book the freaking flights for me"
+  vs. "I wasn't ready to commit").
+- **Flight booking modal** (`flight-booking-modal.tsx`) is now a pure "save
+  your traveler info" surface (Cancel + Done only — no Book button per
+  Carson's explicit ask). Real flight booking happens via `book-all` or the
+  per-card flow. Profile data (name/DOB/gender/email/phone) saves to
+  `User` table for one-click bookings later.
+- **Universal escape hatch on quiz questions.** Every single-select and
+  multi-select supports `freeTextField` so users can type when none of the
+  preset options fit. Particularly important on destination ("Pinehurst"),
+  origin airport, group size (custom number), course style notes, etc.
+- **Garbage destination detection.** `cleanDestination()` rejects bare
+  pronoun fragments ("I want", "go somewhere", "whatever") so they coerce
+  to null → destination agent runs → real place picked, not a confused
+  itinerary defaulting to Pebble Beach.
+- **Duffel Airways filter.** Sandbox placeholder carrier is hard-filtered at
+  the search layer (`summarizeOffer`) so every caller gets clean results.
+- **Google Places (New) requires BOTH:** the API enabled in the Cloud
+  project AND included in the key's "API restrictions" allowlist. The
+  `pnpm check:places` script recognises API_KEY_SERVICE_BLOCKED and prints
+  the exact fix.
+- **AI orchestration cost cut.** Old chat path was Opus 4.7 with multi-turn
+  tool-use loops (~$0.30-$1.50/trip). New quiz path is bounded to one
+  destination call + one itinerary call + one optional swap (Haiku) per
+  user tweak (~$0.10-0.20/trip). Refinement chips on flights re-run Duffel
+  with no AI call at all.
 
 ## Working with the user
 
 - Carson is **non-technical / first-time engineer**. Explain commands and
   what they do; don't assume git/PowerShell fluency.
 - Default OS is **Windows / PowerShell**, not bash. Translate Unix idioms.
+- **VS Code's integrated terminal IS PowerShell** — Carson has asked "I'm
+  running it in VS Code, not PowerShell" before. Be explicit about this.
 - Be empathetic when env/setup debugging drags on — these problems compound.
-- **Never paste real API keys or passwords in chat replies.** If the user
-  exposes one, mention rotation once briefly, then move on.
+- **Never paste real API keys or passwords in chat replies.** If exposed,
+  mention rotation once briefly, move on.
 - Carson sometimes copies commands from chat into PowerShell — that wipes
-  the clipboard. When designing flows that need clipboard data, account
-  for this (e.g. write to a script file first).
+  the clipboard. Account for it.
+- **Diagnostic logging > silent failures.** When something goes wrong (env,
+  partner API, model error), the terminal should print the actual cause.
+  See `check:env`, `check:places`, the `[places/photo]` logs, the
+  `[book-all]` logs. Pattern: short tag + cause + suggested fix.
 
-## Next-up priorities (when picked back up)
+## Next-up priorities
 
-1. **Stripe + Resend** signups — both instant, both unblock big chunks of
-   the flow
-2. **GolfNow application** — longest queue still un-filed; core to the product
-3. **Live Trip canvas** — make the right-side panel actually evolve as the
-   AI extracts constraints / commits bookings (deferred from chat polish work)
-4. **Restaurant photos via Google Places** — small addition, makes the
-   product feel more visual
+1. **Stripe** — must do, 30-min signup, unlocks all real money flows. Then
+   ~1 hour to wire checkout.
+2. **Duffel live key** — apply at duffel.com dashboard. Usually 1-3 days.
+   Combined with Stripe = first real flight booking with real revenue.
+3. **CJ Affiliate approvals** — Hertz application is in (publisher
+   `7962835`). Apply to Marriott, Hyatt, Booking.com, Expedia, GolfNow,
+   OpenTable in same dashboard. Affiliate links are the v1 fallback for
+   everything not yet on direct integration.
+4. **Uber Central API approval** — chase the existing application;
+   developer.uber.com gives sandbox immediately so we can build pre-approval.
+5. **GolfNow application** — never filed, do it.
+6. **Per-companion saved profiles** so multi-traveler Book All works (today
+   only the lead traveller has saved DOB etc.; group bookings get skipped
+   at the flight step with a clear message).
