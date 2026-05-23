@@ -345,17 +345,44 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
       data: { status: "SUPERSEDED" },
     });
 
+    // Strip AI-fabricated prices off items where the cost is genuinely
+    // unknowable up-front — dinner depends on what the customer orders,
+    // a spa session might add upcharges, "free time / activity / night-
+    // life" by definition has no fixed price. We keep costs only for
+    // items with a real lookup-able rate: flights (Duffel), lodging
+    // (room rate × nights), tee times (green fee × players), and
+    // ground transport (rental day rate). Saves customers from
+    // sticker-shock numbers we have no way to actually quote.
+    const PRICEABLE = new Set(["FLIGHT", "LODGING", "TEE_TIME", "TRANSPORT"]);
+    const cleanItems = ai.items.map((i) => ({
+      ...i,
+      cost: PRICEABLE.has(i.type) ? i.cost : null,
+    }));
+    const recomputedTotal = cleanItems.reduce(
+      (sum, i) => sum + (i.cost ?? 0),
+      0,
+    );
+    // perPerson sticks to the relationship the AI implied (perPerson =
+    // total / groupSize) so the workspace stays consistent.
+    const groupSizeForCalc =
+      ai.totalCost > 0 && ai.perPersonCost > 0
+        ? Math.max(1, Math.round(ai.totalCost / ai.perPersonCost))
+        : 1;
+    const recomputedPerPerson = Math.round(
+      recomputedTotal / groupSizeForCalc,
+    );
+
     const it = await tx.itinerary.create({
       data: {
         tripId,
         version: nextVersion,
         status: "CURRENT",
         aiSummary: ai.summary,
-        totalCost: ai.totalCost * 100,
-        perPersonCost: ai.perPersonCost * 100,
+        totalCost: recomputedTotal * 100,
+        perPersonCost: recomputedPerPerson * 100,
         diff: ai.changes?.length ? { changes: ai.changes } : undefined,
         items: {
-          create: ai.items.map((i, idx) => ({
+          create: cleanItems.map((i, idx) => ({
             type: i.type,
             title: i.title,
             description: i.description ?? null,

@@ -317,6 +317,21 @@ Output rules:
   better conditioning that week and the same morning slot.").
 - Respect LOCKED items: any item passed in priorItinerary with
   metadata.locked === true must appear UNCHANGED in your output.
+
+PRICING RULES — strict:
+- Only set 'cost' for items with a real, lookup-able rate up-front:
+  FLIGHT (Duffel-quoted total), LODGING (room rate × nights × rooms),
+  TEE_TIME (green fee × players), TRANSPORT (rental car day rate ×
+  days, or a known driver/transfer quote).
+- For DINING, SPA, ACTIVITY, NIGHTLIFE, FREE_TIME: ALWAYS set cost to
+  null. We don't know what dinner will cost (depends on what they
+  order). We don't know what spa upcharges apply. Quoting fake numbers
+  for these breaks customer trust the moment they see the actual bill.
+  These items still appear in the itinerary and on the day-by-day plan
+  — they just don't carry a price.
+- Recalculate 'totalCost' and 'perPersonCost' from ONLY the priced
+  items above. The customer should see the sum of what we can actually
+  commit to, not a mix of real quotes and AI guesses.
 `.trim();
 
 export const SUMMARY_SYSTEM = `

@@ -1084,9 +1084,9 @@ function ItineraryDaysSection({
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
             Your trip plan
           </p>
-          {itinerary.perPersonCost != null && (
+          {itinerary.perPersonCost != null && itinerary.perPersonCost > 0 && (
             <p className="text-[10px] text-muted-foreground tabular-nums">
-              ${Math.round(itinerary.perPersonCost).toLocaleString()} pp est.
+              ${Math.round(itinerary.perPersonCost / 100).toLocaleString()} pp est.
             </p>
           )}
         </div>
