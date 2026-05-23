@@ -53,6 +53,16 @@ const definitions = {
   HOTELBEDS_SECRET: { required: false },
   OPENTABLE_API_KEY: { required: false },
   UBER_FOR_BUSINESS_TOKEN: { required: false },
+  // Uber Guest Rides API (developer.uber.com). Sandbox works the moment
+  // the app is created; production needs the U4B Central API grant.
+  UBER_CLIENT_ID: { required: false },
+  UBER_CLIENT_SECRET: { required: false },
+  // "sandbox" (default) or "production". Same code paths; we just point
+  // at sandbox-api.uber.com vs api.uber.com depending on this flag.
+  UBER_ENV: { required: false, default: "sandbox" },
+  // Uber for Business organization UUID. Required for actual ride
+  // creation in production; sandbox tolerates a placeholder.
+  UBER_ORG_UUID: { required: false },
   HERTZ_API_KEY: { required: false },
   AVIS_API_KEY: { required: false },
   LIGHTSPEED_GOLF_API_KEY: { required: false },

@@ -15,6 +15,7 @@
     "db:seed": "dotenv -e .env.local -- tsx prisma/seed.ts",
     "check:env": "dotenv -e .env.local -- tsx scripts/check-env.ts",
     "check:places": "dotenv -e .env.local -- tsx scripts/check-places.ts",
+    "check:uber": "dotenv -e .env.local -- tsx scripts/check-uber.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
