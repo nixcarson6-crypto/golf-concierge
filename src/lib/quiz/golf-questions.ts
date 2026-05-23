@@ -442,11 +442,32 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     id: "transport",
     sectionId: "extras",
     title: "Ground transport?",
+    subtitle:
+      "Uber is the Pyltrix default — door-to-door, no driving, no parking after dinner.",
     options: [
-      { value: "rental_luxury_suv", label: "Luxury SUV rental", description: "Pyltrix default", glyph: "🚙" },
-      { value: "rental_standard", label: "Standard rental", glyph: "🚗" },
-      { value: "private_driver", label: "Private driver", description: "Door-to-door, no driving", glyph: "🚘" },
-      { value: "rideshare", label: "Uber / rideshare", glyph: "📱" },
+      {
+        value: "uber",
+        label: "Uber",
+        description: "Pyltrix default — Black/LUX where available",
+        glyph: "📱",
+      },
+      {
+        value: "private_driver",
+        label: "Private driver",
+        description: "Full-day chauffeur",
+        glyph: "🚘",
+      },
+      {
+        value: "rental_luxury_suv",
+        label: "Luxury SUV rental",
+        description: "Self-drive option",
+        glyph: "🚙",
+      },
+      {
+        value: "rental_standard",
+        label: "Standard rental",
+        glyph: "🚗",
+      },
     ],
     freeTextField: {
       writesTo: "transportCustom",
