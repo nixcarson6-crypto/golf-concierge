@@ -433,6 +433,14 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
     }
 
     return it;
+  }, {
+    // Default Prisma interactive-transaction timeout is 5s — too tight
+    // for multi-leg trips (more items + the supersede sweep + the
+    // notification fan-out). Bump to 30s so realistic large itineraries
+    // commit without false aborts. maxWait is how long we'll queue if
+    // another txn holds the lock.
+    maxWait: 15000,
+    timeout: 30000,
   }).then(async (it) => {
     await audit({
       tripId,
