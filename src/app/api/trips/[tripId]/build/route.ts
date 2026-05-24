@@ -42,9 +42,22 @@ export async function POST(
   const rawConstraints = quizAnswersToConstraints(parsed.data.answers);
   // Clean up freeform destination text ("Let's go to Pinehurst..." → "Pinehurst")
   // so the trip title and downstream agents work with the place name only.
+  const cleanedPrimary = cleanDestination(rawConstraints.destination);
+  // Detect multi-destination intent ("Pinehurst for 5 days then Broadmoor
+  // for 4") and preserve the full original phrasing in notes so the AI
+  // itinerary agent knows to plan a multi-leg trip even though we only
+  // pass it a single primary destination today. Full multi-leg trip
+  // support (multiple destinations as separate entities) is roadmap.
+  const rawDest = (rawConstraints.destination ?? "").trim();
+  const looksMultiDest =
+    /\s+(?:then|and\s+then|plus|after\s+that|followed\s+by)\s+/i.test(rawDest) ||
+    /(?:for\s+\d+\s+(?:day|night)s?.+(?:for\s+\d+\s+(?:day|night)s?))/i.test(rawDest);
   const constraints = {
     ...rawConstraints,
-    destination: cleanDestination(rawConstraints.destination),
+    destination: cleanedPrimary,
+    notes: looksMultiDest
+      ? `Multi-destination request — user originally wrote: "${rawDest}". Plan a multi-leg trip respecting the split they described. Primary destination for downstream APIs is "${cleanedPrimary ?? rawDest}". ${rawConstraints.notes ?? ""}`.trim()
+      : rawConstraints.notes,
   };
   const newTitle = autoTitle({ currentTitle: trip.title, constraints });
 
@@ -76,40 +89,67 @@ export async function POST(
   nudge(tripId);
 
   // Step 1: destination. If the user supplied a specific destination,
-  // skip the agent and use it directly — saves one model call.
+  // skip the agent and use it directly — saves one model call. Anything
+  // throws below is now caught at the bottom of this function so the
+  // user sees a useful error instead of a bare 500.
   let chosenDestination: string;
-  if (constraints.destination && constraints.destination.trim().length > 0) {
-    chosenDestination = constraints.destination.trim();
-  } else {
-    const destRun = await runDestinationAgent({ tripId, constraints });
-    const top = destRun.output.options[0];
-    if (!top) {
-      return new Response(
-        JSON.stringify({ error: "Couldn't generate destination options." }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      );
+  try {
+    if (constraints.destination && constraints.destination.trim().length > 0) {
+      chosenDestination = constraints.destination.trim();
+    } else {
+      const destRun = await runDestinationAgent({ tripId, constraints });
+      const top = destRun.output.options[0];
+      if (!top) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "Couldn't generate destination options. Try giving us a more specific hint (e.g. 'mountain golf', 'East Coast in July') or pick a destination directly.",
+          }),
+          { status: 502, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      chosenDestination = top.name;
+      await db.trip.update({
+        where: { id: tripId },
+        data: { destination: chosenDestination },
+      });
+      nudge(tripId);
     }
-    chosenDestination = top.name;
-    // Persist the proposed destinations + lock in the top pick as the
-    // trip's destination.
-    await db.trip.update({
-      where: { id: tripId },
-      data: { destination: chosenDestination },
-    });
-    nudge(tripId);
+  } catch (err) {
+    console.error("[build] destination agent failed:", err);
+    return new Response(
+      JSON.stringify({
+        error: `Destination step failed: ${err instanceof Error ? err.message : String(err)}`,
+      }),
+      { status: 502, headers: { "Content-Type": "application/json" } },
+    );
   }
 
   // Step 2: itinerary. One pass, no refinement loop. The result screen
   // exposes edit buttons for tweaks — those go through a smaller targeted
-  // endpoint, not the full agent.
-  const { output: itineraryOutput } = await runItineraryAgent({
-    tripId,
-    destination: chosenDestination,
-    constraints,
-    priorItinerary: null,
-  });
-  await persistItinerary(tripId, itineraryOutput);
-  nudge(tripId);
+  // endpoint, not the full agent. Wrapped so a malformed AI response
+  // or schema validation failure surfaces the actual reason to the
+  // client instead of crashing the whole build with a bare 500.
+  let itineraryOutput;
+  try {
+    const run = await runItineraryAgent({
+      tripId,
+      destination: chosenDestination,
+      constraints,
+      priorItinerary: null,
+    });
+    itineraryOutput = run.output;
+    await persistItinerary(tripId, itineraryOutput);
+    nudge(tripId);
+  } catch (err) {
+    console.error("[build] itinerary step failed:", err);
+    return new Response(
+      JSON.stringify({
+        error: `Couldn't build the itinerary: ${err instanceof Error ? err.message : String(err)}. Your trip details were saved — try again or simplify the request.`,
+      }),
+      { status: 502, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
   // Step 3: run a live flight search so the result page can show real
   // bookable options. We use the user's quiz-supplied origin airport

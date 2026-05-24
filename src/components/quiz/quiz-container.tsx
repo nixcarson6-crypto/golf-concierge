@@ -76,8 +76,17 @@ export function QuizContainer({ tripId }: { tripId: string }) {
         body: JSON.stringify({ answers }),
       });
       if (!res.ok) {
+        // Server returns { error: "..." } JSON on failures. Surface that
+        // exact message to the user instead of a bare "Build failed: 500".
         const txt = await res.text().catch(() => "");
-        throw new Error(txt || `Build failed: ${res.status}`);
+        let friendly = `Build failed (${res.status})`;
+        try {
+          const json = JSON.parse(txt) as { error?: string };
+          if (json.error) friendly = json.error;
+        } catch {
+          if (txt) friendly = txt.slice(0, 240);
+        }
+        throw new Error(friendly);
       }
       // Land on the trip workspace with autoBook=1 so the booking modal
       // auto-opens for the best-fit flight (one-click confirm if the

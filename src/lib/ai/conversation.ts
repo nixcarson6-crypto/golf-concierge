@@ -487,6 +487,18 @@ export function cleanDestination(raw: string | null | undefined): string | null 
   s = s.replace(/\s+with\s+.*$/i, "");
   // Strip terminal punctuation.
   s = s.replace(/[.!?,;:]+$/g, "").trim();
+  // Multi-destination input ("Pinehurst for 5 days then Broadmoor for 4")
+  // → take the first leg as the primary destination. The build endpoint
+  // also stores the full original string in `notes` so the itinerary
+  // agent knows the user wants both legs.
+  const multiLegSplit = s.split(
+    /\s+(?:then|and\s+then|plus|after\s+that|followed\s+by)\s+/i,
+  );
+  if (multiLegSplit.length > 1 && multiLegSplit[0].length >= 3) {
+    s = multiLegSplit[0].trim();
+  }
+  // Strip trailing "for N days/nights" duration phrases.
+  s = s.replace(/\s+for\s+\d+\s+(?:day|night|week)s?\s*$/i, "").trim();
   // If the user typed something like "the carolina at pinehurst", keep
   // it — that's a meaningful resort name. Don't over-truncate.
   if (s.length > 60) {
