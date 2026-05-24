@@ -79,6 +79,15 @@ export async function GET(
   const total = members.length;
   const quorum = total <= 3 ? total : Math.ceil(total * (2 / 3));
 
+  // Fetch trip legs (multi-destination support). Single-destination trips
+  // have exactly one leg; multi-destination trips have N legs ordered by
+  // legIndex. Empty array for trips created before the TripLeg model
+  // landed — UI treats that as legacy single-destination.
+  const tripLegs = await db.tripLeg.findMany({
+    where: { tripId },
+    orderBy: { legIndex: "asc" },
+  });
+
   return NextResponse.json({
     trip: {
       id: trip.id,
@@ -96,6 +105,17 @@ export async function GET(
       suggestedFlights:
         (trip.constraints as Record<string, unknown> | null)?.suggestedFlights ??
         null,
+      // Multi-destination leg breakdown. Length 1 = single-destination
+      // trip; length > 1 = the user requested multiple stops. UI can
+      // group itinerary items by metadata.legIndex to render per-leg.
+      legs: tripLegs.map((l) => ({
+        id: l.id,
+        index: l.legIndex,
+        destination: l.destination,
+        startDate: l.startDate?.toISOString() ?? null,
+        endDate: l.endDate?.toISOString() ?? null,
+        airportIata: l.airportIata,
+      })),
     },
     me: {
       id: me.id,

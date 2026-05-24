@@ -96,6 +96,7 @@ model Trip {
   auditEvents         AuditEvent[]
   conversationSummary ConversationSummary?
   summary             TripSummary?
+  legs                TripLeg[]
 
   @@index([ownerId, status])
   @@index([status])
@@ -124,6 +125,31 @@ enum PaymentStatus {
   PAID
   REFUNDED
   FAILED
+}
+
+/// One destination on a (potentially) multi-leg trip. Single-destination
+/// trips have exactly one TripLeg with legIndex = 0. Multi-leg trips
+/// have N legs ordered by legIndex, each with its own destination +
+/// date range. Itinerary items can reference a leg via metadata.legIndex.
+/// Flights are searched as N+1 slices: home → leg0 → leg1 → ... → home.
+model TripLeg {
+  id          String    @id @default(cuid())
+  tripId      String
+  legIndex    Int       // 0-based order within the trip
+  destination String
+  startDate   DateTime?
+  endDate     DateTime?
+  /// Free-form notes specific to this leg (vibe, must-play courses, etc.)
+  notes       String?   @db.Text
+  /// Nearest airport IATA code for this leg, set after destination resolution.
+  airportIata String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, legIndex])
+  @@index([tripId])
 }
 
 model TripMember {

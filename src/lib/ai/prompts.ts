@@ -324,6 +324,17 @@ Output rules:
   Reference what makes it specifically right.
 - 'metadata' is type-specific: { partySize: 8 } for tee times,
   { rooms: 4, nights: 3 } for lodging, { from: "JFK", to: "PHX" } for flights.
+- MULTI-LEG TRIPS: when the user requested multiple destinations (the
+  constraint notes will explicitly say "MULTI-LEG TRIP — N legs" and
+  list each leg with its dates), every itinerary item MUST include
+  metadata.legIndex (0-based, matching the leg list). FLIGHT items go
+  between legs: emit one FLIGHT for home→leg0 with metadata.legIndex=0
+  and metadata.from/to set to the IATA codes; one FLIGHT for each
+  inter-leg hop (leg(i-1)→legi, metadata.legIndex=i, from/to set);
+  and one FLIGHT for the final leg→home with metadata.legIndex set
+  to the last leg's index. The build endpoint reads these to
+  construct a multi-slice Duffel search; without metadata.to per
+  segment we can't price the trip.
 - Totals MUST equal the sum of items. Per-person cost = total / groupSize.
 - Never invent confirmation codes. Don't claim something is booked.
 - For re-optimization, list substitutions in 'changes' — one short sentence

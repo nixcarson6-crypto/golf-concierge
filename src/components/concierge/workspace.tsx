@@ -65,7 +65,30 @@ export type WorkspaceTrip = {
     cabin: string;
     passengers: number;
     offers: SuggestedFlightOffer[];
+    /** Per-leg breakdown for multi-destination trips. Undefined for
+     *  single-destination trips (origin/destination cover everything). */
+    legs?: Array<{
+      index: number;
+      destination: string;
+      airport: string | null;
+      startDate: string;
+      endDate: string;
+    }>;
+    /** Full airport hop chain for multi-leg flights:
+     *  [home, leg0, leg1, ..., home]. Undefined for single-leg. */
+    airportChain?: string[];
   } | null;
+  /** Multi-destination legs. Single-destination trips have exactly one
+   *  leg with index = 0. Empty array for trips created before the
+   *  TripLeg model landed. */
+  legs: Array<{
+    id: string;
+    index: number;
+    destination: string;
+    startDate: string | null;
+    endDate: string | null;
+    airportIata: string | null;
+  }>;
 };
 
 export type WorkspaceMe = {

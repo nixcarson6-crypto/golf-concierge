@@ -19,6 +19,11 @@ import {
 } from "@/lib/ai/conversation";
 import { nudge } from "@/lib/events";
 import { searchFlights } from "@/lib/bookings/providers/duffel-search";
+import {
+  parseLegs,
+  assignDatesToLegs,
+  type LegWithDates,
+} from "@/lib/quiz/parse-legs";
 
 const bodySchema = z.object({
   answers: z.record(z.unknown()),
@@ -88,59 +93,105 @@ export async function POST(
   });
   nudge(tripId);
 
-  // Step 1: destination. We resolve in this order:
-  //   a) User typed a specific known place ("Pinehurst", "Bandon Dunes",
-  //      "The Carolina at Pinehurst") → use directly
-  //   b) User typed a hint ("a course in Italy", "somewhere warm",
-  //      "Spain", "links course") → run destination agent with the
-  //      hint as context, agent picks a real bookable place
-  //   c) User skipped destination entirely → run destination agent
-  //
-  // Without (b), every vague input crashed the itinerary agent because
-  // "a course in Italy" isn't in any KB. Catching it upfront is way
-  // cheaper than waiting for the itinerary agent to fail.
-  let chosenDestination: string;
-  try {
-    const userTyped = constraints.destination?.trim() ?? "";
-    const useDirectly =
-      userTyped.length > 0 && !looksLikeHintNotPlace(userTyped);
+  // Detect multi-leg from the ORIGINAL user input (rawDest) since the
+  // single-destination cleaning only kept the first leg's name. If we
+  // parse 2+ legs we route through the multi-leg flow that creates
+  // TripLeg rows and structures the itinerary + flight search per leg.
+  const parsedLegs = rawDest ? parseLegs(rawDest) : null;
+  const isMultiLeg = parsedLegs != null && parsedLegs.length >= 2;
 
-    if (useDirectly) {
-      chosenDestination = userTyped;
-    } else {
-      // Run destination agent. If the user typed a hint, push it into
-      // notes so the agent sees the intent ("user wants a course in
-      // Italy → pick a real Italian golf destination").
-      const constraintsForAgent = userTyped
-        ? {
-            ...constraints,
-            destination: null,
-            notes: `User's destination hint: "${userTyped}". Pick a real bookable golf destination that matches this hint. ${constraints.notes ?? ""}`.trim(),
-          }
-        : { ...constraints, destination: null };
-      const destRun = await runDestinationAgent({
-        tripId,
-        constraints: constraintsForAgent,
-      });
-      const top = destRun.output.options[0];
-      if (!top) {
+  // Step 1: resolve legs. Single-leg trips become a TripLeg with
+  // legIndex=0 for schema uniformity; multi-leg trips become N legs
+  // with explicit date ranges. The itinerary agent gets the full leg
+  // structure in `notes` so it can emit items tagged by legIndex.
+  let chosenDestination: string;
+  let legs: LegWithDates[];
+  let multiLegContextNote = "";
+
+  try {
+    if (isMultiLeg) {
+      const withDates = assignDatesToLegs(
+        parsedLegs!,
+        constraints.startDate ?? null,
+        constraints.endDate ?? null,
+      );
+      if (!withDates) {
         return new Response(
           JSON.stringify({
             error:
-              "Couldn't generate destination options. Try giving us a more specific hint (e.g. 'mountain golf', 'East Coast in July') or pick a destination directly.",
+              "Multi-leg trips need specific depart + return dates. Go back and set both, then try again.",
           }),
-          { status: 502, headers: { "Content-Type": "application/json" } },
+          { status: 400, headers: { "Content-Type": "application/json" } },
         );
       }
-      chosenDestination = top.name;
+      legs = withDates;
+      chosenDestination = legs[0].destination;
+      // Update the primary trip destination to leg 0 for the header.
       await db.trip.update({
         where: { id: tripId },
         data: { destination: chosenDestination },
       });
-      nudge(tripId);
+      multiLegContextNote =
+        `MULTI-LEG TRIP — ${legs.length} legs. Plan an itinerary that ` +
+        `covers ALL legs, with each itinerary item tagged via ` +
+        `metadata.legIndex (0-based). Emit a FLIGHT item for the home ` +
+        `→ leg 0 hop AND for every inter-leg hop AND for the final ` +
+        `leg → home hop, each with metadata.from/metadata.to set to ` +
+        `the airport IATA codes for that segment.\n` +
+        legs
+          .map(
+            (l, i) =>
+              `  Leg ${i}: ${l.destination} (${l.startDate} → ${l.endDate})`,
+          )
+          .join("\n");
+    } else {
+      // Single-leg destination resolution: specific known place vs hint
+      // routing (existing logic).
+      const userTyped = constraints.destination?.trim() ?? "";
+      const useDirectly =
+        userTyped.length > 0 && !looksLikeHintNotPlace(userTyped);
+
+      if (useDirectly) {
+        chosenDestination = userTyped;
+      } else {
+        const constraintsForAgent = userTyped
+          ? {
+              ...constraints,
+              destination: null,
+              notes: `User's destination hint: "${userTyped}". Pick a real bookable golf destination that matches this hint. ${constraints.notes ?? ""}`.trim(),
+            }
+          : { ...constraints, destination: null };
+        const destRun = await runDestinationAgent({
+          tripId,
+          constraints: constraintsForAgent,
+        });
+        const top = destRun.output.options[0];
+        if (!top) {
+          return new Response(
+            JSON.stringify({
+              error:
+                "Couldn't generate destination options. Try giving us a more specific hint (e.g. 'mountain golf', 'East Coast in July') or pick a destination directly.",
+            }),
+            { status: 502, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        chosenDestination = top.name;
+        await db.trip.update({
+          where: { id: tripId },
+          data: { destination: chosenDestination },
+        });
+        nudge(tripId);
+      }
+      legs = [
+        {
+          destination: chosenDestination,
+          startDate: constraints.startDate ?? "",
+          endDate: constraints.endDate ?? "",
+        },
+      ];
     }
   } catch (err) {
-    console.error("[build] destination agent failed:", err);
+    console.error("[build] destination/leg resolution failed:", err);
     return new Response(
       JSON.stringify({
         error: `Destination step failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -148,6 +199,36 @@ export async function POST(
       { status: 502, headers: { "Content-Type": "application/json" } },
     );
   }
+
+  // Persist TripLeg rows. Wipe any old legs first so the trip's leg
+  // list is always authoritative for the latest build. Single-leg
+  // trips end up with exactly one TripLeg row (legIndex=0).
+  try {
+    await db.tripLeg.deleteMany({ where: { tripId } });
+    for (let i = 0; i < legs.length; i++) {
+      await db.tripLeg.create({
+        data: {
+          tripId,
+          legIndex: i,
+          destination: legs[i].destination,
+          startDate: legs[i].startDate ? new Date(legs[i].startDate) : null,
+          endDate: legs[i].endDate ? new Date(legs[i].endDate) : null,
+        },
+      });
+    }
+  } catch (err) {
+    console.warn("[build] TripLeg persistence failed:", err);
+    // Non-fatal — the trip can still build with legs only in memory.
+  }
+
+  // For multi-leg, fold the leg structure into the constraints note so
+  // the itinerary agent sees explicit per-leg expectations.
+  const itineraryConstraints = isMultiLeg
+    ? {
+        ...constraints,
+        notes: `${multiLegContextNote}\n\n${constraints.notes ?? ""}`.trim(),
+      }
+    : constraints;
 
   // Step 2: itinerary. One pass, no refinement loop. The result screen
   // exposes edit buttons for tweaks — those go through a smaller targeted
@@ -159,7 +240,7 @@ export async function POST(
     const run = await runItineraryAgent({
       tripId,
       destination: chosenDestination,
-      constraints,
+      constraints: itineraryConstraints,
       priorItinerary: null,
     });
     itineraryOutput = run.output;
@@ -211,38 +292,63 @@ export async function POST(
           ? "economy"
           : "business";
 
-  // Look for a destination IATA on any FLIGHT item the AI just emitted.
-  const flightItem = itineraryOutput.items.find((it) => it.type === "FLIGHT");
-  const flightMeta = (flightItem?.metadata ?? {}) as {
-    to?: string;
-    from?: string;
-  };
-  const destinationIATA = (flightMeta.to ?? "").toUpperCase();
+  // Build flight search slices. For single-leg trips that's the
+  // familiar 2-slice out+back. For multi-leg trips we construct N+1
+  // slices: home → leg0 → leg1 → ... → home. We rely on the itinerary
+  // agent to have emitted FLIGHT items with metadata.to/from set per
+  // segment; if any segment is missing an IATA, we skip flight search
+  // and surface a warning instead of crashing.
+  const flightItems = itineraryOutput.items.filter((it) => it.type === "FLIGHT");
+  // Build the airport chain: [home, leg0_airport, leg1_airport, ..., home].
+  const airportChain: string[] = [];
+  let chainOk = true;
+  if (originFromQuiz && originFromQuiz.length === 3) {
+    airportChain.push(originFromQuiz);
+    for (let i = 0; i < legs.length; i++) {
+      // Find a FLIGHT item whose metadata.legIndex matches OR fall back
+      // to the i-th FLIGHT item in order.
+      const matched =
+        flightItems.find((it) => {
+          const meta = (it.metadata ?? {}) as { legIndex?: number };
+          return meta.legIndex === i;
+        }) ?? flightItems[i];
+      const meta = (matched?.metadata ?? {}) as { to?: string; from?: string };
+      const to = (meta.to ?? "").toUpperCase();
+      if (to && to.length === 3) {
+        airportChain.push(to);
+      } else {
+        chainOk = false;
+        break;
+      }
+    }
+    airportChain.push(originFromQuiz);
+  } else {
+    chainOk = false;
+  }
 
   let suggestedFlights: unknown = null;
-  if (
-    originFromQuiz &&
-    originFromQuiz.length === 3 &&
-    destinationIATA &&
-    destinationIATA.length === 3 &&
-    constraints.startDate &&
-    constraints.endDate
-  ) {
+  if (chainOk && constraints.startDate && constraints.endDate) {
     try {
       const groupSize = constraints.groupSize ?? 1;
+      // Slice 0: home → leg0 on leg0.startDate
+      // Slice i (1..N-1): leg(i-1) → legi on legi.startDate
+      // Slice N: leg(N-1) → home on lastLeg.endDate
+      const slices = [];
+      for (let i = 0; i < legs.length; i++) {
+        slices.push({
+          origin: airportChain[i],
+          destination: airportChain[i + 1],
+          departureDate: legs[i].startDate,
+        });
+      }
+      slices.push({
+        origin: airportChain[airportChain.length - 2],
+        destination: airportChain[airportChain.length - 1],
+        departureDate: legs[legs.length - 1].endDate,
+      });
+
       const result = await searchFlights({
-        slices: [
-          {
-            origin: originFromQuiz,
-            destination: destinationIATA,
-            departureDate: constraints.startDate,
-          },
-          {
-            origin: destinationIATA,
-            destination: originFromQuiz,
-            departureDate: constraints.endDate,
-          },
-        ],
+        slices,
         passengers: groupSize,
         cabin,
         maxOffers: 5,
@@ -272,13 +378,26 @@ export async function POST(
               })
             : result.offers;
         // Keep top 3 — enough for choice without analysis paralysis.
+        // For multi-leg, origin/destination describe the FIRST hop only;
+        // the full airport chain lives in airportChain so the UI can
+        // render a per-leg breakdown later.
         suggestedFlights = {
           fetchedAt: new Date().toISOString(),
           origin: originFromQuiz,
-          destination: destinationIATA,
+          destination: airportChain[1] ?? "",
           cabin,
           passengers: groupSize,
           offers: offers.slice(0, 3),
+          legs: isMultiLeg
+            ? legs.map((leg, i) => ({
+                index: i,
+                destination: leg.destination,
+                airport: airportChain[i + 1] ?? null,
+                startDate: leg.startDate,
+                endDate: leg.endDate,
+              }))
+            : undefined,
+          airportChain: isMultiLeg ? airportChain : undefined,
         };
         const existing =
           (
@@ -308,7 +427,7 @@ export async function POST(
     }
   } else {
     console.info(
-      `[build] skipping flight search (origin=${originFromQuiz}, dest=${destinationIATA}, dates=${constraints.startDate}/${constraints.endDate})`,
+      `[build] skipping flight search (origin=${originFromQuiz}, chainOk=${chainOk}, airports=${airportChain.join("→")}, dates=${constraints.startDate}/${constraints.endDate})`,
     );
   }
 
