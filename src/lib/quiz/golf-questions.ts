@@ -114,6 +114,17 @@ export type QuizQuestion =
       placeholder?: string;
       optional?: boolean;
       shouldShow?: (answers: QuizAnswers) => boolean;
+    }
+  | {
+      kind: "number";
+      id: string;
+      sectionId: QuizSection["id"];
+      title: string;
+      subtitle?: string;
+      placeholder?: string;
+      min?: number;
+      max?: number;
+      shouldShow?: (answers: QuizAnswers) => boolean;
     };
 
 /** Untyped bag of answers — coerced into TripConstraints at submit. */
@@ -132,15 +143,13 @@ const hasFullDateRange = (a: QuizAnswers): boolean => {
 };
 
 const isSolo = (a: QuizAnswers): boolean => {
-  // Solo if they picked "Just me" OR typed an exact number 1 in the
-  // free-text override. Without checking the custom path we'd ask
-  // "Who's going?" to someone who already said they're alone.
-  if (a.groupSize === "1") return true;
-  if (a.groupSize === "custom") {
-    const n = parseInt((a.groupSizeCustom as string | undefined) ?? "", 10);
-    if (n === 1) return true;
-  }
-  return false;
+  // groupSize is a numeric input now. Solo = exactly 1.
+  const n = typeof a.groupSize === "number"
+    ? a.groupSize
+    : typeof a.groupSize === "string"
+      ? parseInt(a.groupSize, 10)
+      : NaN;
+  return n === 1;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -150,24 +159,14 @@ const isSolo = (a: QuizAnswers): boolean => {
 export const GOLF_QUIZ: QuizQuestion[] = [
   // ── Section 1: The trip ────────────────────────────────────────────────
   {
-    kind: "single-select",
+    kind: "number",
     id: "groupSize",
     sectionId: "trip",
     title: "How many players?",
-    subtitle: "We'll match group-friendly tee times and lodging.",
-    options: [
-      { value: "1", label: "Just me", glyph: "⛳" },
-      { value: "2", label: "2 players", glyph: "👥" },
-      { value: "4", label: "Foursome", glyph: "🏌️🏌️🏌️🏌️" },
-      { value: "6", label: "5–8 players", glyph: "🍻" },
-      { value: "12", label: "9+ players", glyph: "🎉" },
-    ],
-    freeTextField: {
-      writesTo: "groupSizeCustom",
-      selectsValue: "custom",
-      label: "Or type an exact number",
-      placeholder: "e.g. 3",
-    },
+    subtitle: "Type the exact number going on the trip.",
+    placeholder: "e.g. 4",
+    min: 1,
+    max: 64,
   },
   {
     kind: "single-select",
@@ -176,11 +175,11 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     title: "Who's going?",
     subtitle: "Helps us tune the vibe.",
     options: [
-      { value: "buddies", label: "Buddies trip", glyph: "🍺" },
-      { value: "couple", label: "With my partner", glyph: "💞" },
-      { value: "family", label: "Family", glyph: "👨‍👩‍👧" },
-      { value: "business", label: "Business / clients", glyph: "💼" },
-      { value: "mixed", label: "Mixed crew", glyph: "🎭" },
+      { value: "buddies", label: "Buddies trip" },
+      { value: "couple", label: "With my partner" },
+      { value: "family", label: "Family" },
+      { value: "business", label: "Business / clients" },
+      { value: "mixed", label: "Mixed crew" },
     ],
     freeTextField: {
       writesTo: "whoCustom",
@@ -204,10 +203,10 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     title: "How long?",
     subtitle: "Skip if your dates above already cover it.",
     options: [
-      { value: "weekend", label: "Long weekend", description: "3 nights", glyph: "📅" },
-      { value: "midweek", label: "4–5 days", description: "Sweet spot", glyph: "🗓️" },
-      { value: "week", label: "A full week", description: "7+ nights", glyph: "🏖️" },
-      { value: "flexible", label: "Flexible", description: "Let the trip decide", glyph: "🔄" },
+      { value: "weekend", label: "Long weekend", description: "3 nights" },
+      { value: "midweek", label: "4–5 days", description: "Sweet spot" },
+      { value: "week", label: "A full week", description: "7+ nights" },
+      { value: "flexible", label: "Flexible", description: "Let the trip decide" },
     ],
     // Skip if the user already gave us both depart + return dates —
     // length is implicit from those.
@@ -220,18 +219,18 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     title: "Where are you flying from?",
     subtitle: "We'll search live fares from this airport.",
     options: [
-      { value: "DFW", label: "Dallas/Fort Worth", description: "DFW", glyph: "✈️" },
-      { value: "DAL", label: "Dallas Love", description: "DAL", glyph: "✈️" },
-      { value: "ATL", label: "Atlanta", description: "ATL", glyph: "✈️" },
-      { value: "ORD", label: "Chicago O'Hare", description: "ORD", glyph: "✈️" },
-      { value: "LAX", label: "Los Angeles", description: "LAX", glyph: "✈️" },
-      { value: "JFK", label: "New York JFK", description: "JFK", glyph: "✈️" },
-      { value: "LGA", label: "New York LaGuardia", description: "LGA", glyph: "✈️" },
-      { value: "EWR", label: "Newark", description: "EWR", glyph: "✈️" },
-      { value: "BOS", label: "Boston", description: "BOS", glyph: "✈️" },
-      { value: "MIA", label: "Miami", description: "MIA", glyph: "✈️" },
-      { value: "SFO", label: "San Francisco", description: "SFO", glyph: "✈️" },
-      { value: "SEA", label: "Seattle", description: "SEA", glyph: "✈️" },
+      { value: "DFW", label: "Dallas/Fort Worth", description: "DFW" },
+      { value: "DAL", label: "Dallas Love", description: "DAL" },
+      { value: "ATL", label: "Atlanta", description: "ATL" },
+      { value: "ORD", label: "Chicago O'Hare", description: "ORD" },
+      { value: "LAX", label: "Los Angeles", description: "LAX" },
+      { value: "JFK", label: "New York JFK", description: "JFK" },
+      { value: "LGA", label: "New York LaGuardia", description: "LGA" },
+      { value: "EWR", label: "Newark", description: "EWR" },
+      { value: "BOS", label: "Boston", description: "BOS" },
+      { value: "MIA", label: "Miami", description: "MIA" },
+      { value: "SFO", label: "San Francisco", description: "SFO" },
+      { value: "SEA", label: "Seattle", description: "SEA" },
     ],
     freeTextField: {
       writesTo: "originAirportCustom",
@@ -261,8 +260,8 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     title: "Where?",
     subtitle: "Type a destination, or let us match one.",
     options: [
-      { value: "suggest", label: "Surprise me", description: "We'll pick the strongest fit", glyph: "✨" },
-      { value: "top3", label: "Show me top 3", description: "We'll rank options, you choose", glyph: "🏆" },
+      { value: "suggest", label: "Surprise me", description: "We'll pick the strongest fit" },
+      { value: "top3", label: "Show me top 3", description: "We'll rank options, you choose" },
     ],
     freeTextField: {
       writesTo: "destination",
@@ -279,12 +278,12 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     subtitle: "Pick everything that appeals.",
     minSelect: 1,
     options: [
-      { value: "championship", label: "Championship classic", description: "Donald Ross, Tillinghast, Travis", glyph: "🏆" },
-      { value: "modern_resort", label: "Modern resort", description: "Manicured, conditioned, photogenic", glyph: "🌴" },
-      { value: "links", label: "Links / coastal", description: "Bandon, Streamsong vibe", glyph: "🌊" },
-      { value: "mountain", label: "Mountain", description: "Equinox, Greenbrier, Broadmoor", glyph: "🏔️" },
-      { value: "desert", label: "Desert", description: "Troon, Whisper Rock, Scottsdale", glyph: "🌵" },
-      { value: "hidden_gem", label: "Hidden gem", description: "Off the beaten path", glyph: "💎" },
+      { value: "championship", label: "Championship classic", description: "Donald Ross, Tillinghast, Travis" },
+      { value: "modern_resort", label: "Modern resort", description: "Manicured, conditioned, photogenic" },
+      { value: "links", label: "Links / coastal", description: "Bandon, Streamsong vibe" },
+      { value: "mountain", label: "Mountain", description: "Equinox, Greenbrier, Broadmoor" },
+      { value: "desert", label: "Desert", description: "Troon, Whisper Rock, Scottsdale" },
+      { value: "hidden_gem", label: "Hidden gem", description: "Off the beaten path" },
     ],
     freeTextField: {
       writesTo: "courseStyleNotes",
@@ -301,9 +300,9 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     sectionId: "vibe",
     title: "How tough do you want it?",
     options: [
-      { value: "relaxed", label: "Relaxed", description: "Pretty enough to forgive a bad swing", glyph: "🌅" },
-      { value: "fair", label: "Fair test", description: "Engaging without being punishing", glyph: "⚖️" },
-      { value: "championship", label: "Championship test", description: "I want to be challenged", glyph: "🔥" },
+      { value: "relaxed", label: "Relaxed", description: "Pretty enough to forgive a bad swing" },
+      { value: "fair", label: "Fair test", description: "Engaging without being punishing" },
+      { value: "championship", label: "Championship test", description: "I want to be challenged" },
     ],
     shouldShow: (a) => !hasSpecificDestination(a),
   },
@@ -314,13 +313,13 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     title: "Airline preference?",
     subtitle: "We'll prefer this carrier when fares are competitive.",
     options: [
-      { value: "best_rate", label: "Best rate — I don't care", description: "Cheapest reasonable", glyph: "💰" },
-      { value: "AA", label: "American", glyph: "🅰️" },
-      { value: "DL", label: "Delta", glyph: "🔺" },
-      { value: "UA", label: "United", glyph: "🔵" },
-      { value: "WN", label: "Southwest", glyph: "💛" },
-      { value: "AS", label: "Alaska", glyph: "🐻" },
-      { value: "B6", label: "JetBlue", glyph: "🟦" },
+      { value: "best_rate", label: "Best rate — I don't care", description: "Cheapest reasonable" },
+      { value: "AA", label: "American" },
+      { value: "DL", label: "Delta" },
+      { value: "UA", label: "United" },
+      { value: "WN", label: "Southwest" },
+      { value: "AS", label: "Alaska" },
+      { value: "B6", label: "JetBlue" },
     ],
     freeTextField: {
       writesTo: "airlinePreferenceCustom",
@@ -335,11 +334,11 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     sectionId: "vibe",
     title: "How are we flying?",
     options: [
-      { value: "first", label: "First class", glyph: "🥂" },
-      { value: "business", label: "Business class", description: "Pyltrix default", glyph: "✈️" },
-      { value: "premium_economy", label: "Premium economy", glyph: "💺" },
-      { value: "economy", label: "Economy", glyph: "🪑" },
-      { value: "best_deal", label: "Best deal", description: "Cheapest reasonable", glyph: "💰" },
+      { value: "first", label: "First class" },
+      { value: "business", label: "Business class", description: "Pyltrix default" },
+      { value: "premium_economy", label: "Premium economy" },
+      { value: "economy", label: "Economy" },
+      { value: "best_deal", label: "Best deal", description: "Cheapest reasonable" },
     ],
     // If the user already said "Best rate — I don't care" on the
     // airline question, asking what cabin they want is exactly the
@@ -353,10 +352,10 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     sectionId: "vibe",
     title: "Where are we staying?",
     options: [
-      { value: "ultra_luxury", label: "Ultra-luxury resort", description: "Pebble, Pinehurst Carolina, The Greenbrier", glyph: "👑" },
-      { value: "luxury", label: "5-star resort", description: "Top-tier name brand", glyph: "⭐" },
-      { value: "boutique", label: "Boutique / character", description: "Smaller, distinctive, design-forward", glyph: "🎨" },
-      { value: "premium", label: "4-star, smart-spend", description: "Comfortable, not flashy", glyph: "🛏️" },
+      { value: "ultra_luxury", label: "Ultra-luxury resort", description: "Pebble, Pinehurst Carolina, The Greenbrier" },
+      { value: "luxury", label: "5-star resort", description: "Top-tier name brand" },
+      { value: "boutique", label: "Boutique / character", description: "Smaller, distinctive, design-forward" },
+      { value: "premium", label: "4-star, smart-spend", description: "Comfortable, not flashy" },
     ],
     freeTextField: {
       writesTo: "lodgingNotes",
@@ -374,11 +373,11 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     sectionId: "vibe",
     title: "What's the energy?",
     options: [
-      { value: "quiet", label: "Quiet retreat", description: "Spa, sunset cocktails, early to bed", glyph: "🧘" },
-      { value: "lively", label: "Lively scene", description: "Restaurant nights, bars, music", glyph: "🍸" },
-      { value: "bachelor", label: "Bachelor energy", description: "Send it", glyph: "🥃" },
-      { value: "family", label: "Family-friendly", description: "Kid-safe, varied", glyph: "🏊" },
-      { value: "business", label: "Business polish", description: "Clients-grade, formal-ready", glyph: "🤝" },
+      { value: "quiet", label: "Quiet retreat", description: "Spa, sunset cocktails, early to bed" },
+      { value: "lively", label: "Lively scene", description: "Restaurant nights, bars, music" },
+      { value: "bachelor", label: "Bachelor energy", description: "Send it" },
+      { value: "family", label: "Family-friendly", description: "Kid-safe, varied" },
+      { value: "business", label: "Business polish", description: "Clients-grade, formal-ready" },
     ],
     freeTextField: {
       writesTo: "vibeCustom",
@@ -402,12 +401,12 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     subtitle: "Pick a few — we'll plan dinners accordingly.",
     minSelect: 1,
     options: [
-      { value: "steakhouse", label: "Great steakhouse", glyph: "🥩" },
-      { value: "chef", label: "Chef-driven tasting", glyph: "🍽️" },
-      { value: "local", label: "Casual local spots", glyph: "🍔" },
-      { value: "cocktails", label: "Cocktail bars", glyph: "🍹" },
-      { value: "wine", label: "Wine-focused", glyph: "🍷" },
-      { value: "seafood", label: "Seafood", glyph: "🦞" },
+      { value: "steakhouse", label: "Great steakhouse" },
+      { value: "chef", label: "Chef-driven tasting" },
+      { value: "local", label: "Casual local spots" },
+      { value: "cocktails", label: "Cocktail bars" },
+      { value: "wine", label: "Wine-focused" },
+      { value: "seafood", label: "Seafood" },
     ],
     freeTextField: {
       writesTo: "diningNotes",
@@ -422,14 +421,14 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     title: "Anything besides golf?",
     subtitle: "Optional — pick none and we'll just plan golf.",
     options: [
-      { value: "spa", label: "Spa", glyph: "💆" },
-      { value: "hiking", label: "Hiking", glyph: "🥾" },
-      { value: "fishing", label: "Fishing", glyph: "🎣" },
-      { value: "nightlife", label: "Nightlife", glyph: "🌃" },
-      { value: "sightseeing", label: "Sightseeing", glyph: "📸" },
-      { value: "downtime", label: "Pool/downtime", glyph: "🏖️" },
-      { value: "shooting", label: "Sporting clays", glyph: "🎯" },
-      { value: "shopping", label: "Shopping", glyph: "🛍️" },
+      { value: "spa", label: "Spa" },
+      { value: "hiking", label: "Hiking" },
+      { value: "fishing", label: "Fishing" },
+      { value: "nightlife", label: "Nightlife" },
+      { value: "sightseeing", label: "Sightseeing" },
+      { value: "downtime", label: "Pool/downtime" },
+      { value: "shooting", label: "Sporting clays" },
+      { value: "shopping", label: "Shopping" },
     ],
     freeTextField: {
       writesTo: "activitiesNotes",
@@ -449,24 +448,20 @@ export const GOLF_QUIZ: QuizQuestion[] = [
         value: "uber",
         label: "Uber",
         description: "Pyltrix default — Black/LUX where available",
-        glyph: "📱",
       },
       {
         value: "private_driver",
         label: "Private driver",
         description: "Full-day chauffeur",
-        glyph: "🚘",
       },
       {
         value: "rental_luxury_suv",
         label: "Luxury SUV rental",
         description: "Self-drive option",
-        glyph: "🚙",
       },
       {
         value: "rental_standard",
         label: "Standard rental",
-        glyph: "🚗",
       },
     ],
     freeTextField: {
@@ -495,12 +490,14 @@ import type { TripConstraints } from "@/lib/ai/schemas";
 
 export function quizAnswersToConstraints(answers: QuizAnswers): TripConstraints {
   // Group size: prefer the custom-typed value if "custom" was chosen.
+  // groupSize is now a number input directly. Coerce defensively so old
+  // string-typed values from in-flight quiz sessions still parse.
   let groupSize: number | null = null;
-  if (answers.groupSize === "custom" && answers.groupSizeCustom) {
-    const n = parseInt(answers.groupSizeCustom as string, 10);
+  if (typeof answers.groupSize === "number" && answers.groupSize > 0) {
+    groupSize = answers.groupSize;
+  } else if (typeof answers.groupSize === "string") {
+    const n = parseInt(answers.groupSize, 10);
     if (!Number.isNaN(n) && n > 0) groupSize = n;
-  } else if (answers.groupSize) {
-    groupSize = parseInt(answers.groupSize as string, 10);
   }
 
   const budgetPerPerson = answers.budgetPerPerson

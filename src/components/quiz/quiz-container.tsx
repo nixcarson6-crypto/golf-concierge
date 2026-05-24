@@ -17,6 +17,7 @@ import {
   SliderView,
   DateRangeView,
   FreeTextView,
+  NumberView,
 } from "./quiz-question-views";
 import { QuizLoading } from "./quiz-loading";
 
@@ -258,6 +259,15 @@ export function QuizContainer({ tripId }: { tripId: string }) {
             <FreeTextView
               question={currentQuestion}
               value={answers[currentQuestion.id] as string | undefined}
+              onChange={(v) => setAnswer(currentQuestion.id, v)}
+              onContinue={advance}
+            />
+          )}
+
+          {currentQuestion.kind === "number" && (
+            <NumberView
+              question={currentQuestion}
+              value={answers[currentQuestion.id] as number | undefined}
               onChange={(v) => setAnswer(currentQuestion.id, v)}
               onContinue={advance}
             />

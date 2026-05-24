@@ -659,13 +659,12 @@ type FlightRefineModifier =
 const REFINE_CHIPS: Array<{
   id: FlightRefineModifier;
   label: string;
-  glyph?: string;
 }> = [
-  { id: "cheaper", label: "Cheaper", glyph: "💰" },
-  { id: "nonstop", label: "Nonstop only", glyph: "✈️" },
-  { id: "earlier", label: "Earlier", glyph: "🌅" },
-  { id: "later", label: "Later", glyph: "🌆" },
-  { id: "different_airline", label: "Different airline", glyph: "🔄" },
+  { id: "cheaper", label: "Cheaper" },
+  { id: "nonstop", label: "Nonstop only" },
+  { id: "earlier", label: "Earlier" },
+  { id: "later", label: "Later" },
+  { id: "different_airline", label: "Different airline" },
 ];
 
 function SuggestedFlightsSection({
@@ -797,7 +796,6 @@ function SuggestedFlightsSection({
                     "border-[hsl(var(--copper))]/50 bg-[hsl(var(--copper))]/10",
                 )}
               >
-                {chip.glyph && <span>{chip.glyph}</span>}
                 {isLoading ? "Searching…" : chip.label}
               </button>
             );

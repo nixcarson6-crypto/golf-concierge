@@ -361,3 +361,69 @@ export function FreeTextView({
     </div>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Number — single numeric input. Used for exact-count questions like         */
+/* "How many players?" where presets are noise.                                */
+/* -------------------------------------------------------------------------- */
+
+export function NumberView({
+  question,
+  value,
+  onChange,
+  onContinue,
+}: {
+  question: Extract<QuizQuestion, { kind: "number" }>;
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  onContinue: () => void;
+}) {
+  const min = question.min ?? 1;
+  const max = question.max ?? 999;
+  const display = value === undefined || Number.isNaN(value) ? "" : String(value);
+  const valid =
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= min &&
+    value <= max;
+
+  return (
+    <div className="max-w-md mx-auto w-full space-y-4">
+      <input
+        type="number"
+        inputMode="numeric"
+        autoFocus
+        value={display}
+        min={min}
+        max={max}
+        onChange={(e) => {
+          const raw = e.target.value;
+          if (raw === "") {
+            onChange(undefined);
+            return;
+          }
+          const n = parseInt(raw, 10);
+          onChange(Number.isNaN(n) ? undefined : n);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && valid) {
+            e.preventDefault();
+            onContinue();
+          }
+        }}
+        placeholder={question.placeholder}
+        className="w-full rounded-2xl border border-border bg-surface-raised px-5 py-4 text-2xl text-center font-semibold tabular-nums"
+      />
+      {(question.min != null || question.max != null) && (
+        <p className="text-xs text-center text-muted-foreground">
+          Between {min} and {max === 999 ? "no cap" : max}
+        </p>
+      )}
+      <div className="flex justify-end">
+        <Button onClick={onContinue} disabled={!valid} size="lg">
+          Continue
+        </Button>
+      </div>
+    </div>
+  );
+}
