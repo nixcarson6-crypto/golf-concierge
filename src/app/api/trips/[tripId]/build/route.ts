@@ -88,16 +88,40 @@ export async function POST(
   });
   nudge(tripId);
 
-  // Step 1: destination. If the user supplied a specific destination,
-  // skip the agent and use it directly — saves one model call. Anything
-  // throws below is now caught at the bottom of this function so the
-  // user sees a useful error instead of a bare 500.
+  // Step 1: destination. We resolve in this order:
+  //   a) User typed a specific known place ("Pinehurst", "Bandon Dunes",
+  //      "The Carolina at Pinehurst") → use directly
+  //   b) User typed a hint ("a course in Italy", "somewhere warm",
+  //      "Spain", "links course") → run destination agent with the
+  //      hint as context, agent picks a real bookable place
+  //   c) User skipped destination entirely → run destination agent
+  //
+  // Without (b), every vague input crashed the itinerary agent because
+  // "a course in Italy" isn't in any KB. Catching it upfront is way
+  // cheaper than waiting for the itinerary agent to fail.
   let chosenDestination: string;
   try {
-    if (constraints.destination && constraints.destination.trim().length > 0) {
-      chosenDestination = constraints.destination.trim();
+    const userTyped = constraints.destination?.trim() ?? "";
+    const useDirectly =
+      userTyped.length > 0 && !looksLikeHintNotPlace(userTyped);
+
+    if (useDirectly) {
+      chosenDestination = userTyped;
     } else {
-      const destRun = await runDestinationAgent({ tripId, constraints });
+      // Run destination agent. If the user typed a hint, push it into
+      // notes so the agent sees the intent ("user wants a course in
+      // Italy → pick a real Italian golf destination").
+      const constraintsForAgent = userTyped
+        ? {
+            ...constraints,
+            destination: null,
+            notes: `User's destination hint: "${userTyped}". Pick a real bookable golf destination that matches this hint. ${constraints.notes ?? ""}`.trim(),
+          }
+        : { ...constraints, destination: null };
+      const destRun = await runDestinationAgent({
+        tripId,
+        constraints: constraintsForAgent,
+      });
       const top = destRun.output.options[0];
       if (!top) {
         return new Response(
@@ -297,4 +321,70 @@ export async function POST(
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
+}
+
+/**
+ * Detect inputs that are HINTS rather than specific bookable places.
+ * "a course in Italy", "somewhere warm", "Spain", "links course" — these
+ * should route through the destination agent, not be jammed straight
+ * into the itinerary agent (which expects a known place name).
+ *
+ * Returns true for hint-style inputs so the caller knows to run the
+ * destination agent with the hint as context.
+ */
+function looksLikeHintNotPlace(d: string): boolean {
+  const s = d.toLowerCase().trim();
+  if (s.length < 3) return true;
+  // Phrases that signal a hint, not a place.
+  const phrasePatterns: RegExp[] = [
+    /\bcourse(s)?\s+in\b/, // "course in Italy"
+    /\bsomewhere\b/,
+    /\banywhere\b/,
+    /\bany\s+(course|place|where)\b/,
+    /\bbest\s+(course|place|spot|destination|golf)\b/,
+    /\b(play|find)\s+(golf|a\s+round|courses?)\b/,
+    /\b(warm|sunny|hot|cold|cheap|luxury|nice|good|great)\b(?!\s+[A-Z][a-z])/, // adjectives unless followed by a Proper Noun
+    /^\s*(a|an|the)\s+\w+(\s+\w+)?\s*$/, // "a links course", "the desert", "an island" — articles + 1-2 words usually = hint
+  ];
+  if (phrasePatterns.some((p) => p.test(s))) return true;
+  // Bare country / region names that aren't a specific resort
+  const bareRegions = new Set([
+    "italy",
+    "spain",
+    "france",
+    "portugal",
+    "scotland",
+    "ireland",
+    "england",
+    "uk",
+    "germany",
+    "switzerland",
+    "mexico",
+    "caribbean",
+    "hawaii",
+    "europe",
+    "asia",
+    "africa",
+    "south america",
+    "north america",
+    "florida",
+    "california",
+    "arizona",
+    "texas",
+    "north carolina",
+    "south carolina",
+    "georgia",
+    "tennessee",
+    "virginia",
+    "colorado",
+    "oregon",
+    "washington",
+    "new york",
+    "michigan",
+    "wisconsin",
+    "vermont",
+    "maine",
+  ]);
+  if (bareRegions.has(s)) return true;
+  return false;
 }
