@@ -3,74 +3,93 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pyltrix — AI-driven luxury golf travel, launching soon</title>
+    <title>Pyltrix — AI-driven luxury golf travel</title>
     <meta
       name="description"
-      content="Pyltrix is an AI-driven luxury golf travel platform. Customers complete a guided quiz and receive complete bookable trip plans — flights, lodging, courses, dining, ground transport — confirmed in one place. Launching publicly in the coming weeks."
+      content="Pyltrix builds complete, bookable luxury golf trips from one short quiz. Flights, lodging, courses, dining, transport — all confirmed in one place."
     />
+    <meta name="theme-color" content="#0f2440" />
     <meta property="og:title" content="Pyltrix — AI-driven luxury golf travel" />
     <meta
       property="og:description"
-      content="One quiz, one trip plan, one click to book. Launching soon."
+      content="One quiz. One trip plan. One click to book. Launching soon."
     />
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link
-      rel="preconnect"
-      href="https://fonts.googleapis.com"
-      crossorigin
-    />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <style>
       :root {
         --bg: #faf7f2;
+        --bg-deep: #f3eee3;
         --surface: #ffffff;
+        --surface-raised: #fffdf9;
         --ink: #0b1a2b;
         --ink-muted: #4a5c70;
+        --ink-subtle: #8a96a8;
         --border: #e5dcc9;
+        --border-soft: #ece4d3;
         --navy: 215 65% 18%;
+        --navy-deep: 215 70% 12%;
         --copper: 25 75% 50%;
+        --copper-soft: 25 70% 62%;
+        --emerald: 152 45% 36%;
       }
       * {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
       }
-      html,
+      html {
+        scroll-behavior: smooth;
+      }
       body {
         background: var(--bg);
         color: var(--ink);
         font-family: "Inter", system-ui, sans-serif;
         font-size: 16px;
         line-height: 1.55;
-        min-height: 100vh;
         -webkit-font-smoothing: antialiased;
-      }
-      body {
-        background:
-          radial-gradient(
-            1200px 600px at 20% -10%,
-            hsl(var(--navy) / 0.06),
-            transparent 60%
-          ),
-          radial-gradient(
-            900px 500px at 100% 10%,
-            hsl(var(--copper) / 0.05),
-            transparent 55%
-          ),
-          var(--bg);
+        min-height: 100vh;
       }
       .container {
-        max-width: 1080px;
+        max-width: 1180px;
         margin: 0 auto;
-        padding: 32px 24px;
+        padding: 0 28px;
       }
-      header {
+      .container-narrow {
+        max-width: 880px;
+        margin: 0 auto;
+        padding: 0 28px;
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: "Fraunces", serif;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+        line-height: 1.05;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      /* ── Nav ────────────────────────────────────────────────────── */
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: rgba(250, 247, 242, 0.85);
+        backdrop-filter: saturate(180%) blur(14px);
+        border-bottom: 1px solid var(--border-soft);
+      }
+      nav .container {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 96px;
+        height: 64px;
       }
       .logo {
         display: inline-flex;
@@ -78,260 +97,721 @@
         gap: 10px;
         font-family: "Fraunces", serif;
         font-weight: 600;
-        font-size: 22px;
+        font-size: 21px;
         letter-spacing: -0.01em;
       }
       .logo-mark {
-        width: 32px;
-        height: 32px;
-        border-radius: 10px;
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
         background: hsl(var(--navy));
         color: white;
         display: grid;
         place-items: center;
         font-family: "Fraunces", serif;
         font-weight: 700;
-        font-size: 16px;
+        font-size: 15px;
       }
-      .chip {
+      .nav-cta {
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 8px 14px;
+        padding: 9px 18px;
+        border-radius: 999px;
+        background: hsl(var(--navy));
+        color: white;
+        font-size: 13px;
+        font-weight: 500;
+        transition: background 0.15s ease;
+      }
+      .nav-cta:hover {
+        background: hsl(var(--navy-deep));
+      }
+
+      /* ── Hero ───────────────────────────────────────────────────── */
+      .hero {
+        position: relative;
+        padding: 88px 0 96px;
+        overflow: hidden;
+      }
+      .hero::before,
+      .hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+      }
+      .hero::before {
+        background:
+          radial-gradient(
+            1200px 600px at 10% -10%,
+            hsl(var(--navy) / 0.08),
+            transparent 60%
+          ),
+          radial-gradient(
+            900px 500px at 100% 0%,
+            hsl(var(--copper) / 0.08),
+            transparent 55%
+          );
+      }
+      .hero-grid {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 64px;
+        align-items: center;
+      }
+      .hero-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        padding: 6px 14px;
         border-radius: 999px;
         background: hsl(var(--copper) / 0.1);
         color: hsl(var(--copper));
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        border: 1px solid hsl(var(--copper) / 0.25);
+        border: 1px solid hsl(var(--copper) / 0.2);
       }
-      .chip::before {
+      .hero-eyebrow::before {
         content: "";
         width: 6px;
         height: 6px;
         border-radius: 999px;
         background: hsl(var(--copper));
-        animation: pulse 2s infinite;
+        box-shadow: 0 0 0 0 hsl(var(--copper) / 0.7);
+        animation: pulse 2.4s infinite;
       }
       @keyframes pulse {
-        0%,
+        0% {
+          box-shadow: 0 0 0 0 hsl(var(--copper) / 0.7);
+        }
+        70% {
+          box-shadow: 0 0 0 9px hsl(var(--copper) / 0);
+        }
         100% {
-          opacity: 1;
-        }
-        50% {
-          opacity: 0.4;
+          box-shadow: 0 0 0 0 hsl(var(--copper) / 0);
         }
       }
-      h1 {
-        font-family: "Fraunces", serif;
-        font-weight: 600;
-        font-size: clamp(40px, 6.5vw, 76px);
-        line-height: 1.05;
-        letter-spacing: -0.02em;
-        margin-top: 28px;
-        max-width: 900px;
+      .hero h1 {
+        margin-top: 22px;
+        font-size: clamp(40px, 5.4vw, 68px);
       }
-      h1 .muted {
+      .hero h1 .muted {
         color: var(--ink-muted);
       }
-      .lede {
-        margin-top: 28px;
-        font-size: clamp(17px, 1.8vw, 20px);
-        line-height: 1.55;
-        max-width: 640px;
+      .hero .lede {
+        margin-top: 22px;
+        font-size: clamp(16px, 1.4vw, 19px);
+        max-width: 560px;
         color: var(--ink-muted);
       }
-      .grid {
-        margin-top: 80px;
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        gap: 20px;
+      .signup {
+        margin-top: 34px;
+        display: flex;
+        gap: 8px;
+        max-width: 460px;
       }
-      .card {
+      .signup input {
+        flex: 1;
+        padding: 14px 16px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        font-family: inherit;
+        font-size: 15px;
+        color: var(--ink);
+        outline: none;
+        transition:
+          border-color 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+      .signup input:focus {
+        border-color: hsl(var(--navy));
+        box-shadow: 0 0 0 3px hsl(var(--navy) / 0.12);
+      }
+      .signup button {
+        padding: 14px 22px;
+        border-radius: 12px;
+        border: none;
+        background: hsl(var(--navy));
+        color: white;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s ease;
+      }
+      .signup button:hover {
+        background: hsl(var(--navy-deep));
+      }
+      .signup-note {
+        margin-top: 12px;
+        font-size: 12px;
+        color: var(--ink-subtle);
+      }
+
+      /* ── Hero mockup card ───────────────────────────────────────── */
+      .mockup {
+        position: relative;
+        border-radius: 24px;
         background: var(--surface);
         border: 1px solid var(--border);
-        border-radius: 20px;
-        padding: 24px;
+        padding: 22px;
+        box-shadow:
+          0 1px 2px hsl(var(--navy) / 0.04),
+          0 24px 60px -20px hsl(var(--navy) / 0.18);
       }
-      .card-eyebrow {
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: hsl(var(--copper));
-        margin-bottom: 12px;
+      .mockup::after {
+        content: "";
+        position: absolute;
+        inset: -28px -28px auto auto;
+        width: 140px;
+        height: 140px;
+        background: radial-gradient(
+          circle,
+          hsl(var(--copper) / 0.4),
+          transparent 70%
+        );
+        z-index: -1;
+        filter: blur(40px);
       }
-      .card-title {
+      .mockup-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--border-soft);
+        margin-bottom: 14px;
+      }
+      .mockup-head .destination {
         font-family: "Fraunces", serif;
         font-weight: 600;
-        font-size: 20px;
-        letter-spacing: -0.01em;
-        margin-bottom: 8px;
+        font-size: 19px;
       }
-      .card-body {
+      .mockup-head .dates {
+        font-size: 11px;
+        color: var(--ink-muted);
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .mockup-section {
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .mockup-section:last-of-type {
+        border-bottom: none;
+      }
+      .mockup-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 6px 0;
+      }
+      .mockup-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        background: var(--bg-deep);
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        flex-shrink: 0;
+      }
+      .mockup-row-body {
+        flex: 1;
+        min-width: 0;
+      }
+      .mockup-row-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--ink);
+      }
+      .mockup-row-meta {
+        font-size: 11px;
+        color: var(--ink-subtle);
+        margin-top: 2px;
+      }
+      .mockup-row-price {
+        font-size: 12px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--ink);
+      }
+      .mockup-total {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border-soft);
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+      }
+      .mockup-total .label {
+        font-size: 11px;
+        color: var(--ink-muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .mockup-total .amount {
+        font-family: "Fraunces", serif;
+        font-weight: 600;
+        font-size: 22px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* ── Section title block ────────────────────────────────────── */
+      section.band {
+        padding: 96px 0;
+        border-top: 1px solid var(--border-soft);
+      }
+      .band-header {
+        max-width: 720px;
+        margin-bottom: 56px;
+      }
+      .band-eyebrow {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: hsl(var(--copper));
+        margin-bottom: 14px;
+      }
+      .band-header h2 {
+        font-size: clamp(32px, 3.4vw, 44px);
+      }
+      .band-header p {
+        margin-top: 16px;
+        font-size: 17px;
+        color: var(--ink-muted);
+        max-width: 600px;
+      }
+
+      /* ── How it works ───────────────────────────────────────────── */
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+      }
+      .step {
+        position: relative;
+        padding: 26px;
+        border-radius: 20px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+      }
+      .step-num {
+        font-family: "Fraunces", serif;
+        font-size: 13px;
+        font-weight: 600;
+        color: hsl(var(--copper));
+        letter-spacing: 0.08em;
+        margin-bottom: 14px;
+      }
+      .step h3 {
+        font-size: 22px;
+        margin-bottom: 10px;
+      }
+      .step p {
         font-size: 14px;
         color: var(--ink-muted);
         line-height: 1.55;
       }
-      .partners {
-        margin-top: 80px;
-        padding-top: 40px;
-        border-top: 1px solid var(--border);
+
+      /* ── Partners strip ─────────────────────────────────────────── */
+      .partners-band {
+        padding: 64px 0;
+        background: var(--bg-deep);
+        border-top: 1px solid var(--border-soft);
+        border-bottom: 1px solid var(--border-soft);
       }
       .partners-label {
+        text-align: center;
         font-size: 11px;
         font-weight: 600;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.18em;
         text-transform: uppercase;
         color: var(--ink-muted);
-        margin-bottom: 16px;
+        margin-bottom: 28px;
       }
-      .partners-list {
+      .partners-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 28px 36px;
+        align-items: center;
+        justify-items: center;
+      }
+      .partner-name {
         font-family: "Fraunces", serif;
-        font-size: 18px;
-        line-height: 1.6;
+        font-weight: 500;
+        font-size: 19px;
         color: var(--ink);
-        max-width: 760px;
+        opacity: 0.7;
+        transition: opacity 0.15s ease;
+        text-align: center;
       }
-      .partners-list span {
+      .partner-name:hover {
+        opacity: 1;
+      }
+
+      /* ── Founder quote ──────────────────────────────────────────── */
+      .quote-band {
+        padding: 96px 0;
+        background: hsl(var(--navy));
+        color: white;
+      }
+      .quote-band .container-narrow {
+        text-align: center;
+      }
+      .quote-mark {
+        font-family: "Fraunces", serif;
+        font-size: 88px;
+        line-height: 0.6;
+        color: hsl(var(--copper));
+        margin-bottom: 24px;
+      }
+      .quote {
+        font-family: "Fraunces", serif;
+        font-weight: 400;
+        font-size: clamp(22px, 2.4vw, 32px);
+        line-height: 1.35;
+        letter-spacing: -0.01em;
+      }
+      .quote-attribution {
+        margin-top: 32px;
+        font-size: 13px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        opacity: 0.7;
+      }
+      .quote-attribution strong {
+        font-weight: 600;
+        opacity: 1;
+      }
+
+      /* ── CTA footer ─────────────────────────────────────────────── */
+      .cta-band {
+        padding: 112px 0;
+        text-align: center;
+      }
+      .cta-band h2 {
+        font-size: clamp(36px, 4.4vw, 56px);
+      }
+      .cta-band p {
+        margin: 22px auto 0;
+        max-width: 520px;
+        font-size: 17px;
         color: var(--ink-muted);
       }
-      .contact {
-        margin-top: 64px;
-        padding-top: 40px;
-        border-top: 1px solid var(--border);
+      .cta-band .signup {
+        margin: 36px auto 0;
+      }
+
+      /* ── Footer ─────────────────────────────────────────────────── */
+      footer.site {
+        padding: 48px 0;
+        border-top: 1px solid var(--border-soft);
+        font-size: 13px;
+        color: var(--ink-muted);
+      }
+      footer.site .container {
         display: flex;
         flex-wrap: wrap;
-        gap: 16px 32px;
+        gap: 18px;
         align-items: center;
         justify-content: space-between;
       }
-      .contact a {
-        color: hsl(var(--navy));
-        text-decoration: none;
-        font-weight: 500;
-        border-bottom: 1px solid hsl(var(--navy) / 0.3);
-        padding-bottom: 2px;
+      footer.site .links {
+        display: flex;
+        gap: 26px;
+      }
+      footer.site a {
+        color: var(--ink-muted);
+        border-bottom: 1px solid transparent;
+        padding-bottom: 1px;
         transition: border-color 0.15s ease;
       }
-      .contact a:hover {
+      footer.site a:hover {
         border-color: hsl(var(--navy));
+        color: var(--ink);
       }
-      footer {
-        margin-top: 64px;
-        padding: 32px 0;
-        font-size: 13px;
-        color: var(--ink-muted);
-        text-align: center;
-        border-top: 1px solid var(--border);
-      }
-      @media (max-width: 640px) {
-        header {
-          margin-bottom: 48px;
+
+      /* ── Mobile ─────────────────────────────────────────────────── */
+      @media (max-width: 880px) {
+        .hero {
+          padding: 48px 0 64px;
         }
-        .grid {
-          margin-top: 48px;
+        .hero-grid {
+          grid-template-columns: 1fr;
+          gap: 48px;
         }
-        .partners,
-        .contact {
-          margin-top: 48px;
+        section.band {
+          padding: 64px 0;
+        }
+        .band-header {
+          margin-bottom: 36px;
+        }
+        .steps {
+          grid-template-columns: 1fr;
+        }
+        .partners-band {
+          padding: 48px 0;
+        }
+        .quote-band,
+        .cta-band {
+          padding: 72px 0;
+        }
+        .signup {
+          flex-direction: column;
         }
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <header>
-        <div class="logo">
+    <nav>
+      <div class="container">
+        <a class="logo" href="/">
           <span class="logo-mark">P</span>
           <span>Pyltrix</span>
-        </div>
-        <span style="font-size: 13px; color: var(--ink-muted)"
-          >Invite-only beta</span
-        >
-      </header>
+        </a>
+        <a class="nav-cta" href="#waitlist">Get early access</a>
+      </div>
+    </nav>
 
-      <main>
-        <span class="chip">Launching soon</span>
-        <h1>
-          The trip you'd ask a private concierge to plan.<br />
-          <span class="muted">Now in plain English.</span>
-        </h1>
-        <p class="lede">
-          Pyltrix builds complete, bookable luxury golf trips from one short
-          quiz. A team of AI agents handles destinations, courses, lodging,
-          flights, dining, and ground transport — all confirmed in one place,
-          all bookable in one click.
-        </p>
-
-        <section class="grid">
-          <div class="card">
-            <div class="card-eyebrow">For travelers</div>
-            <div class="card-title">One quiz, one trip</div>
-            <div class="card-body">
-              Answer 15 questions. Receive a full personalised plan with real
-              flights, real rooms, real tee times, real dinners. Review, tweak,
-              book.
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-eyebrow">For partners</div>
-            <div class="card-title">High-intent traffic</div>
-            <div class="card-body">
-              We surface curated partner inventory matched to each traveler's
-              destination, budget, and preferences. Pre-qualified, ready-to-book
-              luxury demographic.
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-eyebrow">Built on</div>
-            <div class="card-title">Real APIs</div>
-            <div class="card-body">
-              Live flight inventory via Duffel, hotel and activity rates via
-              Hotelbeds + Expedia, tee times via GolfNow + Lightspeed, ground
-              transport via Uber Guest Rides.
-            </div>
-          </div>
-        </section>
-
-        <section class="partners">
-          <div class="partners-label">Partner integrations in motion</div>
-          <p class="partners-list">
-            Duffel · Hotelbeds · GolfNow · Lightspeed Golf · OpenTable · Yelp ·
-            Uber for Business · CarTrawler · Hertz · Hilton · Marriott · IHG ·
-            Accor · Booking · Expedia · Trawick Insurance
-            <span>
-              — and more rolling out through launch.
-            </span>
-          </p>
-        </section>
-
-        <section class="contact">
+    <!-- ── Hero ──────────────────────────────────────────────────── -->
+    <header class="hero">
+      <div class="container">
+        <div class="hero-grid">
           <div>
-            <div
-              style="
-                font-family: 'Fraunces', serif;
-                font-size: 22px;
-                font-weight: 500;
-                margin-bottom: 4px;
-              "
+            <span class="hero-eyebrow">Launching soon · Invite-only beta</span>
+            <h1>
+              The trip you'd ask a private concierge to plan.<br />
+              <span class="muted">Now in plain English.</span>
+            </h1>
+            <p class="lede">
+              Pyltrix builds complete, bookable luxury golf trips from one
+              short quiz. A team of AI agents handles destinations, courses,
+              lodging, flights, dining, and ground transport — all confirmed
+              in one place, all bookable in one click.
+            </p>
+            <form
+              class="signup"
+              id="waitlist"
+              onsubmit="event.preventDefault();handleSignup(this)"
             >
-              Affiliate / partnership inquiries
+              <input
+                type="email"
+                placeholder="you@email.com"
+                required
+                aria-label="Your email"
+              />
+              <button type="submit">Join the waitlist</button>
+            </form>
+            <p class="signup-note" id="signup-msg">
+              No spam. One email when we open the beta.
+            </p>
+          </div>
+
+          <!-- Visual mockup of a generated trip -->
+          <div class="mockup" aria-hidden="true">
+            <div class="mockup-head">
+              <div>
+                <div class="destination">Pinehurst, NC</div>
+              </div>
+              <div class="dates">Jul 3–7 · 4 players</div>
             </div>
-            <div style="font-size: 14px; color: var(--ink-muted)">
-              We're applying broadly to build our partner roster ahead of
-              public launch.
+
+            <div class="mockup-section">
+              <div class="mockup-row">
+                <span class="mockup-icon">✈</span>
+                <div class="mockup-row-body">
+                  <div class="mockup-row-title">
+                    American Airlines · DFW ⇄ RDU
+                  </div>
+                  <div class="mockup-row-meta">Nonstop · business class</div>
+                </div>
+                <div class="mockup-row-price">$2,840</div>
+              </div>
+              <div class="mockup-row">
+                <span class="mockup-icon">⛳</span>
+                <div class="mockup-row-body">
+                  <div class="mockup-row-title">
+                    Pinehurst No. 2 · championship round
+                  </div>
+                  <div class="mockup-row-meta">Sunday tee time, 8:50 AM</div>
+                </div>
+                <div class="mockup-row-price">$1,720</div>
+              </div>
+              <div class="mockup-row">
+                <span class="mockup-icon">🏨</span>
+                <div class="mockup-row-body">
+                  <div class="mockup-row-title">
+                    The Carolina Hotel · 4 nights
+                  </div>
+                  <div class="mockup-row-meta">Suite, breakfast included</div>
+                </div>
+                <div class="mockup-row-price">$3,640</div>
+              </div>
+              <div class="mockup-row">
+                <span class="mockup-icon">🍽</span>
+                <div class="mockup-row-body">
+                  <div class="mockup-row-title">
+                    Drum &amp; Quill Pub · welcome dinner
+                  </div>
+                  <div class="mockup-row-meta">Settles at the property</div>
+                </div>
+                <div class="mockup-row-price">—</div>
+              </div>
+            </div>
+
+            <div class="mockup-total">
+              <span class="label">Trip total · estimate</span>
+              <span class="amount">$8,200</span>
             </div>
           </div>
-          <a href="mailto:carson@pyltrix.com">carson@pyltrix.com</a>
-        </section>
-      </main>
+        </div>
+      </div>
+    </header>
 
-      <footer>
-        © Pyltrix · Founded by Carson Nix · Public launch coming soon
-      </footer>
-    </div>
+    <!-- ── How it works ─────────────────────────────────────────── -->
+    <section class="band">
+      <div class="container">
+        <div class="band-header">
+          <div class="band-eyebrow">How it works</div>
+          <h2>Three steps from "let's do a trip" to a booked itinerary.</h2>
+          <p>
+            No back-and-forth emails. No agent retainer. No 40 browser tabs.
+            Just answer a quiz; the rest is done for you.
+          </p>
+        </div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">01 — Quiz</div>
+            <h3>Tell us what you want</h3>
+            <p>
+              ~15 questions covering destination, dates, group, budget, course
+              style, dining preferences, transport. Five minutes, no signup
+              required.
+            </p>
+          </div>
+          <div class="step">
+            <div class="step-num">02 — Plan</div>
+            <h3>AI builds your trip</h3>
+            <p>
+              A team of agents pulls live flight inventory, matches lodging
+              and tee times, schedules dinners and transfers. You get a
+              complete day-by-day plan with real prices and real availability.
+            </p>
+          </div>
+          <div class="step">
+            <div class="step-num">03 — Book</div>
+            <h3>Review and lock in</h3>
+            <p>
+              Swap any item, change a flight, find an alternative. When it's
+              right, hit Book All. Real reservations land in your inbox;
+              hotels and dining settle at the property.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Partner roster ─────────────────────────────────────────── -->
+    <section class="partners-band">
+      <div class="container">
+        <div class="partners-label">Built on real inventory partners</div>
+        <div class="partners-grid">
+          <div class="partner-name">Duffel</div>
+          <div class="partner-name">Hotelbeds</div>
+          <div class="partner-name">GolfNow</div>
+          <div class="partner-name">Lightspeed Golf</div>
+          <div class="partner-name">Uber for Business</div>
+          <div class="partner-name">OpenTable</div>
+          <div class="partner-name">Yelp</div>
+          <div class="partner-name">Hilton</div>
+          <div class="partner-name">Marriott</div>
+          <div class="partner-name">IHG</div>
+          <div class="partner-name">Hertz</div>
+          <div class="partner-name">Trawick</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Founder quote ──────────────────────────────────────────── -->
+    <section class="quote-band">
+      <div class="container-narrow">
+        <div class="quote-mark">"</div>
+        <p class="quote">
+          The bar for luxury travel has always been a private concierge — but
+          that's $500 an hour and a three-week waitlist. Pyltrix gives the
+          same level of curation in five minutes. One quiz, one trip, one
+          click.
+        </p>
+        <p class="quote-attribution">
+          <strong>Carson Nix</strong> · Founder, Pyltrix
+        </p>
+      </div>
+    </section>
+
+    <!-- ── CTA footer ─────────────────────────────────────────────── -->
+    <section class="cta-band">
+      <div class="container-narrow">
+        <h2>Be first to know when we open the beta.</h2>
+        <p>
+          We're onboarding small. Get on the list to be invited as we add
+          capacity through launch.
+        </p>
+        <form
+          class="signup"
+          onsubmit="event.preventDefault();handleSignup(this)"
+        >
+          <input
+            type="email"
+            placeholder="you@email.com"
+            required
+            aria-label="Your email"
+          />
+          <button type="submit">Join the waitlist</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ── Footer ─────────────────────────────────────────────────── -->
+    <footer class="site">
+      <div class="container">
+        <div>
+          © Pyltrix · Founded by Carson Nix · Public launch coming soon
+        </div>
+        <div class="links">
+          <a href="mailto:carson@pyltrix.com">carson@pyltrix.com</a>
+          <a href="mailto:partnerships@pyltrix.com">Partnerships</a>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      // Waitlist form: stash the email in mailto and open the user's mail
+      // client. When Resend is wired up later we replace this with a fetch
+      // to /api/waitlist that POSTs to our database + sends a confirmation.
+      function handleSignup(form) {
+        const email = form.querySelector('input[type="email"]').value.trim();
+        if (!email) return;
+        // Show a friendly confirmation in the hero's signup-msg if present.
+        const msg = document.getElementById("signup-msg");
+        if (msg) {
+          msg.textContent = "Thanks — we'll email you when the beta opens.";
+          msg.style.color = "hsl(var(--emerald))";
+        }
+        // Open mail client as a fallback waitlist capture for now.
+        window.location.href =
+          "mailto:carson@pyltrix.com?subject=Pyltrix%20waitlist%20signup" +
+          "&body=Please%20add%20me%20to%20the%20Pyltrix%20waitlist.%0A%0AEmail%3A%20" +
+          encodeURIComponent(email);
+        form.reset();
+      }
+    </script>
   </body>
 </html>
