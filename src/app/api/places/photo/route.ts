@@ -80,28 +80,39 @@ export async function GET(req: NextRequest) {
     };
     const searchJson = (await searchRes.json()) as SearchResponse;
     const first = searchJson.places?.[0];
-    const photoName = first?.photos?.[0]?.name;
-    if (!photoName) {
+    const photoNames = (first?.photos ?? [])
+      .map((p) => p?.name)
+      .filter((n): n is string => Boolean(n));
+    if (photoNames.length === 0) {
       console.info(
         `[places/photo] No photo found for "${textQuery}" (Google returned ${searchJson.places?.length ?? 0} places, ${first?.photos?.length ?? 0} photos).`,
       );
       return new Response(
-        JSON.stringify({ photoUrl: null, reason: "no-photo" }),
+        JSON.stringify({ photoUrl: null, photoUrls: [], reason: "no-photo" }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    const photoUrl =
-      `https://places.googleapis.com/v1/${photoName}/media` +
-      `?key=${encodeURIComponent(apiKey)}&maxWidthPx=1200`;
+    // Cap at 8 photos — Google sometimes returns 10+ which makes the
+    // carousel unwieldy and burns through photo-API quota for users
+    // who only flip through the first few.
+    const photoUrls = photoNames.slice(0, 8).map(
+      (name) =>
+        `https://places.googleapis.com/v1/${name}/media` +
+        `?key=${encodeURIComponent(apiKey)}&maxWidthPx=1200`,
+    );
 
-    return new Response(JSON.stringify({ photoUrl }), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "public, max-age=86400, immutable",
+    return new Response(
+      // photoUrl kept for any older consumer; photoUrls is the new shape.
+      JSON.stringify({ photoUrl: photoUrls[0], photoUrls }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=86400, immutable",
+        },
       },
-    });
+    );
   } catch (err) {
     console.warn(
       `[places/photo] fetch threw for "${textQuery}":`,

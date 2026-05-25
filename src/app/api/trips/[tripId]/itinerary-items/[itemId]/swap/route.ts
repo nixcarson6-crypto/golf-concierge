@@ -32,11 +32,19 @@ const responseSchema = z.object({
 });
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   ctx: { params: Promise<{ tripId: string; itemId: string }> },
 ) {
   const { tripId, itemId } = await ctx.params;
   const user = await requireUser();
+  // Optional ?tier=cheaper|nicer focuses the AI on a single option for
+  // the inline "Cheaper rate" / "Nicer rate" quick-action buttons. No
+  // tier ⇒ classic 3-up cheaper / comparable / nicer drawer.
+  const tierParam = req.nextUrl.searchParams
+    .get("tier")
+    ?.toLowerCase();
+  const tier: "cheaper" | "nicer" | null =
+    tierParam === "cheaper" || tierParam === "nicer" ? tierParam : null;
 
   const item = await db.itineraryItem.findFirst({
     where: { id: itemId, itinerary: { tripId } },
@@ -70,13 +78,16 @@ export async function GET(
   // play, here's a similar pick, here's the upgrade." Lateral swaps
   // ("same vibe") don't help the customer who's deciding whether to
   // spend more or save.
+  const tieredSchemaSpec = tier
+    ? `Return EXACTLY 1 alternative — a ${tier === "cheaper" ? "CHEAPER option (target ~30-50% less than the current cost, still legitimate quality)" : "NICER upgrade (target ~30-80% more than current cost, higher-end brand / better location / more amenities)"}. The "why" should ${tier === "cheaper" ? "frame the value angle" : "justify the spend"}.`
+    : `Return EXACTLY 3 alternatives, in this order:
+1. CHEAPER — a meaningfully more affordable option (target ~30-50% less than the current cost). Still legitimate quality, not a dive. The "why" should mention the value angle.
+2. COMPARABLE — similar price tier (within ~15%) but a distinctly different feel (different brand, different vibe, different location). The "why" should explain what's different about the experience.
+3. NICER — a clear upgrade (target ~30-80% more than current cost). Higher-end brand, better location, more amenities. The "why" should justify the spend.`;
   const sysPrompt = `You suggest alternative venues for a luxury golf trip. Return JSON ONLY, no prose, matching this schema:
 { "alternatives": [ { "name": "...", "description": "...", "location": "...", "estimatedCostUSD": 0, "why": "..." } ] }
 
-Return EXACTLY 3 alternatives, in this order:
-1. CHEAPER — a meaningfully more affordable option (target ~30-50% less than the current cost). Still legitimate quality, not a dive. The "why" should mention the value angle.
-2. COMPARABLE — similar price tier (within ~15%) but a distinctly different feel (different brand, different vibe, different location). The "why" should explain what's different about the experience.
-3. NICER — a clear upgrade (target ~30-80% more than current cost). Higher-end brand, better location, more amenities. The "why" should justify the spend.
+${tieredSchemaSpec}
 
 Real venues only — no inventing names. Same category as the current item. For LODGING, mean nightly rate. For TEE_TIME, mean per-player green fee. For DINING, mean per-person dinner check.`;
   const userMsg = `Trip destination: ${tripDestination}
@@ -84,7 +95,7 @@ Item type: ${itemType}
 Current pick: "${currentTitle}"${item.description ? ` (${item.description})` : ""}
 Current cost: $${currentCostUSD.toLocaleString()}
 Location: ${currentLocation}
-Suggest 3 alternatives following the cheaper / comparable / nicer pattern.`;
+Suggest ${tier ? `1 ${tier} alternative` : "3 alternatives following the cheaper / comparable / nicer pattern"}.`;
 
   try {
     const res = await client.messages.create({

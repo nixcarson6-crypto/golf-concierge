@@ -14,9 +14,13 @@ import {
   Waves,
   Activity,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   CheckCircle2,
   Trash2,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react";
 import type { ItineraryItemType } from "@prisma/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1174,9 +1178,14 @@ function ItineraryItemDialog({
   onDeleted: () => void;
 }) {
   const [deleting, setDeleting] = React.useState(false);
-  const [photoUrl, setPhotoUrl] = React.useState<string | null>(null);
+  // Full list of photo URLs from Google Places — paginate through them
+  // with arrow buttons. First one is shown as the hero on open; users
+  // can flick through up to 7 more without leaving the dialog.
+  const [photoUrls, setPhotoUrls] = React.useState<string[]>([]);
+  const [photoIndex, setPhotoIndex] = React.useState(0);
   const [photoLoading, setPhotoLoading] = React.useState(false);
   const [photoFailed, setPhotoFailed] = React.useState(false);
+  const photoUrl = photoUrls[photoIndex] ?? null;
   const [swapping, setSwapping] = React.useState(false);
   const [swapApplying, setSwapApplying] = React.useState(false);
 
@@ -1192,13 +1201,18 @@ function ItineraryItemDialog({
   >(null);
   const qc = useQueryClient();
 
-  const openSwap = async () => {
+  // tier === null → full 3-up "cheaper / comparable / nicer" drawer
+  // tier === "cheaper" or "nicer" → single targeted suggestion from the
+  // inline quick-action chips, so the user gets one focused option to
+  // accept without scrolling.
+  const openSwap = async (tier: "cheaper" | "nicer" | null = null) => {
     if (swapping) return;
     setSwapping(true);
     try {
-      const res = await fetch(
-        `/api/trips/${tripId}/itinerary-items/${item.id}/swap`,
-      );
+      const url = tier
+        ? `/api/trips/${tripId}/itinerary-items/${item.id}/swap?tier=${tier}`
+        : `/api/trips/${tripId}/itinerary-items/${item.id}/swap`;
+      const res = await fetch(url);
       const data = (await res.json().catch(() => null)) as {
         alternatives?: Alternative[];
         error?: string;
@@ -1248,7 +1262,8 @@ function ItineraryItemDialog({
   // and pubs that share names. Cached for a day server-side + browser.
   React.useEffect(() => {
     if (!open) return;
-    setPhotoUrl(null);
+    setPhotoUrls([]);
+    setPhotoIndex(0);
     setPhotoFailed(false);
     // Skip photo lookup for purely logistical items where a venue photo
     // wouldn't make sense (e.g. "Drive Pinehurst → RDU + rental return").
@@ -1274,7 +1289,12 @@ function ItineraryItemDialog({
     fetch(`/api/places/photo?${params.toString()}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data?.photoUrl) setPhotoUrl(data.photoUrl as string);
+        const urls = Array.isArray(data?.photoUrls)
+          ? (data.photoUrls as string[])
+          : data?.photoUrl
+            ? [data.photoUrl as string]
+            : [];
+        if (urls.length > 0) setPhotoUrls(urls);
         else setPhotoFailed(true);
       })
       .catch(() => setPhotoFailed(true))
@@ -1329,7 +1349,7 @@ function ItineraryItemDialog({
           <div className="aspect-[16/9] bg-surface-raised animate-pulse" />
         )}
         {!photoLoading && photoUrl && !photoFailed && (
-          <div className="relative aspect-[16/9] bg-surface-raised overflow-hidden">
+          <div className="relative aspect-[16/9] bg-surface-raised overflow-hidden group/photo">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={photoUrl}
@@ -1338,6 +1358,42 @@ function ItineraryItemDialog({
               onError={() => setPhotoFailed(true)}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-background/40 to-transparent pointer-events-none" />
+            {/* Carousel controls — only render when more than one photo
+                came back. Arrows slide in on hover (desktop) and always
+                stay visible on touch. Counter pill bottom-right gives
+                people a sense of how many shots there are without
+                having to click through. */}
+            {photoUrls.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous photo"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPhotoIndex(
+                      (i) => (i - 1 + photoUrls.length) % photoUrls.length,
+                    );
+                  }}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 size-9 rounded-full bg-black/45 hover:bg-black/65 text-white grid place-items-center backdrop-blur-sm transition opacity-80 hover:opacity-100"
+                >
+                  <ChevronLeft className="size-5" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next photo"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPhotoIndex((i) => (i + 1) % photoUrls.length);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 size-9 rounded-full bg-black/45 hover:bg-black/65 text-white grid place-items-center backdrop-blur-sm transition opacity-80 hover:opacity-100"
+                >
+                  <ChevronRight className="size-5" />
+                </button>
+                <div className="absolute bottom-2 right-2 rounded-full bg-black/55 text-white text-[10px] font-medium tabular-nums px-2 py-0.5 backdrop-blur-sm">
+                  {photoIndex + 1} / {photoUrls.length}
+                </div>
+              </>
+            )}
           </div>
         )}
         {/* Fallback when Google had no photo for this venue. Subtle
@@ -1406,11 +1462,38 @@ function ItineraryItemDialog({
             </div>
           )}
           {item.cost != null && item.cost > 0 && (
-            <div className="flex items-baseline justify-between text-sm pt-2 border-t border-border/40">
-              <span className="text-muted-foreground">Cost</span>
-              <span className="font-semibold tabular-nums">
-                ${Math.round(item.cost / 100).toLocaleString()}
-              </span>
+            <div className="pt-2 border-t border-border/40 space-y-2">
+              <div className="flex items-baseline justify-between text-sm">
+                <span className="text-muted-foreground">Cost</span>
+                <span className="font-semibold tabular-nums">
+                  ${Math.round(item.cost / 100).toLocaleString()}
+                </span>
+              </div>
+              {/* Inline rate-adjustment chips — single tap returns one
+                  cheaper or one nicer option (versus the full 3-up
+                  alternatives drawer). The result lands in the same
+                  swap drawer below, so the user previews + accepts
+                  rather than auto-swapping unexpectedly. */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => openSwap("cheaper")}
+                  disabled={swapping}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full border border-[hsl(var(--emerald))]/30 bg-[hsl(var(--emerald))]/5 hover:bg-[hsl(var(--emerald))]/10 text-[hsl(var(--emerald))] text-xs font-medium px-3 py-1.5 transition disabled:opacity-50"
+                >
+                  <ArrowDown className="size-3" />
+                  Cheaper rate
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openSwap("nicer")}
+                  disabled={swapping}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-full border border-[hsl(var(--copper))]/30 bg-[hsl(var(--copper))]/5 hover:bg-[hsl(var(--copper))]/10 text-[hsl(var(--copper))] text-xs font-medium px-3 py-1.5 transition disabled:opacity-50"
+                >
+                  <ArrowUp className="size-3" />
+                  Nicer rate
+                </button>
+              </div>
             </div>
           )}
 
@@ -1428,7 +1511,7 @@ function ItineraryItemDialog({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={openSwap}
+                onClick={() => openSwap(null)}
                 disabled={deleting || swapping}
                 className="shrink-0 whitespace-nowrap"
               >
@@ -1464,16 +1547,29 @@ function ItineraryItemDialog({
                 </p>
               )}
               {swapAlternatives.map((alt, i) => {
-                // The swap endpoint returns alternatives in a fixed
-                // order: 0 = cheaper, 1 = comparable, 2 = nicer. Surface
-                // that as a tier badge so the user immediately sees the
-                // shape of the choice instead of three look-alike cards.
-                const tierLabel =
-                  i === 0
-                    ? { text: "Cheaper", tone: "text-[hsl(var(--emerald))] border-[hsl(var(--emerald))]/30" }
-                    : i === 1
-                      ? { text: "Comparable", tone: "text-muted-foreground border-border" }
+                // The 3-up endpoint returns alternatives in a fixed
+                // order: 0 = cheaper, 1 = comparable, 2 = nicer. When
+                // only a single alternative came back (the inline
+                // Cheaper / Nicer chips), derive the label from the
+                // price delta vs. the current item instead so the badge
+                // reflects what was actually requested.
+                const currentCostUSD = item.cost
+                  ? Math.round(item.cost / 100)
+                  : null;
+                let tierLabel: { text: string; tone: string };
+                if (swapAlternatives.length === 1 && currentCostUSD && alt.estimatedCostUSD != null) {
+                  tierLabel =
+                    alt.estimatedCostUSD < currentCostUSD
+                      ? { text: "Cheaper", tone: "text-[hsl(var(--emerald))] border-[hsl(var(--emerald))]/30" }
                       : { text: "Nicer", tone: "text-[hsl(var(--copper))] border-[hsl(var(--copper))]/40" };
+                } else {
+                  tierLabel =
+                    i === 0
+                      ? { text: "Cheaper", tone: "text-[hsl(var(--emerald))] border-[hsl(var(--emerald))]/30" }
+                      : i === 1
+                        ? { text: "Comparable", tone: "text-muted-foreground border-border" }
+                        : { text: "Nicer", tone: "text-[hsl(var(--copper))] border-[hsl(var(--copper))]/40" };
+                }
                 return (
                 <button
                   key={i}
