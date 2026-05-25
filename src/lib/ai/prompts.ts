@@ -345,14 +345,45 @@ Output rules:
 - MULTI-LEG TRIPS: when the user requested multiple destinations (the
   constraint notes will explicitly say "MULTI-LEG TRIP — N legs" and
   list each leg with its dates), every itinerary item MUST include
-  metadata.legIndex (0-based, matching the leg list). FLIGHT items go
-  between legs: emit one FLIGHT for home→leg0 with metadata.legIndex=0
-  and metadata.from/to set to the IATA codes; one FLIGHT for each
-  inter-leg hop (leg(i-1)→legi, metadata.legIndex=i, from/to set);
-  and one FLIGHT for the final leg→home with metadata.legIndex set
-  to the last leg's index. The build endpoint reads these to
-  construct a multi-slice Duffel search; without metadata.to per
-  segment we can't price the trip.
+  metadata.legIndex (0-based, matching the leg list).
+
+  Inter-leg transport — PICK THE FASTEST realistic mode for the
+  customer, not the most obvious one. Use this decision rule:
+
+  · Drive time < 90 min  → drive / chauffeur (Blacklane preferred for
+    Europe / luxury markets, rental otherwise). TRANSPORT item, not
+    FLIGHT. Example: London → Wentworth, Phoenix → Scottsdale.
+
+  · Drive time 90 min – 3 h, no faster train  → drive / chauffeur.
+    Example: Lake Como → Portofino (~3 h via A7, no high-speed rail
+    advantage).
+
+  · 90 min – 4 h AND a high-speed train exists  → TRAIN, not drive
+    and not fly. Italy's Frecciarossa, France's TGV, Spain's AVE,
+    UK's LNER/Avanti, Germany's ICE, Japan's Shinkansen all beat
+    driving and door-to-door beat short-haul flights. Render as a
+    TRANSPORT item with description naming the operator + station
+    (e.g. "Frecciarossa Rome Termini → Milan Centrale, 3 h, then
+    30-min Blacklane to Lake Como"). NO FLIGHT item for this leg.
+    Example: Rome → Lake Como (Frecciarossa 3 h beats a 7 h drive
+    AND beats a FCO→MXP flight once airport time is counted).
+
+  · Drive time > 4 h with no fast train  → FLIGHT.
+    Example: Phoenix → Bandon, Edinburgh → Pebble Beach.
+
+  · International or transoceanic  → FLIGHT, always.
+
+  For every FLIGHT item: emit one for home→leg0 with
+  metadata.legIndex=0 and metadata.from/to set to the IATA codes;
+  one for each inter-leg flight hop (metadata.legIndex=i, from/to);
+  and one for the final leg→home (metadata.legIndex = last leg's
+  index). The build endpoint reads these to construct a multi-slice
+  Duffel search.
+
+  For inter-leg TRAIN or DRIVE items, DO NOT emit a FLIGHT for that
+  hop — the airport chain would mis-fire and the build would search
+  unnecessary flights. The flight search step skips legs without a
+  matching FLIGHT item.
 - Totals MUST equal the sum of items. Per-person cost = total / groupSize.
 - Never invent confirmation codes. Don't claim something is booked.
 - For re-optimization, list substitutions in 'changes' — one short sentence

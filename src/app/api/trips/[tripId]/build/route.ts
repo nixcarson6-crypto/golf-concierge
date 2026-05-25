@@ -313,60 +313,61 @@ export async function POST(
           ? "economy"
           : "business";
 
-  // Build flight search slices. For single-leg trips that's the
-  // familiar 2-slice out+back. For multi-leg trips we construct N+1
-  // slices: home → leg0 → leg1 → ... → home. We rely on the itinerary
-  // agent to have emitted FLIGHT items with metadata.to/from set per
-  // segment; if any segment is missing an IATA, we skip flight search
-  // and surface a warning instead of crashing.
-  const flightItems = itineraryOutput.items.filter((it) => it.type === "FLIGHT");
-  // Build the airport chain: [home, leg0_airport, leg1_airport, ..., home].
+  // Build flight search slices directly from the itinerary's FLIGHT
+  // items. The AI is now instructed to use train/drive for short hops
+  // (Rome → Lake Como is a 3 h Frecciarossa, not a 1 h flight + 4 h
+  // of airport time), so a multi-leg trip won't always have N+1
+  // flights. We slice on whatever FLIGHT items it DID emit. Each one
+  // already carries metadata.from/to/date, so this just maps them
+  // 1:1 to Duffel slices.
+  const flightItems = itineraryOutput.items
+    .filter((it) => it.type === "FLIGHT")
+    .map((it) => {
+      const meta = (it.metadata ?? {}) as {
+        from?: string;
+        to?: string;
+        legIndex?: number;
+      };
+      return {
+        from: (meta.from ?? "").toUpperCase(),
+        to: (meta.to ?? "").toUpperCase(),
+        legIndex: meta.legIndex,
+        date: it.startTime ? new Date(it.startTime).toISOString().slice(0, 10) : null,
+      };
+    })
+    .filter(
+      (f): f is { from: string; to: string; legIndex: number | undefined; date: string } =>
+        /^[A-Z]{3}$/.test(f.from) && /^[A-Z]{3}$/.test(f.to) && Boolean(f.date),
+    )
+    // Order by legIndex when present, then by date — keeps the multi-
+    // slice search in chronological order even if the AI emitted
+    // FLIGHT items out of order.
+    .sort((a, b) => {
+      const ai = a.legIndex ?? 999;
+      const bi = b.legIndex ?? 999;
+      if (ai !== bi) return ai - bi;
+      return a.date.localeCompare(b.date);
+    });
+
+  // Airport chain is derived for UI breakdown only (still useful for
+  // the result page even when some hops are train/drive).
   const airportChain: string[] = [];
-  let chainOk = true;
-  if (originFromQuiz && originFromQuiz.length === 3) {
-    airportChain.push(originFromQuiz);
-    for (let i = 0; i < legs.length; i++) {
-      // Find a FLIGHT item whose metadata.legIndex matches OR fall back
-      // to the i-th FLIGHT item in order.
-      const matched =
-        flightItems.find((it) => {
-          const meta = (it.metadata ?? {}) as { legIndex?: number };
-          return meta.legIndex === i;
-        }) ?? flightItems[i];
-      const meta = (matched?.metadata ?? {}) as { to?: string; from?: string };
-      const to = (meta.to ?? "").toUpperCase();
-      if (to && to.length === 3) {
-        airportChain.push(to);
-      } else {
-        chainOk = false;
-        break;
-      }
-    }
-    airportChain.push(originFromQuiz);
-  } else {
-    chainOk = false;
+  if (originFromQuiz && flightItems.length > 0) {
+    airportChain.push(flightItems[0].from);
+    for (const f of flightItems) airportChain.push(f.to);
   }
 
   let suggestedFlights: unknown = null;
-  if (chainOk && constraints.startDate && constraints.endDate) {
+  if (flightItems.length > 0 && constraints.startDate && constraints.endDate) {
     try {
       const groupSize = constraints.groupSize ?? 1;
-      // Slice 0: home → leg0 on leg0.startDate
-      // Slice i (1..N-1): leg(i-1) → legi on legi.startDate
-      // Slice N: leg(N-1) → home on lastLeg.endDate
-      const slices = [];
-      for (let i = 0; i < legs.length; i++) {
-        slices.push({
-          origin: airportChain[i],
-          destination: airportChain[i + 1],
-          departureDate: legs[i].startDate,
-        });
-      }
-      slices.push({
-        origin: airportChain[airportChain.length - 2],
-        destination: airportChain[airportChain.length - 1],
-        departureDate: legs[legs.length - 1].endDate,
-      });
+      // One Duffel slice per emitted FLIGHT item — same shape whether
+      // it's a 2-flight round trip or a 3-flight multi-city run.
+      const slices = flightItems.map((f) => ({
+        origin: f.from,
+        destination: f.to,
+        departureDate: f.date,
+      }));
 
       const result = await searchFlights({
         slices,
@@ -398,14 +399,18 @@ export async function POST(
                 return a.totalAmount - b.totalAmount;
               })
             : result.offers;
-        // Keep top 3 — enough for choice without analysis paralysis.
-        // For multi-leg, origin/destination describe the FIRST hop only;
-        // the full airport chain lives in airportChain so the UI can
-        // render a per-leg breakdown later.
+        // Per-leg airport map for the UI breakdown. A leg whose hop
+        // was train/drive shows airport: null so the result page can
+        // render "Frecciarossa from Rome" instead of pretending there's
+        // a flight in this segment.
+        const legAirports = legs.map((_, i) => {
+          const f = flightItems.find((fi) => fi.legIndex === i);
+          return f?.to ?? null;
+        });
         suggestedFlights = {
           fetchedAt: new Date().toISOString(),
           origin: originFromQuiz,
-          destination: airportChain[1] ?? "",
+          destination: flightItems[0]?.to ?? "",
           cabin,
           passengers: groupSize,
           offers: offers.slice(0, 3),
@@ -413,7 +418,7 @@ export async function POST(
             ? legs.map((leg, i) => ({
                 index: i,
                 destination: leg.destination,
-                airport: airportChain[i + 1] ?? null,
+                airport: legAirports[i],
                 startDate: leg.startDate,
                 endDate: leg.endDate,
               }))
@@ -448,7 +453,7 @@ export async function POST(
     }
   } else {
     console.info(
-      `[build] skipping flight search (origin=${originFromQuiz}, chainOk=${chainOk}, airports=${airportChain.join("→")}, dates=${constraints.startDate}/${constraints.endDate})`,
+      `[build] skipping flight search (origin=${originFromQuiz}, flightItems=${flightItems.length}, airports=${airportChain.join("→")}, dates=${constraints.startDate}/${constraints.endDate})`,
     );
   }
 
