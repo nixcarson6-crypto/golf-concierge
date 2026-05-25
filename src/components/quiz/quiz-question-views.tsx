@@ -276,6 +276,13 @@ export function DateRangeView({
 }) {
   const start = value?.start ?? "";
   const end = value?.end ?? "";
+  // Half-filled state — one date set, the other blank — is invalid.
+  // Either both dates or neither (use the "I'm flexible" skip).
+  // Customers were hitting Continue with just the depart filled and
+  // ending up with one-night trips, so block it explicitly.
+  const halfFilled = (Boolean(start) && !end) || (!start && Boolean(end));
+  const endBeforeStart = Boolean(start) && Boolean(end) && end < start;
+  const invalid = halfFilled || endBeforeStart;
   return (
     <div className="max-w-md mx-auto w-full space-y-5">
       <div className="grid grid-cols-2 gap-3">
@@ -307,6 +314,13 @@ export function DateRangeView({
           />
         </label>
       </div>
+      {invalid && (
+        <p className="text-xs text-[hsl(var(--destructive))]">
+          {endBeforeStart
+            ? "Return must be on or after departure."
+            : "Fill in both dates, or use \"I'm flexible — skip\" below."}
+        </p>
+      )}
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -318,7 +332,7 @@ export function DateRangeView({
         >
           I'm flexible — skip
         </button>
-        <Button onClick={onContinue} size="lg">
+        <Button onClick={onContinue} size="lg" disabled={invalid}>
           Continue
         </Button>
       </div>
