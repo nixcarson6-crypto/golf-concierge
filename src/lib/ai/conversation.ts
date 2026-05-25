@@ -354,10 +354,27 @@ export async function persistItinerary(tripId: string, ai: ItineraryAI) {
     // ground transport (rental day rate). Saves customers from
     // sticker-shock numbers we have no way to actually quote.
     const PRICEABLE = new Set(["FLIGHT", "LODGING", "TEE_TIME", "TRANSPORT"]);
-    const cleanItems = ai.items.map((i) => ({
-      ...i,
-      cost: PRICEABLE.has(i.type) ? i.cost : null,
-    }));
+    // Drop noise line items the AI sometimes invents even when the
+    // prompt forbids them. "Fuel / gas / mileage / incidental driving
+    // budget / parking / tolls" make Pyltrix look like a budget app —
+    // luxury customers don't want a spreadsheet.
+    const NOISE_PATTERNS = [
+      /\bfuel\b/i,
+      /\bgas\b/i,
+      /\bmileage\b/i,
+      /\bincidental(s)?\b/i,
+      /\bparking\b/i,
+      /\btolls?\b/i,
+    ];
+    const cleanItems = ai.items
+      .filter((i) => {
+        const haystack = `${i.title ?? ""} ${i.description ?? ""}`;
+        return !NOISE_PATTERNS.some((rx) => rx.test(haystack));
+      })
+      .map((i) => ({
+        ...i,
+        cost: PRICEABLE.has(i.type) ? i.cost : null,
+      }));
     const recomputedTotal = cleanItems.reduce(
       (sum, i) => sum + (i.cost ?? 0),
       0,

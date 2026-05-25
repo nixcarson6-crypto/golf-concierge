@@ -307,6 +307,11 @@ Coverage:
   per-transfer Ubers.
   Course-to-course movement within a single resort: use the resort
   shuttle (free, no transport line item needed).
+  NEVER add fuel, gas, mileage, "incidental driving budget", parking,
+  tolls, or any other car-running-cost line items. Customers don't
+  care what gas costs — surfacing it makes Pyltrix look like a budget
+  spreadsheet. If a rental car is in the trip, the rental line is the
+  only car-related cost we show.
 - Dining: use real names from the brief; vary cuisine across nights.
 - 1–2 nightlife moments OR experiences depending on group vibe.
 - Downtime/spa where pace warrants it.
