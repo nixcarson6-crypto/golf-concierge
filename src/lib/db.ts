@@ -24,3 +24,35 @@ export const db =
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+
+/**
+ * Retry a DB operation once on transient Neon connection failures.
+ * Neon's serverless tier closes idle connections aggressively (~30s),
+ * which Prisma surfaces as `kind: Closed` mid-build. A single retry
+ * almost always succeeds because the pool re-establishes the
+ * connection on the next attempt. Non-connection errors propagate
+ * immediately so we don't mask real bugs.
+ */
+export async function withDbRetry<T>(
+  fn: () => Promise<T>,
+  label = "db",
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isTransient =
+      msg.includes("Closed") ||
+      msg.includes("kind: Closed") ||
+      msg.includes("Connection terminated") ||
+      msg.includes("ECONNRESET") ||
+      msg.includes("Connection refused");
+    if (!isTransient) throw err;
+    console.warn(
+      `[db:${label}] transient connection error — retrying once: ${msg.slice(0, 120)}`,
+    );
+    // Small backoff so the pool has time to recover.
+    await new Promise((r) => setTimeout(r, 250));
+    return await fn();
+  }
+}

@@ -69,11 +69,18 @@ export function QuizContainer({ tripId }: { tripId: string }) {
 
   const submit = async () => {
     setSubmitting(true);
+    // 4-minute client-side hard ceiling. Server-side maxDuration is 5
+    // minutes; staying under that lets the abort fire before Vercel
+    // would and gives us a clean, user-facing message instead of a
+    // platform-level 504 with no JSON body.
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), 4 * 60 * 1000);
     try {
       const res = await fetch(`/api/trips/${tripId}/build`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answers }),
+        signal: controller.signal,
       });
       if (!res.ok) {
         // Server returns { error: "..." } JSON on failures. Surface that
@@ -97,17 +104,23 @@ export function QuizContainer({ tripId }: { tripId: string }) {
       router.refresh();
     } catch (err) {
       console.error("[quiz submit]", err);
+      const wasAborted =
+        err instanceof DOMException && err.name === "AbortError";
       toast.error(
-        err instanceof Error
-          ? err.message
-          : "Couldn't build your trip — try again.",
+        wasAborted
+          ? "Your trip is taking longer than usual. We saved your details — please retry."
+          : err instanceof Error
+            ? err.message
+            : "Couldn't build your trip — try again.",
       );
       setSubmitting(false);
+    } finally {
+      clearTimeout(abortTimer);
     }
   };
 
   if (submitting) {
-    return <QuizLoading />;
+    return <QuizLoading tripId={tripId} />;
   }
 
   if (!currentQuestion) {

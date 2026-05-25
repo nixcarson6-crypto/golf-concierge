@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-const STATUSES = [
+const FALLBACK_STATUSES = [
   "Analysing your preferences…",
   "Matching destinations…",
   "Pulling live flight inventory…",
@@ -14,18 +14,67 @@ const STATUSES = [
 
 /**
  * Animated loading screen shown after the user finishes the quiz and we
- * call /build. The rotating status text is Hungry Root's trick to make
- * the personalisation moment feel substantive (and to mask the actual
- * 10–25 second AI latency without staring at a spinner).
+ * call /build. When given a tripId, polls /workspace every 2s and shows
+ * the live agentRun progress so the user sees what's ACTUALLY happening
+ * on the server. Falls back to rotating placeholder text before the
+ * first agent run is written or if polling fails.
+ *
+ * Also adapts the helper text after 60s / 150s so customers on big
+ * multi-leg builds don't think the page died.
  */
-export function QuizLoading() {
+export function QuizLoading({ tripId }: { tripId?: string }) {
   const [idx, setIdx] = React.useState(0);
+  const [liveProgress, setLiveProgress] = React.useState<string | null>(null);
+  const [elapsed, setElapsed] = React.useState(0);
+
   React.useEffect(() => {
     const id = setInterval(() => {
-      setIdx((i) => (i + 1) % STATUSES.length);
+      setIdx((i) => (i + 1) % FALLBACK_STATUSES.length);
     }, 2200);
     return () => clearInterval(id);
   }, []);
+
+  React.useEffect(() => {
+    const id = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Poll the workspace endpoint for real agent progress. The most
+  // recent agentRun with status RUNNING is what the server is doing
+  // right now — its `progress` field is set by withAgentRun for every
+  // phase (destination, itinerary, flight search, etc.).
+  React.useEffect(() => {
+    if (!tripId) return;
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/trips/${tripId}/workspace`, {
+          cache: "no-store",
+        });
+        if (!r.ok || stopped) return;
+        const data = (await r.json()) as {
+          agentRuns?: Array<{
+            status: string;
+            progress: string | null;
+          }>;
+        };
+        const running = data.agentRuns?.find((r) => r.status === "RUNNING");
+        if (running?.progress) {
+          setLiveProgress(running.progress);
+        }
+      } catch {
+        // Ignore — keep showing the rotating fallback.
+      }
+    };
+    void tick();
+    const id = setInterval(tick, 2000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [tripId]);
+
+  const status = liveProgress ?? FALLBACK_STATUSES[idx];
 
   return (
     <div className="min-h-dvh bg-concierge-radial grid place-items-center px-4">
@@ -40,16 +89,18 @@ export function QuizLoading() {
             Building your trip
           </h2>
           <p
-            key={idx}
+            key={status}
             className="text-base text-muted-foreground animate-in fade-in slide-in-from-bottom-1 duration-500"
           >
-            {STATUSES[idx]}
+            {status}
           </p>
         </div>
         <p className="text-xs text-muted-foreground/70 max-w-xs mx-auto">
-          This usually takes 10–25 seconds. We're pulling live data from every
-          partner — flights, lodging, courses, dining — so the plan is
-          actually bookable.
+          {elapsed < 60
+            ? "This usually takes 10–25 seconds. We're pulling live data from every partner — flights, lodging, courses, dining — so the plan is actually bookable."
+            : elapsed < 150
+              ? "Complex multi-destination trips can take 1–3 minutes. We're still working — hang tight."
+              : "This is taking longer than usual. We'll automatically time out at 4 minutes; you can also refresh and retry."}
         </p>
       </div>
     </div>

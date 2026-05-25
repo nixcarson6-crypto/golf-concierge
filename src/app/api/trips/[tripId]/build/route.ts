@@ -7,7 +7,7 @@
 
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
+import { db, withDbRetry } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { quizAnswersToConstraints } from "@/lib/quiz/golf-questions";
 import { runDestinationAgent } from "@/lib/ai/agents/destination";
@@ -28,6 +28,14 @@ import {
 const bodySchema = z.object({
   answers: z.record(z.unknown()),
 });
+
+// Build can legitimately take 1-3 minutes on a complex multi-leg trip
+// (Opus call + Duffel multi-slice search + DB writes). Default Vercel
+// serverless timeout is 60s which silently kills long builds and the
+// client sees an empty hang. 300s = max for Vercel Pro / matches the
+// new 24k-token retry path budget.
+export const maxDuration = 300;
+export const runtime = "nodejs";
 
 export async function POST(
   req: NextRequest,
@@ -204,17 +212,25 @@ export async function POST(
   // list is always authoritative for the latest build. Single-leg
   // trips end up with exactly one TripLeg row (legIndex=0).
   try {
-    await db.tripLeg.deleteMany({ where: { tripId } });
+    await withDbRetry(
+      () => db.tripLeg.deleteMany({ where: { tripId } }),
+      "tripLeg.deleteMany",
+    );
     for (let i = 0; i < legs.length; i++) {
-      await db.tripLeg.create({
-        data: {
-          tripId,
-          legIndex: i,
-          destination: legs[i].destination,
-          startDate: legs[i].startDate ? new Date(legs[i].startDate) : null,
-          endDate: legs[i].endDate ? new Date(legs[i].endDate) : null,
-        },
-      });
+      const leg = legs[i];
+      await withDbRetry(
+        () =>
+          db.tripLeg.create({
+            data: {
+              tripId,
+              legIndex: i,
+              destination: leg.destination,
+              startDate: leg.startDate ? new Date(leg.startDate) : null,
+              endDate: leg.endDate ? new Date(leg.endDate) : null,
+            },
+          }),
+        `tripLeg.create[${i}]`,
+      );
     }
   } catch (err) {
     console.warn("[build] TripLeg persistence failed:", err);
