@@ -142,16 +142,6 @@ const hasFullDateRange = (a: QuizAnswers): boolean => {
   return Boolean(d?.start && d?.end);
 };
 
-const isSolo = (a: QuizAnswers): boolean => {
-  // groupSize is a numeric input now. Solo = exactly 1.
-  const n = typeof a.groupSize === "number"
-    ? a.groupSize
-    : typeof a.groupSize === "string"
-      ? parseInt(a.groupSize, 10)
-      : NaN;
-  return n === 1;
-};
-
 /* -------------------------------------------------------------------------- */
 /* Golf travel question set                                                    */
 /* -------------------------------------------------------------------------- */
@@ -170,24 +160,32 @@ export const GOLF_QUIZ: QuizQuestion[] = [
   },
   {
     kind: "single-select",
-    id: "who",
+    id: "teeOffPreference",
     sectionId: "trip",
-    title: "Who's going?",
-    subtitle: "Helps us tune the vibe.",
+    title: "Tee off — early or late?",
+    subtitle: "Sets the rhythm of each day.",
     options: [
-      { value: "buddies", label: "Buddies trip" },
-      { value: "couple", label: "With my partner" },
-      { value: "family", label: "Family" },
-      { value: "business", label: "Business / clients" },
-      { value: "mixed", label: "Mixed crew" },
+      {
+        value: "early_morning",
+        label: "Early morning",
+        description: "First off — empty course, finished by lunch",
+      },
+      {
+        value: "midmorning",
+        label: "Mid-morning",
+        description: "Big breakfast, on the tee by 10",
+      },
+      {
+        value: "afternoon",
+        label: "Afternoon",
+        description: "Slow mornings, golf into the evening",
+      },
+      {
+        value: "no_preference",
+        label: "No preference",
+        description: "Pyltrix picks the best slot per course",
+      },
     ],
-    freeTextField: {
-      writesTo: "whoCustom",
-      selectsValue: "custom",
-      label: "Or describe in your own words",
-      placeholder: "e.g. college roommates reunion",
-    },
-    shouldShow: (a) => !isSolo(a),
   },
   {
     kind: "date-range",
@@ -537,10 +535,13 @@ export function quizAnswersToConstraints(answers: QuizAnswers): TripConstraints 
       noteFragments.push(`${label}: ${value.join(", ")}`);
     }
   };
-  if (answers.who && answers.who !== "solo" && answers.who !== "custom") {
-    pushIf("Group type", answers.who);
+  // Tee-off preference drives daily pacing: early-morning groups want
+  // early dinners and 6am alarms; afternoon groups want big breakfasts
+  // and dinner at 9. Itinerary prompt translates this into actual
+  // tee-time slots and meal timing.
+  if (answers.teeOffPreference && answers.teeOffPreference !== "no_preference") {
+    pushIf("Tee-off preference", answers.teeOffPreference);
   }
-  pushIf("Group type (custom)", answers.whoCustom);
   if (answers.tripLength) pushIf("Length preference", answers.tripLength);
   if (answers.destinationMode) pushIf("Destination mode", answers.destinationMode);
   pushIf("Course style", answers.courseStyle);

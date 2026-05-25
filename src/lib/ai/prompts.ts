@@ -320,7 +320,19 @@ Pacing rules:
 - 8 guys, long weekend: 2–3 rounds total, big dinner + one nightlife moment,
   not five courses in three days.
 - Always include arrival logistics on day 1, departure on last day.
-- Tee times: 9–11am preferred unless heat dictates earlier.
+- Tee-off preference (from the brief's Tee-off preference note) drives
+  the whole daily rhythm — DO NOT default to 9-11am if the customer
+  said otherwise:
+  · early_morning  → 6:30-8:00am tee, breakfast at the turn, light
+    lunch, dinner reservations 6:00-7:00pm, no late nightlife.
+  · midmorning     → 9:30-10:30am tee, full sit-down breakfast first,
+    dinner 7:30-8:30pm. The classic default.
+  · afternoon      → 1:00-2:30pm tee, big late breakfast / brunch,
+    dinner 8:30-9:30pm, room for one nightlife stop after.
+  · no preference  → use 9-11am unless heat / sunset times dictate
+    otherwise.
+- Tee times: default 9–11am unless heat dictates earlier OR the
+  tee-off preference overrides above.
 
 Output rules:
 - startTime/endTime as ISO datetimes anchored to the trip dates.
