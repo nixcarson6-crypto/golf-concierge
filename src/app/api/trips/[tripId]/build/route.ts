@@ -24,6 +24,7 @@ import {
   assignDatesToLegs,
   type LegWithDates,
 } from "@/lib/quiz/parse-legs";
+import { airportForDestination } from "@/lib/data/airport-lookup";
 
 const bodySchema = z.object({
   answers: z.record(z.unknown()),
@@ -246,59 +247,19 @@ export async function POST(
       }
     : constraints;
 
-  // Step 2: itinerary. One pass, no refinement loop. The result screen
-  // exposes edit buttons for tweaks — those go through a smaller targeted
-  // endpoint, not the full agent. Wrapped so a malformed AI response
-  // or schema validation failure surfaces the actual reason to the
-  // client instead of crashing the whole build with a bare 500.
-  let itineraryOutput;
-  try {
-    const run = await runItineraryAgent({
-      tripId,
-      destination: chosenDestination,
-      constraints: itineraryConstraints,
-      priorItinerary: null,
-    });
-    itineraryOutput = run.output;
-    await persistItinerary(tripId, itineraryOutput);
-    nudge(tripId);
-  } catch (err) {
-    console.error("[build] itinerary step failed:", err);
-    const rawMsg = err instanceof Error ? err.message : String(err);
-    // Map the internal truncation marker to plain English. The user
-    // doesn't need to see "[runStructured:emit_itinerary] response
-    // truncated at max_tokens" — that's debugging noise.
-    const userMsg = rawMsg.includes("truncated at max_tokens")
-      ? "This trip is more complex than we could fit in one pass. Try fewer destinations, a shorter trip, or simpler preferences and retry."
-      : `Couldn't build the itinerary: ${rawMsg}. Your trip details were saved — try again or simplify the request.`;
-    return new Response(
-      JSON.stringify({ error: userMsg }),
-      { status: 502, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  // Step 3: run a live flight search so the result page can show real
-  // bookable options. We use the user's quiz-supplied origin airport
-  // and pull the destination IATA from whichever FLIGHT item the
-  // itinerary agent emitted (it's instructed to set metadata.to). If
-  // we can't determine a destination airport we skip — the rest of the
-  // plan is still useful.
+  // Parse origin + cabin BEFORE firing the itinerary so we can run a
+  // flight search in parallel. The home→firstLeg outbound is always a
+  // flight (international + first hop), so we can predict its
+  // endpoints without waiting for the itinerary to emit FLIGHT items.
+  // Multi-leg inter-hops might be train/drive — those still get
+  // searched (or skipped) after the itinerary lands.
   const answers = parsed.data.answers;
-  // Origin airport: handle the free-text "custom" path defensively —
-  // users may type "AUS", "aus", " aus ", "Austin", or "p d x". Trim,
-  // uppercase, and only accept exactly 3 alpha chars (an IATA code).
-  // Anything else falls through to skipping the flight search rather
-  // than searching DFW→AUSTIN and getting nothing.
   const rawOrigin =
     (answers.originAirport as string | undefined) === "custom"
       ? ((answers.originAirportCustom as string | undefined) ?? "")
       : ((answers.originAirport as string | undefined) ?? "");
   const cleanedOrigin = rawOrigin.replace(/\s+/g, "").toUpperCase();
   const originFromQuiz = /^[A-Z]{3}$/.test(cleanedOrigin) ? cleanedOrigin : "";
-  // Cabin: if the user picked "Best rate" on the airline question we
-  // skipped the cabin screen entirely — default to economy (the
-  // cheapest option) so the flight search honors their "I don't care,
-  // cheapest please" intent end-to-end.
   const airlinePref = answers.airlinePreference as string | undefined;
   const cabinAnswer =
     airlinePref === "best_rate"
@@ -312,6 +273,95 @@ export async function POST(
         : cabinAnswer === "economy" || cabinAnswer === "best_deal"
           ? "economy"
           : "business";
+
+  // Pre-fired flight search — runs IN PARALLEL with the itinerary
+  // agent. We predict the leg airports from the curated KB / fallback
+  // table / Haiku lookup so we don't have to wait for the itinerary
+  // to emit FLIGHT items. Saves ~5-10s on the perceived build time
+  // because Opus and Duffel run concurrently instead of serially.
+  //
+  // For single-leg: outbound (home→leg0 on startDate) + return
+  // (leg0→home on endDate). For multi-leg: outbound (home→leg0) +
+  // final return (lastLeg→home). Inter-leg hops are searched after
+  // the itinerary lands since they may turn out to be train/drive.
+  const preSearchPromise = (async () => {
+    if (!originFromQuiz || legs.length === 0) return null;
+    const groupSize = constraints.groupSize ?? 1;
+    const firstLeg = legs[0];
+    const lastLeg = legs[legs.length - 1];
+    if (!firstLeg.startDate || !lastLeg.endDate) return null;
+    const [firstIata, lastIata] = await Promise.all([
+      airportForDestination(firstLeg.destination),
+      legs.length > 1
+        ? airportForDestination(lastLeg.destination)
+        : Promise.resolve(null), // single-leg → return = outbound airport
+    ]);
+    const finalReturnFrom = lastIata ?? firstIata;
+    if (!firstIata || !finalReturnFrom) return null;
+    const slices = [
+      {
+        origin: originFromQuiz,
+        destination: firstIata,
+        departureDate: firstLeg.startDate,
+      },
+      {
+        origin: finalReturnFrom,
+        destination: originFromQuiz,
+        departureDate: lastLeg.endDate,
+      },
+    ];
+    try {
+      const result = await searchFlights({
+        slices,
+        passengers: groupSize,
+        cabin,
+        maxOffers: 5,
+      });
+      if (!result.ok) {
+        console.warn(
+          "[build] pre-search returned error — will fall back to post-itinerary search:",
+          result.error,
+        );
+        return null;
+      }
+      return {
+        offers: result.offers,
+        airports: { first: firstIata, return: finalReturnFrom },
+      };
+    } catch (err) {
+      console.warn("[build] pre-search threw — falling back:", err);
+      return null;
+    }
+  })();
+
+  // Step 2: itinerary. Runs in parallel with the pre-search above.
+  let itineraryOutput;
+  let preSearch: Awaited<typeof preSearchPromise> = null;
+  try {
+    const [run, ps] = await Promise.all([
+      runItineraryAgent({
+        tripId,
+        destination: chosenDestination,
+        constraints: itineraryConstraints,
+        priorItinerary: null,
+      }),
+      preSearchPromise,
+    ]);
+    itineraryOutput = run.output;
+    preSearch = ps;
+    await persistItinerary(tripId, itineraryOutput);
+    nudge(tripId);
+  } catch (err) {
+    console.error("[build] itinerary step failed:", err);
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const userMsg = rawMsg.includes("truncated at max_tokens")
+      ? "This trip is more complex than we could fit in one pass. Try fewer destinations, a shorter trip, or simpler preferences and retry."
+      : `Couldn't build the itinerary: ${rawMsg}. Your trip details were saved — try again or simplify the request.`;
+    return new Response(
+      JSON.stringify({ error: userMsg }),
+      { status: 502, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
   // Build flight search slices directly from the itinerary's FLIGHT
   // items. The AI is now instructed to use train/drive for short hops
@@ -358,23 +408,39 @@ export async function POST(
   }
 
   let suggestedFlights: unknown = null;
+  // Decide whether the parallel pre-search results are usable. Pre-
+  // search only covered outbound + final return, so we can use it
+  // directly when (a) we have results, (b) the itinerary has at most
+  // two FLIGHT items (the standard bookends — no inter-leg flight
+  // hops), and (c) the airports the itinerary picked match the ones
+  // we predicted. Otherwise we ignore pre-search and run the full
+  // FLIGHT-items-derived search — slower but always correct.
+  const preSearchUsable =
+    preSearch != null &&
+    flightItems.length <= 2 &&
+    (flightItems[0]?.to ?? preSearch.airports.first) === preSearch.airports.first;
+
   if (flightItems.length > 0 && constraints.startDate && constraints.endDate) {
     try {
       const groupSize = constraints.groupSize ?? 1;
-      // One Duffel slice per emitted FLIGHT item — same shape whether
-      // it's a 2-flight round trip or a 3-flight multi-city run.
-      const slices = flightItems.map((f) => ({
-        origin: f.from,
-        destination: f.to,
-        departureDate: f.date,
-      }));
-
-      const result = await searchFlights({
-        slices,
-        passengers: groupSize,
-        cabin,
-        maxOffers: 5,
-      });
+      const result = preSearchUsable
+        ? { ok: true as const, offers: preSearch!.offers }
+        : await searchFlights({
+            // One Duffel slice per emitted FLIGHT item — same shape
+            // whether it's a 2-flight round trip or a 3-flight multi-
+            // city run.
+            slices: flightItems.map((f) => ({
+              origin: f.from,
+              destination: f.to,
+              departureDate: f.date,
+            })),
+            passengers: groupSize,
+            cabin,
+            maxOffers: 5,
+          });
+      if (preSearchUsable) {
+        console.info("[build] using parallel pre-search results");
+      }
       if (result.ok) {
         // Honor airline preference if the user picked one: re-sort so
         // the preferred carrier surfaces first when fares are close.
