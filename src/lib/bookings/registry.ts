@@ -5,6 +5,7 @@ import { duffelPartner } from "./providers/duffel";
 import { expediaRapidPartner } from "./providers/expedia";
 import { opentablePartner } from "./providers/opentable";
 import { uberPartner } from "./providers/uber";
+import { blacklanePartner } from "./providers/blacklane";
 import type { BookingPartner } from "./types";
 
 /**
@@ -30,7 +31,15 @@ const REGISTRY: Record<ItineraryItemType, BookingPartner> = {
   LODGING: pick(expediaRapidPartner, "LODGING", "EXPEDIA_RAPID"),
   DINING: pick(opentablePartner, "DINING", "OPENTABLE"),
   NIGHTLIFE: stubPartner("MANUAL", ["NIGHTLIFE"]),
-  TRANSPORT: pick(uberPartner, "TRANSPORT", "UBER_FOR_BUSINESS"),
+  // Blacklane is the on-brand luxury chauffeur (Mercedes S-Class, suited
+  // driver) and takes priority when its key is set. Falls through to Uber
+  // for Business — and then to the generic stub — when neither has
+  // credentials. Both keys configured ⇒ Blacklane wins for the partner
+  // routing; per-transfer choice can still be driven by trip preference
+  // at the prompt layer.
+  TRANSPORT: blacklanePartner.isConfigured()
+    ? blacklanePartner
+    : pick(uberPartner, "TRANSPORT", "UBER_FOR_BUSINESS"),
   FLIGHT: pick(duffelPartner, "FLIGHT", "DUFFEL"),
   FREE_TIME: stubPartner("INTERNAL", ["FREE_TIME"]),
   SPA: stubPartner("MANUAL", ["SPA"]),
@@ -61,6 +70,8 @@ export function providerLabel(provider: BookingProvider): string {
       return "Resy";
     case "UBER_FOR_BUSINESS":
       return "Uber for Business";
+    case "BLACKLANE":
+      return "Blacklane";
     case "INTERNAL":
       return "Concierge";
     case "MANUAL":

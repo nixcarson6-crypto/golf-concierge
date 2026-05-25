@@ -302,8 +302,9 @@ Coverage:
   Streamsong, Greenbrier, Equinox — coverage is real, even if it's
   3-5 minute wait instead of 60 seconds). Only suggest a rental car
   if the customer's transportPreference explicitly is "rental_luxury_suv"
-  or "rental_standard". For "private_driver" use a chauffeur for the
-  whole day; for "uber" (default) use per-transfer Ubers.
+  or "rental_standard". For "private_driver" use Blacklane (Mercedes
+  S-Class chauffeur) for the whole day; for "uber" (default) use
+  per-transfer Ubers.
   Course-to-course movement within a single resort: use the resort
   shuttle (free, no transport line item needed).
 - Dining: use real names from the brief; vary cuisine across nights.

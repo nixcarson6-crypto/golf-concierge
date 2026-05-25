@@ -451,8 +451,8 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       },
       {
         value: "private_driver",
-        label: "Private driver",
-        description: "Full-day chauffeur",
+        label: "Blacklane chauffeur",
+        description: "Mercedes S-Class, suited driver, full day",
       },
       {
         value: "rental_luxury_suv",

@@ -432,6 +432,7 @@ enum BookingProvider {
   OPENTABLE
   RESY
   UBER_FOR_BUSINESS
+  BLACKLANE
   MANUAL
 }
 
