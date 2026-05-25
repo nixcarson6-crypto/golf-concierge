@@ -85,17 +85,38 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
             2,
           )}\n\nDraft the full itinerary now.`;
 
-      const result = await runStructured({
-        tier: "orchestrator",
-        system: ITINERARY_SYSTEM,
-        cacheSystem: true,
-        schema: itinerarySchema,
-        toolName: "emit_itinerary",
-        toolDescription: "Emit the full itinerary as structured data.",
-        messages: [{ role: "user", content: userMessage }],
-        maxTokens: 6000,
-      });
-      return result;
+      // Token budget: a 4-day single-destination trip is ~3-4k tokens.
+      // A 10-day multi-leg trip with 5-6 items per day approaches 10k+.
+      // Default to a generous budget; if the model still truncates,
+      // we retry once at 24k before giving up. Opus 4.7's max is well
+      // above this so there's headroom for genuinely complex requests.
+      const runOnce = (maxTokens: number) =>
+        runStructured({
+          tier: "orchestrator",
+          system: ITINERARY_SYSTEM,
+          cacheSystem: true,
+          schema: itinerarySchema,
+          toolName: "emit_itinerary",
+          toolDescription: "Emit the full itinerary as structured data.",
+          messages: [{ role: "user", content: userMessage }],
+          maxTokens,
+        });
+
+      try {
+        return await runOnce(14000);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Only retry on truncation — schema errors that aren't size-
+        // related won't fix themselves with more tokens. The
+        // orchestrator throws a marker string we can pattern-match on.
+        if (msg.includes("truncated at max_tokens")) {
+          console.warn(
+            "[itinerary] first attempt truncated at 14k tokens — retrying at 24k",
+          );
+          return await runOnce(24000);
+        }
+        throw err;
+      }
     },
   });
 }

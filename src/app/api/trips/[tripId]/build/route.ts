@@ -248,10 +248,15 @@ export async function POST(
     nudge(tripId);
   } catch (err) {
     console.error("[build] itinerary step failed:", err);
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    // Map the internal truncation marker to plain English. The user
+    // doesn't need to see "[runStructured:emit_itinerary] response
+    // truncated at max_tokens" — that's debugging noise.
+    const userMsg = rawMsg.includes("truncated at max_tokens")
+      ? "This trip is more complex than we could fit in one pass. Try fewer destinations, a shorter trip, or simpler preferences and retry."
+      : `Couldn't build the itinerary: ${rawMsg}. Your trip details were saved — try again or simplify the request.`;
     return new Response(
-      JSON.stringify({
-        error: `Couldn't build the itinerary: ${err instanceof Error ? err.message : String(err)}. Your trip details were saved — try again or simplify the request.`,
-      }),
+      JSON.stringify({ error: userMsg }),
       { status: 502, headers: { "Content-Type": "application/json" } },
     );
   }

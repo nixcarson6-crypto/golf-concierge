@@ -97,8 +97,23 @@ export async function runStructured<T extends z.ZodTypeAny>(
     (c): c is Anthropic.ToolUseBlock => c.type === "tool_use",
   );
   if (!toolUse) {
+    // Surface the real reason when the model never got to the tool
+    // call — usually `max_tokens` on a too-large itinerary or `refusal`
+    // on a constraint conflict. Cryptic "did not return a tool_use"
+    // errors were sending customers in circles.
     throw new Error(
-      `[runStructured:${toolName}] model did not return a tool_use block`,
+      `[runStructured:${toolName}] model did not return a tool_use block (stop_reason=${response.stop_reason})`,
+    );
+  }
+
+  // Truncation: the model started the tool call but ran out of tokens
+  // mid-JSON. Anthropic returns whatever it managed to emit, but
+  // required fields are usually missing → schema validation fails
+  // with a useless "Required" error. Catch this case explicitly so the
+  // caller can retry with a bigger budget or split the work.
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(
+      `[runStructured:${toolName}] response truncated at max_tokens — payload too large for the budget. Retry with a higher maxTokens or simplify the request.`,
     );
   }
 
