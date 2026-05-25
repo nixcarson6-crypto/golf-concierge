@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Bell, Search, Copy, Trash2 } from "lucide-react";
+import { ArrowRight, Bell, Search, Copy, Trash2, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,18 @@ export function DashboardClient({
   const [q, setQ] = React.useState("");
   const [cloningId, setCloningId] = React.useState<string | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  // Multi-select state. Empty set = normal browse mode; non-empty
+  // surfaces the bulk-action toolbar above the grid.
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = React.useState(false);
+  const toggleSelect = React.useCallback((tripId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(tripId)) next.delete(tripId);
+      else next.add(tripId);
+      return next;
+    });
+  }, []);
 
   const filtered = React.useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -98,18 +110,104 @@ export function DashboardClient({
     }
   };
 
+  const selectAllVisible = () => {
+    setSelected(new Set(filtered.map((t) => t.id)));
+  };
+  const clearSelection = () => setSelected(new Set());
+
+  const bulkDelete = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    if (
+      !confirm(
+        `Delete ${ids.length} ${ids.length === 1 ? "trip" : "trips"}? This can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    setBulkDeleting(true);
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          fetch(`/api/trips/${id}`, { method: "DELETE" }).then((r) => {
+            if (!r.ok) throw new Error(String(r.status));
+          }),
+        ),
+      );
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const ok = ids.length - failed;
+      if (ok > 0) toast.success(`Deleted ${ok} ${ok === 1 ? "trip" : "trips"}.`);
+      if (failed > 0) toast.error(`${failed} couldn't be deleted.`);
+      setSelected(new Set());
+      router.refresh();
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   return (
     <div className="mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
       <section className="lg:col-span-8 xl:col-span-9 space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by destination or trip name…"
-            className="pl-9"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search by destination or trip name…"
+              className="pl-9"
+            />
+          </div>
+          {filtered.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={
+                selected.size === filtered.length
+                  ? clearSelection
+                  : selectAllVisible
+              }
+              className="shrink-0"
+            >
+              {selected.size === filtered.length ? "Clear" : "Select all"}
+            </Button>
+          )}
         </div>
+        {/* Bulk-action toolbar — slides in when at least one trip is
+            selected. Stays sticky-feeling without literal sticky so it
+            doesn't fight the search bar layout above. */}
+        {selected.size > 0 && (
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-[hsl(var(--navy))]/30 bg-[hsl(var(--navy))]/5 px-4 py-2.5">
+            <p className="text-sm">
+              <span className="font-semibold tabular-nums">
+                {selected.size}
+              </span>{" "}
+              {selected.size === 1 ? "trip" : "trips"} selected
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearSelection}
+                disabled={bulkDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={bulkDelete}
+                disabled={bulkDeleting}
+                className="text-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive))]/10 border-[hsl(var(--destructive))]/30"
+              >
+                <Trash2 className="size-3.5 mr-1.5" />
+                {bulkDeleting
+                  ? "Deleting…"
+                  : `Delete ${selected.size > 1 ? `${selected.size} trips` : "trip"}`}
+              </Button>
+            </div>
+          </div>
+        )}
         {filtered.length === 0 ? (
           <p className="text-sm text-muted-foreground p-8 text-center">
             No trips match "{q}".
@@ -120,8 +218,10 @@ export function DashboardClient({
               trips={active}
               cloningId={cloningId}
               deletingId={deletingId}
+              selected={selected}
               onClone={cloneTrip}
               onDelete={deleteTrip}
+              onToggleSelect={toggleSelect}
             />
             {past.length > 0 && (
               <div className="pt-8">
@@ -132,8 +232,10 @@ export function DashboardClient({
                   trips={past}
                   cloningId={cloningId}
                   deletingId={deletingId}
+                  selected={selected}
                   onClone={cloneTrip}
                   onDelete={deleteTrip}
+                  onToggleSelect={toggleSelect}
                   muted
                 />
               </div>
@@ -194,15 +296,19 @@ function TripGrid({
   trips,
   cloningId,
   deletingId,
+  selected,
   onClone,
   onDelete,
+  onToggleSelect,
   muted,
 }: {
   trips: Trip[];
   cloningId: string | null;
   deletingId: string | null;
+  selected: Set<string>;
   onClone: (id: string) => void;
   onDelete: (id: string, title: string) => void;
+  onToggleSelect: (id: string) => void;
   muted?: boolean;
 }) {
   if (trips.length === 0) {
@@ -214,14 +320,38 @@ function TripGrid({
   }
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      {trips.map((trip) => (
+      {trips.map((trip) => {
+        const isSelected = selected.has(trip.id);
+        return (
         <div
           key={trip.id}
           className={cn(
             "group glass rounded-2xl p-6 transition relative",
             muted ? "opacity-80 hover:opacity-100" : "hover:border-foreground/20",
+            isSelected && "ring-2 ring-[hsl(var(--navy))] ring-offset-2 ring-offset-background",
           )}
         >
+          {/* Selection checkbox — top-left so it doesn't fight the
+              status badge on the right. Always visible (vs. hover) so
+              "select all" produces an obvious filled state on every
+              card without the user having to wave the mouse around. */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onToggleSelect(trip.id);
+            }}
+            aria-label={isSelected ? "Deselect this trip" : "Select this trip"}
+            className={cn(
+              "absolute top-3 left-3 size-5 rounded-md border grid place-items-center transition z-10",
+              isSelected
+                ? "bg-[hsl(var(--navy))] border-[hsl(var(--navy))] text-white"
+                : "bg-background/70 border-border hover:border-foreground/40 opacity-0 group-hover:opacity-100 focus:opacity-100",
+            )}
+          >
+            {isSelected && <Check className="size-3.5" strokeWidth={3} />}
+          </button>
           <Link href={`/trips/${trip.id}`} className="block">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -286,7 +416,8 @@ function TripGrid({
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
