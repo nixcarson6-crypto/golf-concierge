@@ -1254,8 +1254,19 @@ function ItineraryItemDialog({
     // wouldn't make sense (e.g. "Drive Pinehurst → RDU + rental return").
     const skipTypes = new Set(["TRANSPORT", "CAR"]);
     if (skipTypes.has(item.type)) return;
-    const query = item.title;
+    // Clean noisy suffixes before sending to Google Places. Lodging
+    // titles like "The Prairie Club — Lodge Room (2 nights)" don't
+    // match Google's hotel index because of the room-type + duration
+    // tail. Strip the parenthesized "(N nights/days/rooms)" suffix and,
+    // for LODGING specifically, anything after the first " — " which is
+    // almost always the room class. Courses keep the full title because
+    // " — Monument" is a real course identifier (Troon North).
+    let query = item.title;
     if (!query) return;
+    query = query.replace(/\s*\([^)]*\b(night|day|room)s?\b[^)]*\)\s*/gi, "").trim();
+    if (item.type === "LODGING") {
+      query = query.split(/\s+[—–-]\s+/)[0].trim();
+    }
     const loc = item.location ?? "";
     setPhotoLoading(true);
     const params = new URLSearchParams({ q: query });
@@ -1327,6 +1338,17 @@ function ItineraryItemDialog({
               onError={() => setPhotoFailed(true)}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-background/40 to-transparent pointer-events-none" />
+          </div>
+        )}
+        {/* Fallback when Google had no photo for this venue. Subtle
+            placeholder beats an awkward gap or — worse — a dialog that
+            silently has no hero at all. */}
+        {!photoLoading && (photoFailed || !photoUrl) && (
+          <div className="relative aspect-[16/9] bg-gradient-to-br from-[hsl(var(--navy))]/10 to-[hsl(var(--copper))]/10 grid place-items-center">
+            <ItineraryItemIcon
+              type={item.type}
+              className="size-10 text-muted-foreground/50"
+            />
           </div>
         )}
 
@@ -1441,7 +1463,18 @@ function ItineraryItemDialog({
                   No alternatives came back — try again or use Remove.
                 </p>
               )}
-              {swapAlternatives.map((alt, i) => (
+              {swapAlternatives.map((alt, i) => {
+                // The swap endpoint returns alternatives in a fixed
+                // order: 0 = cheaper, 1 = comparable, 2 = nicer. Surface
+                // that as a tier badge so the user immediately sees the
+                // shape of the choice instead of three look-alike cards.
+                const tierLabel =
+                  i === 0
+                    ? { text: "Cheaper", tone: "text-[hsl(var(--emerald))] border-[hsl(var(--emerald))]/30" }
+                    : i === 1
+                      ? { text: "Comparable", tone: "text-muted-foreground border-border" }
+                      : { text: "Nicer", tone: "text-[hsl(var(--copper))] border-[hsl(var(--copper))]/40" };
+                return (
                 <button
                   key={i}
                   type="button"
@@ -1450,9 +1483,16 @@ function ItineraryItemDialog({
                   className="w-full text-left rounded-xl border border-border/60 bg-surface-raised/70 p-3 hover:border-[hsl(var(--copper))]/50 hover:bg-surface-raised transition disabled:opacity-50"
                 >
                   <div className="flex items-baseline justify-between gap-2 mb-1">
-                    <p className="font-semibold text-sm leading-snug">
-                      {alt.name}
-                    </p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span
+                        className={`text-[9px] uppercase tracking-widest border rounded-full px-1.5 py-0.5 leading-none shrink-0 ${tierLabel.tone}`}
+                      >
+                        {tierLabel.text}
+                      </span>
+                      <p className="font-semibold text-sm leading-snug truncate">
+                        {alt.name}
+                      </p>
+                    </div>
                     {alt.estimatedCostUSD != null && (
                       <p className="text-xs font-medium tabular-nums shrink-0">
                         ${alt.estimatedCostUSD.toLocaleString()}
@@ -1468,7 +1508,8 @@ function ItineraryItemDialog({
                     {alt.why ?? alt.description}
                   </p>
                 </button>
-              ))}
+                );
+              })}
               <Button
                 variant="ghost"
                 size="sm"

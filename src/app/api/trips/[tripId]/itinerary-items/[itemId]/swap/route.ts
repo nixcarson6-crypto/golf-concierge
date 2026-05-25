@@ -50,16 +50,41 @@ export async function GET(
   const itemType = item.type;
   const currentTitle = item.title;
   const currentLocation = item.location ?? tripDestination;
+  // Anchor the AI's price range so "cheaper" and "nicer" mean something
+  // concrete. Item cost is stored in cents — convert to dollars for the
+  // prompt. Falls back to a sensible per-type default so the model still
+  // has a number to reason against when cost is null (DINING etc.).
+  const currentCostUSD = item.cost
+    ? Math.round(item.cost / 100)
+    : itemType === "LODGING"
+      ? 600
+      : itemType === "TEE_TIME"
+        ? 350
+        : itemType === "DINING"
+          ? 120
+          : 200;
 
   const client = anthropic();
+  // Tiered alternatives — one cheaper, one comparable, one nicer. This
+  // matches how a real concierge presents options: "here's the value
+  // play, here's a similar pick, here's the upgrade." Lateral swaps
+  // ("same vibe") don't help the customer who's deciding whether to
+  // spend more or save.
   const sysPrompt = `You suggest alternative venues for a luxury golf trip. Return JSON ONLY, no prose, matching this schema:
 { "alternatives": [ { "name": "...", "description": "...", "location": "...", "estimatedCostUSD": 0, "why": "..." } ] }
-Three alternatives. Same category as the current item. Same vibe but distinctly different choices. Real venues in the area only.`;
+
+Return EXACTLY 3 alternatives, in this order:
+1. CHEAPER — a meaningfully more affordable option (target ~30-50% less than the current cost). Still legitimate quality, not a dive. The "why" should mention the value angle.
+2. COMPARABLE — similar price tier (within ~15%) but a distinctly different feel (different brand, different vibe, different location). The "why" should explain what's different about the experience.
+3. NICER — a clear upgrade (target ~30-80% more than current cost). Higher-end brand, better location, more amenities. The "why" should justify the spend.
+
+Real venues only — no inventing names. Same category as the current item. For LODGING, mean nightly rate. For TEE_TIME, mean per-player green fee. For DINING, mean per-person dinner check.`;
   const userMsg = `Trip destination: ${tripDestination}
 Item type: ${itemType}
 Current pick: "${currentTitle}"${item.description ? ` (${item.description})` : ""}
+Current cost: $${currentCostUSD.toLocaleString()}
 Location: ${currentLocation}
-Suggest 3 real alternatives the user could swap to.`;
+Suggest 3 alternatives following the cheaper / comparable / nicer pattern.`;
 
   try {
     const res = await client.messages.create({
