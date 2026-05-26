@@ -214,10 +214,10 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
 **Today's session ("apply for APIs day"):**
 
 ### Tier 1 — Golf inventory (the core product — apply first)
-- [ ] **GolfNow** (NBC Sports) — #1 US tee-time aggregator. Apply via
-      CJ Affiliate dashboard (publisher 7962835) — search "GolfNow."
-- [ ] **TeeOff.com** (PGA Tour) — #2 US aggregator. Also CJ Affiliate,
-      complementary inventory to GolfNow.
+- [x] **GolfNow** (NBC Sports) — applied via direct email (not on CJ
+      or Awin despite earlier assumption).
+- [ ] **TeeOff.com** (PGA Tour) — #2 US aggregator. Likely not on CJ
+      either — apply via direct B2B contact at `teeoff.com`.
 - [ ] **Amtrak** — affiliate-link fallback for US rail. CJ Affiliate.
 - [ ] **Supreme Golf** — aggregates GolfNow + TeeOff + others.
       `supremegolf.com/api` → request enterprise access.
