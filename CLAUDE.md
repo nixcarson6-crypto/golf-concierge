@@ -218,7 +218,10 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
       or Awin despite earlier assumption).
 - [x] **TeeOff.com** (PGA Tour) — applied via teeoff.com business
       partnership form, Technology Partnership option.
-- [ ] **Amtrak** — affiliate-link fallback for US rail. CJ Affiliate.
+- [~] **Amtrak** — deferred. Not on CJ (despite my earlier guess). No
+      easy self-serve affiliate program found across major networks.
+      Revisit post-launch with real Northeast Corridor traffic to
+      justify direct B2B outreach.
 - [ ] **Supreme Golf** — aggregates GolfNow + TeeOff + others.
       `supremegolf.com/api` → request enterprise access.
 - [ ] **KemperSports** — operates Bandon Dunes, Chambers Bay,
