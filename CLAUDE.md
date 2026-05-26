@@ -224,13 +224,14 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
       justify direct B2B outreach.
 - [ ] **Supreme Golf** — aggregates GolfNow + TeeOff + others.
       `supremegolf.com/api` → request enterprise access.
-- [ ] **KemperSports** — operates Bandon Dunes, Chambers Bay,
-      Streamsong. Direct email: `partnerships@kempersports.com`.
-      Relationship build, not a form — write something real.
+- [x] **KemperSports** — submitted via the contact form at
+      kempersports.com/contact-us (the bare partnerships@kempersports.com
+      address bounced as user unknown).
 - [ ] **Troon Privé** — Troon-managed premium clubs.
       `troon.com/contact` → partnerships.
-- [ ] **Pinehurst Resort** — direct partnership for No. 2, No. 4, etc.
-      Email `groupsales@pinehurst.com`.
+- [x] **Pinehurst Resort** — submitted via pinehurst.com/contact,
+      routed through Meetings / Corporate Events category with an
+      explicit "longer-term channel/partnership inquiry" prefix.
 - [ ] **BRS Golf** — UK tee-time platform, covers Open Championship
       venues. `brsgolf.com/contact`.
 - [ ] **GolfBreaks** — UK + European golf package operator.
