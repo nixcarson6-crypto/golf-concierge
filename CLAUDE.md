@@ -200,13 +200,82 @@ hasn't been merged in a while.
    ~1 hour to wire checkout.
 2. **Duffel live key** — apply at duffel.com dashboard. Usually 1-3 days.
    Combined with Stripe = first real flight booking with real revenue.
-3. **CJ Affiliate approvals** — Hertz application is in (publisher
-   `7962835`). Apply to Marriott, Hyatt, Booking.com, Expedia, GolfNow,
-   OpenTable in same dashboard. Affiliate links are the v1 fallback for
-   everything not yet on direct integration.
-4. **Uber Central API approval** — chase the existing application;
-   developer.uber.com gives sandbox immediately so we can build pre-approval.
-5. **GolfNow application** — never filed, do it.
-6. **Per-companion saved profiles** so multi-traveler Book All works (today
+3. **Per-companion saved profiles** so multi-traveler Book All works (today
    only the lead traveller has saved DOB etc.; group bookings get skipped
    at the flight step with a clear message).
+
+## API application checklist (in priority order)
+
+This is the running checklist Carson is working through. When Carson
+says "ok next one" or "what's next," look at this list, find the first
+unchecked item, and walk him through that application. Update the
+checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
+
+**Today's session ("apply for APIs day"):**
+
+### Tier 1 — Golf inventory (the core product — apply first)
+- [ ] **GolfNow** (NBC Sports) — #1 US tee-time aggregator. Apply via
+      CJ Affiliate dashboard (publisher 7962835) — search "GolfNow."
+- [ ] **TeeOff.com** (PGA Tour) — #2 US aggregator. Also CJ Affiliate,
+      complementary inventory to GolfNow.
+- [ ] **Amtrak** — affiliate-link fallback for US rail. CJ Affiliate.
+- [ ] **Supreme Golf** — aggregates GolfNow + TeeOff + others.
+      `supremegolf.com/api` → request enterprise access.
+- [ ] **KemperSports** — operates Bandon Dunes, Chambers Bay,
+      Streamsong. Direct email: `partnerships@kempersports.com`.
+      Relationship build, not a form — write something real.
+- [ ] **Troon Privé** — Troon-managed premium clubs.
+      `troon.com/contact` → partnerships.
+- [ ] **Pinehurst Resort** — direct partnership for No. 2, No. 4, etc.
+      Email `groupsales@pinehurst.com`.
+- [ ] **BRS Golf** — UK tee-time platform, covers Open Championship
+      venues. `brsgolf.com/contact`.
+- [ ] **GolfBreaks** — UK + European golf package operator.
+      `golfbreaks.com/affiliates`.
+
+### Tier 2 — Trains (Europe inter-leg transport)
+- [ ] **Trainline Partner Solutions** — one API for UK Rail, Eurostar,
+      Trenitalia (Frecciarossa), SNCF (TGV), Renfe (AVE), DB (ICE),
+      ÖBB, SBB. `partner.thetrainline.com`. Carson wants the
+      application copy drafted in his voice.
+
+### Tier 3 — Ferries (Italian / Greek luxury trips)
+- [ ] **Ferryhopper** — Mediterranean one-API: Italy, Greece, Spain,
+      Croatia. `ferryhopper.com/en/business`. Drafted copy needed.
+
+### Tier 4 — Luxury chauffeur + restaurants
+- [ ] **Blacklane** — real API key. Stub already wired in
+      `src/lib/bookings/providers/blacklane.ts`.
+      `blacklane.com/en/business` or `partner.blacklane.com`.
+- [ ] **Resy** — covers Carbone, Don Angie, etc. that OpenTable misses.
+      `resy.com/about/business`.
+- [ ] **Tock** — Eleven Madison Park, Atomix, French Laundry tier.
+      `exploretock.com/sales`.
+- [ ] **Trawick** — travel insurance forms already in progress, finish.
+
+**Already-applied / in-flight (do NOT re-apply — wait their 2-3 week
+window):** Hotelbeds, OpenTable, Lightspeed Golf / Chronogolf, Uber
+Guest Rides Central API, CJ Affiliate Hertz.
+
+**Already approved:** Anthropic, Neon, Clerk, Duffel (test), Tavily,
+Google Maps (client + server), Yelp Fusion, Awin (Radisson — merchant
+id 7754, publisher id 2899389).
+
+**Skipping deliberately:** CarTrawler (parked — Uber-first), Stripe
+(30-min signup, do day-of), reapplying anything pending.
+
+### How to drive the checklist
+
+When Carson is ready: ask "ok what's next" or "give me the next one."
+Then:
+1. Read this checklist, find the first `[ ]` item.
+2. Tell him exactly where to click / who to email, with the URL or
+   email address from the list.
+3. If the item needs application copy (Trainline, Ferryhopper,
+   Blacklane, KemperSports email), draft it in Carson's voice — same
+   pattern as the Awin description: 1-2 sentences on what Pyltrix is,
+   one on why this partner specifically, one on volume expectation
+   ("pre-launch, expect first bookings Q3 2026"). Keep under 225
+   chars where the form has a limit.
+4. After he submits, update `[ ]` → `[x]` in this file and commit
+   with message `chore: tick off <partner> application`.
