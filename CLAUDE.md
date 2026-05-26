@@ -216,8 +216,8 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
 ### Tier 1 — Golf inventory (the core product — apply first)
 - [x] **GolfNow** (NBC Sports) — applied via direct email (not on CJ
       or Awin despite earlier assumption).
-- [ ] **TeeOff.com** (PGA Tour) — #2 US aggregator. Likely not on CJ
-      either — apply via direct B2B contact at `teeoff.com`.
+- [x] **TeeOff.com** (PGA Tour) — applied via teeoff.com business
+      partnership form, Technology Partnership option.
 - [ ] **Amtrak** — affiliate-link fallback for US rail. CJ Affiliate.
 - [ ] **Supreme Golf** — aggregates GolfNow + TeeOff + others.
       `supremegolf.com/api` → request enterprise access.
