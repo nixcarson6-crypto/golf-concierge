@@ -71,27 +71,37 @@ export function SingleSelectView({
             <span>{question.freeTextField.label}</span>
             <div className="flex-1 h-px bg-border/60" />
           </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
+          <div className="space-y-3">
+            <textarea
               value={freeText ?? ""}
               onChange={(e) => onFreeTextChange?.(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (freeText ?? "").trim()) {
+                if (
+                  e.key === "Enter" &&
+                  (e.metaKey || e.ctrlKey) &&
+                  (freeText ?? "").trim()
+                ) {
                   e.preventDefault();
                   onFreeTextSubmit?.();
                 }
               }}
               placeholder={question.freeTextField.placeholder}
-              className="flex-1 rounded-xl border border-border bg-surface-raised px-4 py-3 text-base"
+              rows={5}
+              className="w-full min-h-[8rem] rounded-2xl border border-border bg-surface-raised px-4 py-3 text-base resize-y leading-relaxed"
             />
-            <Button
-              onClick={() => onFreeTextSubmit?.()}
-              disabled={!(freeText ?? "").trim()}
-              size="lg"
-            >
-              Continue
-            </Button>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Type as much as you want — multi-stop trips, dates, courses,
+                anything. ⌘/Ctrl+Enter to submit.
+              </p>
+              <Button
+                onClick={() => onFreeTextSubmit?.()}
+                disabled={!(freeText ?? "").trim()}
+                size="lg"
+              >
+                Continue
+              </Button>
+            </div>
           </div>
         </div>
       )}

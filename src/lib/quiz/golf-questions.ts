@@ -256,7 +256,7 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     id: "destinationMode",
     sectionId: "vibe",
     title: "Where?",
-    subtitle: "Type a destination, or let us match one.",
+    subtitle: "Type a destination — or describe the whole trip in your own words.",
     options: [
       { value: "suggest", label: "Surprise me", description: "We'll pick the strongest fit" },
       { value: "top3", label: "Show me top 3", description: "We'll rank options, you choose" },
@@ -265,7 +265,8 @@ export const GOLF_QUIZ: QuizQuestion[] = [
       writesTo: "destination",
       selectsValue: "specific",
       label: "Or type the destination you want",
-      placeholder: "e.g. Pinehurst, Scottsdale, Bandon Dunes, Vermont",
+      placeholder:
+        "e.g. Pinehurst for 4 nights then Bandon Dunes for 5, want to play No. 2 + Pacific Dunes, group of 4 mid-handicaps, fly out of EWR business class",
     },
   },
   {
