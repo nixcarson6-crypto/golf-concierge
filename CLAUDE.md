@@ -227,8 +227,8 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
 - [x] **KemperSports** — submitted via the contact form at
       kempersports.com/contact-us (the bare partnerships@kempersports.com
       address bounced as user unknown).
-- [ ] **Troon Privé** — Troon-managed premium clubs.
-      `troon.com/contact` → partnerships.
+- [x] **Troon Privé** — submitted via troon.com/about/contact, "Other"
+      category, supplemental info field carries the partnership pitch.
 - [x] **Pinehurst Resort** — submitted via pinehurst.com/contact,
       routed through Meetings / Corporate Events category with an
       explicit "longer-term channel/partnership inquiry" prefix.
