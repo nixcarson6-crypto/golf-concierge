@@ -60,6 +60,19 @@ export function LivePreview({
   itinerary: WorkspaceItinerary | null;
   bookings?: WorkspaceBooking[];
 }) {
+  // Surface a build-failure banner when the quiz redirected here with
+  // `?buildError=...`. The trip row already exists (the quiz saved it
+  // before calling the AI), so the user can edit their answers and
+  // retry instead of starting from scratch.
+  const topLevelSearchParams = useSearchParams();
+  const router = useRouter();
+  const buildError = topLevelSearchParams?.get("buildError") ?? null;
+  const dismissBuildError = React.useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("buildError");
+    router.replace(url.pathname + url.search);
+  }, [router]);
+
   const datesLine = trip.startDate
     ? formatDateRange(
         new Date(trip.startDate),
@@ -98,6 +111,47 @@ export function LivePreview({
       </header>
 
       <ScrollArea className="flex-1">
+        {buildError && (
+          <div className="mx-4 mt-4 rounded-2xl border border-red-500/30 bg-red-500/8 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1 min-w-0">
+                <p className="text-sm font-semibold text-red-500">
+                  We couldn&apos;t finish your itinerary
+                </p>
+                <p className="text-xs text-foreground/80 leading-relaxed break-words">
+                  {buildError}
+                </p>
+                <p className="text-[11px] text-muted-foreground pt-1">
+                  Your answers are still saved. Tweak them and try again, or
+                  ask us in your own words below.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={dismissBuildError}
+                className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => router.push(`/build/${tripId}`)}
+              >
+                Edit answers &amp; retry
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push("/dashboard")}
+              >
+                Back to dashboard
+              </Button>
+            </div>
+          </div>
+        )}
         <TotalsBanner
           itinerary={itinerary}
           bookings={bookings}

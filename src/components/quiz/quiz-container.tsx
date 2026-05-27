@@ -28,9 +28,50 @@ import { QuizLoading } from "./quiz-loading";
  */
 export function QuizContainer({ tripId }: { tripId: string }) {
   const router = useRouter();
-  const [answers, setAnswers] = React.useState<QuizAnswers>({});
-  const [stepIdx, setStepIdx] = React.useState(0);
+  // Hydrate answers + step from localStorage so a refresh / accidental
+  // back-button / browser crash mid-build doesn't wipe the customer's
+  // progress. Keyed by tripId so multiple drafts in flight don't collide.
+  const storageKey = `pyltrix.quiz.${tripId}`;
+  const [answers, setAnswers] = React.useState<QuizAnswers>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as { answers?: QuizAnswers };
+      return parsed.answers ?? {};
+    } catch {
+      return {};
+    }
+  });
+  const [stepIdx, setStepIdx] = React.useState<number>(() => {
+    if (typeof window === "undefined") return 0;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) return 0;
+      const parsed = JSON.parse(raw) as { stepIdx?: number };
+      return typeof parsed.stepIdx === "number" ? parsed.stepIdx : 0;
+    } catch {
+      return 0;
+    }
+  });
   const [submitting, setSubmitting] = React.useState(false);
+
+  // Mirror state to localStorage on every change. Cheap (single key, small
+  // payload) and means an unexpected reload picks up exactly where the
+  // user left off instead of dumping them back at "How many travellers?".
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(
+        storageKey,
+        JSON.stringify({ answers, stepIdx }),
+      );
+    } catch {
+      // Storage might be full / blocked by the browser — ignore, the
+      // worst case is the user loses their place on a crash. The build
+      // itself still works because answers live in component state.
+    }
+  }, [answers, stepIdx, storageKey]);
 
   // Filter questions whose `shouldShow` predicate fails for the current
   // answer set. We re-evaluate on every render so branching is live.
@@ -100,20 +141,37 @@ export function QuizContainer({ tripId }: { tripId: string }) {
       // user has a saved traveler profile). The user just told us
       // everything they wanted — don't make them click a Book button
       // they already implied.
+      //
+      // Clear the persisted quiz state — the trip is built, the answers
+      // live on the trip row now, no reason to keep replaying them.
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        // Ignore — non-fatal.
+      }
       router.push(`/trips/${tripId}?autoBook=1`);
       router.refresh();
     } catch (err) {
       console.error("[quiz submit]", err);
       const wasAborted =
         err instanceof DOMException && err.name === "AbortError";
-      toast.error(
-        wasAborted
-          ? "Your trip is taking longer than usual. We saved your details — please retry."
-          : err instanceof Error
-            ? err.message
-            : "Couldn't build your trip — try again.",
+      const message = wasAborted
+        ? "Your trip is taking longer than usual. We saved your details — open it from your dashboard to retry."
+        : err instanceof Error
+          ? err.message
+          : "Couldn't build your trip — try again.";
+      toast.error(message);
+      // The trip row was already saved at the start of /build with the
+      // user's constraints, so route them to the trip workspace instead
+      // of leaving them stranded in the quiz UI. The result page picks
+      // up `?buildError=...` and shows a "Build failed — edit & retry"
+      // banner that links back to /build/[id]. We KEEP the localStorage
+      // entry intact so when they click "edit your answers" the quiz
+      // hydrates from where they left off — no re-entering 16 answers.
+      router.push(
+        `/trips/${tripId}?buildError=${encodeURIComponent(message)}`,
       );
-      setSubmitting(false);
+      router.refresh();
     } finally {
       clearTimeout(abortTimer);
     }
