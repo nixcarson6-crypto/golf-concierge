@@ -165,7 +165,7 @@ export function LivePreview({
           />
         )}
         {itinerary && itinerary.items.length > 0 && (
-          <ItineraryDaysSection tripId={tripId} itinerary={itinerary} />
+          <ItineraryCategoriesSection tripId={tripId} itinerary={itinerary} />
         )}
         {groups.length === 0 ? (
           !trip.suggestedFlights && (!itinerary || itinerary.items.length === 0) ? (
@@ -1055,10 +1055,13 @@ function ItineraryItemIcon({
   switch (type) {
     case "FLIGHT":
       return <Plane className={cls} />;
+    case "LODGING":
     case "HOTEL":
       return <BedDouble className={cls} />;
+    case "TEE_TIME":
     case "GOLF":
       return <Flag className={cls} />;
+    case "DINING":
     case "MEAL":
     case "RESTAURANT":
       return <Utensils className={cls} />;
@@ -1069,12 +1072,240 @@ function ItineraryItemIcon({
       return <Waves className={cls} />;
     case "EXPERIENCE":
     case "ACTIVITY":
+    case "FREE_TIME":
       return <Activity className={cls} />;
     case "NIGHTLIFE":
       return <Martini className={cls} />;
     default:
       return <Sparkles className={cls} />;
   }
+}
+
+/* --------------------------------------------------------------------- */
+/* Category-grouped itinerary view.                                       */
+/* Replaced the old day-by-day timeline on the result page so customers   */
+/* see Flights → Cars → Hotel → Golf → Activities up front. The day-by-  */
+/* day breakdown still exists (used by /trips/[id]/print for PDF export).*/
+/* --------------------------------------------------------------------- */
+
+type ItineraryCategoryKey =
+  | "FLIGHTS"
+  | "CARS"
+  | "HOTEL"
+  | "GOLF"
+  | "ACTIVITIES";
+
+const CATEGORY_ORDER: ItineraryCategoryKey[] = [
+  "FLIGHTS",
+  "CARS",
+  "HOTEL",
+  "GOLF",
+  "ACTIVITIES",
+];
+
+const CATEGORY_META: Record<
+  ItineraryCategoryKey,
+  { label: string; icon: ItineraryItemType }
+> = {
+  FLIGHTS: { label: "Flights", icon: "FLIGHT" },
+  CARS: { label: "Ground transport", icon: "TRANSPORT" },
+  HOTEL: { label: "Hotel", icon: "LODGING" },
+  GOLF: { label: "Golf", icon: "TEE_TIME" },
+  ACTIVITIES: { label: "Activities", icon: "ACTIVITY" },
+};
+
+function categoryKeyFor(type: ItineraryItemType): ItineraryCategoryKey {
+  switch (type) {
+    case "FLIGHT":
+      return "FLIGHTS";
+    case "TRANSPORT":
+      return "CARS";
+    case "LODGING":
+      return "HOTEL";
+    case "TEE_TIME":
+      return "GOLF";
+    case "DINING":
+    case "NIGHTLIFE":
+    case "FREE_TIME":
+    case "SPA":
+    case "ACTIVITY":
+    default:
+      return "ACTIVITIES";
+  }
+}
+
+function ItineraryCategoriesSection({
+  tripId,
+  itinerary,
+}: {
+  tripId: string;
+  itinerary: WorkspaceItinerary;
+}) {
+  const qc = useQueryClient();
+  const router = useRouter();
+  const [activeItem, setActiveItem] =
+    React.useState<WorkspaceItineraryItem | null>(null);
+
+  // Bucket every item into one of five categories, preserving chronological
+  // order within each bucket so a multi-leg trip's flights read outbound
+  // first → inter-leg hops → final return.
+  const buckets = React.useMemo(() => {
+    const out = new Map<ItineraryCategoryKey, WorkspaceItineraryItem[]>();
+    for (const k of CATEGORY_ORDER) out.set(k, []);
+    for (const it of itinerary.items) {
+      out.get(categoryKeyFor(it.type))!.push(it);
+    }
+    for (const list of out.values()) {
+      list.sort((a, b) => {
+        if (!a.startTime && !b.startTime) return 0;
+        if (!a.startTime) return 1;
+        if (!b.startTime) return -1;
+        return (
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
+      });
+    }
+    return out;
+  }, [itinerary]);
+
+  const fmtDateTime = (iso: string | null): string | null => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  return (
+    <>
+      <div className="px-4 pt-4 pb-3 space-y-5">
+        <div className="flex items-center justify-between px-1">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+            Your trip
+          </p>
+          {itinerary.perPersonCost != null && itinerary.perPersonCost > 0 && (
+            <p className="text-[10px] text-muted-foreground tabular-nums">
+              ${Math.round(itinerary.perPersonCost / 100).toLocaleString()} pp est.
+            </p>
+          )}
+        </div>
+
+        {CATEGORY_ORDER.map((key) => {
+          const items = buckets.get(key) ?? [];
+          if (items.length === 0) return null;
+          const meta = CATEGORY_META[key];
+          const totalCost = items.reduce(
+            (sum, it) => sum + (it.cost ?? 0),
+            0,
+          );
+          return (
+            <section key={key} className="space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <span className="size-7 rounded-lg bg-[hsl(var(--copper))]/12 grid place-items-center">
+                    <ItineraryItemIcon type={meta.icon} />
+                  </span>
+                  <p className="text-sm font-semibold tracking-tight">
+                    {meta.label}
+                  </p>
+                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                    {items.length}
+                  </span>
+                </div>
+                {totalCost > 0 && (
+                  <p className="text-[11px] text-muted-foreground tabular-nums">
+                    ${Math.round(totalCost / 100).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                {items.map((it) => {
+                  const when = fmtDateTime(it.startTime);
+                  return (
+                    <button
+                      key={it.id}
+                      type="button"
+                      onClick={() => setActiveItem(it)}
+                      className="w-full text-left rounded-xl border border-border/60 bg-surface-raised/60 px-3 py-2.5 hover:border-[hsl(var(--copper))]/40 hover:bg-surface-raised transition"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span className="size-8 rounded-lg bg-surface-raised grid place-items-center shrink-0 mt-0.5">
+                          <ItineraryItemIcon type={it.type} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <p className="text-sm font-medium leading-snug truncate">
+                              {it.title}
+                            </p>
+                            {when && (
+                              <p className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                                {when}
+                              </p>
+                            )}
+                          </div>
+                          {it.location && (
+                            <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                              {it.location}
+                            </p>
+                          )}
+                          {it.description && (
+                            <p className="text-[11px] text-foreground/70 mt-1 leading-snug line-clamp-2">
+                              {it.description}
+                            </p>
+                          )}
+                          {it.cost != null && it.cost > 0 && (
+                            <p className="text-[10px] text-muted-foreground tabular-nums mt-1">
+                              ${Math.round(it.cost / 100).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+
+        <div className="pt-2">
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() =>
+              window.open(`/trips/${tripId}/print`, "_blank", "noopener")
+            }
+          >
+            Download day-by-day PDF
+          </Button>
+          <p className="text-[10px] text-muted-foreground text-center mt-1.5">
+            Opens a print-ready view — pick &ldquo;Save as PDF&rdquo; in the
+            browser dialog.
+          </p>
+        </div>
+      </div>
+      {activeItem && (
+        <ItineraryItemDialog
+          open={!!activeItem}
+          onOpenChange={(o) => {
+            if (!o) setActiveItem(null);
+          }}
+          item={activeItem}
+          tripId={tripId}
+          onDeleted={() => {
+            setActiveItem(null);
+            void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+            router.refresh();
+          }}
+        />
+      )}
+    </>
+  );
 }
 
 function ItineraryDaysSection({
