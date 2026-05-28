@@ -1168,22 +1168,60 @@ function ItineraryCategoriesSection({
     return out;
   }, [itinerary]);
 
-  const fmtDateTime = (iso: string | null): string | null => {
+  const fmtTimeOnly = (iso: string | null): string | null => {
     if (!iso) return null;
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
+    return d.toLocaleTimeString(undefined, {
       hour: "numeric",
       minute: "2-digit",
     });
   };
 
+  const fmtDayHeader = (iso: string | null): string => {
+    if (!iso) return "Trip plan";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "Trip plan";
+    return d.toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  /** Bucket items in chronological order into runs that share a calendar day. */
+  function groupByDay(items: WorkspaceItineraryItem[]): {
+    dayKey: string;
+    dayLabel: string;
+    items: WorkspaceItineraryItem[];
+  }[] {
+    const out: {
+      dayKey: string;
+      dayLabel: string;
+      items: WorkspaceItineraryItem[];
+    }[] = [];
+    for (const it of items) {
+      const dayKey = it.startTime
+        ? new Date(it.startTime).toISOString().slice(0, 10)
+        : "no-date";
+      const last = out[out.length - 1];
+      if (last && last.dayKey === dayKey) {
+        last.items.push(it);
+      } else {
+        out.push({
+          dayKey,
+          dayLabel:
+            dayKey === "no-date" ? "Trip plan" : fmtDayHeader(it.startTime),
+          items: [it],
+        });
+      }
+    }
+    return out;
+  }
+
   return (
     <>
-      <div className="px-4 pt-4 pb-3 space-y-5">
+      <div className="px-4 pt-4 pb-3 space-y-6">
         <div className="flex items-center justify-between px-1">
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground">
             Your trip
@@ -1203,8 +1241,16 @@ function ItineraryCategoriesSection({
             (sum, it) => sum + (it.cost ?? 0),
             0,
           );
+          // Day-group only kicks in once a category has 3+ items spanning
+          // more than one day. Flights / cars / hotel are usually 1-2
+          // items so dividers would just add noise; activities and golf
+          // are where the long lists live and where the dividers pay off.
+          const days = groupByDay(items);
+          const shouldShowDayDividers =
+            items.length >= 3 &&
+            new Set(days.map((d) => d.dayKey)).size > 1;
           return (
-            <section key={key} className="space-y-2">
+            <section key={key} className="space-y-3">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
                   <span className="size-7 rounded-lg bg-[hsl(var(--copper))]/12 grid place-items-center">
@@ -1223,51 +1269,62 @@ function ItineraryCategoriesSection({
                   </p>
                 )}
               </div>
-              <div className="space-y-1.5">
-                {items.map((it) => {
-                  const when = fmtDateTime(it.startTime);
-                  return (
-                    <button
-                      key={it.id}
-                      type="button"
-                      onClick={() => setActiveItem(it)}
-                      className="w-full text-left rounded-xl border border-border/60 bg-surface-raised/60 px-3 py-2.5 hover:border-[hsl(var(--copper))]/40 hover:bg-surface-raised transition"
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <span className="size-8 rounded-lg bg-surface-raised grid place-items-center shrink-0 mt-0.5">
-                          <ItineraryItemIcon type={it.type} />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <p className="text-sm font-medium leading-snug truncate">
-                              {it.title}
-                            </p>
-                            {when && (
-                              <p className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                                {when}
-                              </p>
-                            )}
-                          </div>
-                          {it.location && (
-                            <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                              {it.location}
-                            </p>
-                          )}
-                          {it.description && (
-                            <p className="text-[11px] text-foreground/70 mt-1 leading-snug line-clamp-2">
-                              {it.description}
-                            </p>
-                          )}
-                          {it.cost != null && it.cost > 0 && (
-                            <p className="text-[10px] text-muted-foreground tabular-nums mt-1">
-                              ${Math.round(it.cost / 100).toLocaleString()}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="space-y-3">
+                {(shouldShowDayDividers ? days : [{ dayKey: "_all", dayLabel: "", items }]).map(
+                  (group) => (
+                    <div key={group.dayKey} className="space-y-1.5">
+                      {shouldShowDayDividers && (
+                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground/80 px-1 pt-1">
+                          {group.dayLabel}
+                        </p>
+                      )}
+                      {group.items.map((it) => {
+                        const time = fmtTimeOnly(it.startTime);
+                        return (
+                          <button
+                            key={it.id}
+                            type="button"
+                            onClick={() => setActiveItem(it)}
+                            className="w-full text-left rounded-xl border border-border/60 bg-surface-raised/60 px-3 py-2.5 hover:border-[hsl(var(--copper))]/40 hover:bg-surface-raised transition"
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <span className="size-8 rounded-lg bg-surface-raised grid place-items-center shrink-0 mt-0.5">
+                                <ItineraryItemIcon type={it.type} />
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <p className="text-sm font-medium leading-snug truncate">
+                                    {it.title}
+                                  </p>
+                                  {time && (
+                                    <p className="text-[11px] font-semibold tabular-nums shrink-0 text-[hsl(var(--copper))]">
+                                      {time}
+                                    </p>
+                                  )}
+                                </div>
+                                {it.location && (
+                                  <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                                    {it.location}
+                                  </p>
+                                )}
+                                {it.description && (
+                                  <p className="text-[11px] text-foreground/70 mt-1 leading-snug line-clamp-2">
+                                    {it.description}
+                                  </p>
+                                )}
+                                {it.cost != null && it.cost > 0 && (
+                                  <p className="text-[10px] text-muted-foreground tabular-nums mt-1">
+                                    ${Math.round(it.cost / 100).toLocaleString()}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ),
+                )}
               </div>
             </section>
           );
