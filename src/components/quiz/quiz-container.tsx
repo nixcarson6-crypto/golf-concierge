@@ -28,39 +28,54 @@ import { QuizLoading } from "./quiz-loading";
  */
 export function QuizContainer({ tripId }: { tripId: string }) {
   const router = useRouter();
-  // Hydrate answers + step from localStorage so a refresh / accidental
+  // Persist answers + step to localStorage so a refresh / accidental
   // back-button / browser crash mid-build doesn't wipe the customer's
   // progress. Keyed by tripId so multiple drafts in flight don't collide.
+  //
+  // IMPORTANT: we DON'T hydrate inside the useState initializer.  That
+  // would diverge from the server-rendered HTML (which has no
+  // localStorage) and trigger a React hydration mismatch — Next surfaces
+  // it as a red error overlay AND regenerates the entire tree on the
+  // client, which flashed the user back to step 0. Instead we mount with
+  // defaults, then a useEffect rehydrates from localStorage after first
+  // paint.  We gate the actual quiz UI behind a `hydrated` flag so the
+  // user never sees that one-frame flash.
   const storageKey = `pyltrix.quiz.${tripId}`;
-  const [answers, setAnswers] = React.useState<QuizAnswers>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (!raw) return {};
-      const parsed = JSON.parse(raw) as { answers?: QuizAnswers };
-      return parsed.answers ?? {};
-    } catch {
-      return {};
-    }
-  });
-  const [stepIdx, setStepIdx] = React.useState<number>(() => {
-    if (typeof window === "undefined") return 0;
-    try {
-      const raw = window.localStorage.getItem(storageKey);
-      if (!raw) return 0;
-      const parsed = JSON.parse(raw) as { stepIdx?: number };
-      return typeof parsed.stepIdx === "number" ? parsed.stepIdx : 0;
-    } catch {
-      return 0;
-    }
-  });
+  const [answers, setAnswers] = React.useState<QuizAnswers>({});
+  const [stepIdx, setStepIdx] = React.useState<number>(0);
+  const [hydrated, setHydrated] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
 
-  // Mirror state to localStorage on every change. Cheap (single key, small
-  // payload) and means an unexpected reload picks up exactly where the
-  // user left off instead of dumping them back at "How many travellers?".
+  // Load any previously-saved progress from localStorage AFTER mount.
+  // Runs once per mount; safe to read window here.
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          answers?: QuizAnswers;
+          stepIdx?: number;
+        };
+        if (parsed.answers && typeof parsed.answers === "object") {
+          setAnswers(parsed.answers);
+        }
+        if (typeof parsed.stepIdx === "number" && parsed.stepIdx >= 0) {
+          setStepIdx(parsed.stepIdx);
+        }
+      }
+    } catch {
+      // Corrupt JSON / blocked storage / SecurityError in private mode.
+      // Ignore and start fresh — better than crashing the whole quiz.
+    }
+    setHydrated(true);
+  }, [storageKey]);
+
+  // Mirror state to localStorage on every change AFTER hydration. We
+  // skip the very first render because that would overwrite a saved
+  // payload with the default empty {} before we've had a chance to
+  // load it.
+  React.useEffect(() => {
+    if (!hydrated) return;
     try {
       window.localStorage.setItem(
         storageKey,
@@ -71,7 +86,7 @@ export function QuizContainer({ tripId }: { tripId: string }) {
       // worst case is the user loses their place on a crash. The build
       // itself still works because answers live in component state.
     }
-  }, [answers, stepIdx, storageKey]);
+  }, [hydrated, answers, stepIdx, storageKey]);
 
   // Filter questions whose `shouldShow` predicate fails for the current
   // answer set. We re-evaluate on every render so branching is live.
