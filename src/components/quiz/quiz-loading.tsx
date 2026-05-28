@@ -100,7 +100,9 @@ export function QuizLoading({ tripId }: { tripId?: string }) {
             ? "This usually takes 10–25 seconds. We're pulling live data from every partner — flights, lodging, courses, dining — so the plan is actually bookable."
             : elapsed < 150
               ? "Complex multi-destination trips can take 1–3 minutes. We're still working — hang tight."
-              : "This is taking longer than usual. We'll automatically time out at 4 minutes; you can also refresh and retry."}
+              : elapsed < 300
+                ? "Big multi-leg trips or slow networks can push this past 5 minutes. Still working — don't refresh."
+                : "This is taking longer than usual. We'll automatically time out at 8 minutes; refresh and try a simpler request if it doesn't finish."}
         </p>
       </div>
     </div>

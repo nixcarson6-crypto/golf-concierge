@@ -125,12 +125,15 @@ export function QuizContainer({ tripId }: { tripId: string }) {
 
   const submit = async () => {
     setSubmitting(true);
-    // 4-minute client-side hard ceiling. Server-side maxDuration is 5
-    // minutes; staying under that lets the abort fire before Vercel
-    // would and gives us a clean, user-facing message instead of a
-    // platform-level 504 with no JSON body.
+    // 8-minute client-side hard ceiling. Server-side maxDuration is 5
+    // minutes (Vercel Pro cap) but on slow networks (e.g. a phone
+    // hotspot) the request can spend an extra few minutes just on the
+    // round-trip + DB writes from a far-away region. Keeping the client
+    // generous prevents falsely killing a build that would otherwise
+    // finish — premature abort is way more user-hostile than a long
+    // spinner with clear progress text.
     const controller = new AbortController();
-    const abortTimer = setTimeout(() => controller.abort(), 4 * 60 * 1000);
+    const abortTimer = setTimeout(() => controller.abort(), 8 * 60 * 1000);
     try {
       const res = await fetch(`/api/trips/${tripId}/build`, {
         method: "POST",
@@ -164,8 +167,12 @@ export function QuizContainer({ tripId }: { tripId: string }) {
       } catch {
         // Ignore — non-fatal.
       }
-      router.push(`/trips/${tripId}?autoBook=1`);
-      router.refresh();
+      // Full-page navigation instead of router.push + router.refresh —
+      // refresh re-renders the CURRENT route (/build/[id]) which can
+      // race the push and remount QuizContainer in fresh state, briefly
+      // showing the quiz back at step 1. window.location.assign forces
+      // a clean navigation that can't race.
+      window.location.assign(`/trips/${tripId}?autoBook=1`);
     } catch (err) {
       console.error("[quiz submit]", err);
       const wasAborted =
@@ -183,10 +190,13 @@ export function QuizContainer({ tripId }: { tripId: string }) {
       // banner that links back to /build/[id]. We KEEP the localStorage
       // entry intact so when they click "edit your answers" the quiz
       // hydrates from where they left off — no re-entering 16 answers.
-      router.push(
+      //
+      // Full-page navigation again so we can't race a router.refresh
+      // remount of the quiz back at step 1 (which is the exact
+      // "5-minute build then dumps me back to the quiz" complaint).
+      window.location.assign(
         `/trips/${tripId}?buildError=${encodeURIComponent(message)}`,
       );
-      router.refresh();
     } finally {
       clearTimeout(abortTimer);
     }
