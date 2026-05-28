@@ -312,6 +312,38 @@ async function refineItinerary(
 }
 
 export async function persistItinerary(tripId: string, ai: ItineraryAI) {
+  // Wrap the actual write in a small retry loop. The (tripId, version)
+  // pair is uniquely constrained at the schema level, and `nextVersion`
+  // is computed by reading the latest version *before* the transaction
+  // — so if two builds race (e.g. user retries on slow network, Fast
+  // Refresh re-fires, or two tabs are open), both can compute the same
+  // version and the loser hits P2002. Recompute and retry up to 5x.
+  // Real users will never see this; the race is purely an artefact of
+  // overlapping requests.
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      return await persistItineraryOnce(tripId, ai);
+    } catch (err) {
+      const code =
+        err != null && typeof err === "object" && "code" in err
+          ? (err as { code: string }).code
+          : null;
+      const isVersionRace = code === "P2002";
+      if (!isVersionRace || attempt === MAX_ATTEMPTS - 1) throw err;
+      console.warn(
+        `[persistItinerary] (tripId,version) race on attempt ${attempt + 1} — retrying`,
+      );
+      // Jittered backoff so concurrent writers don't lock-step into
+      // another collision on the very next attempt.
+      await new Promise((r) => setTimeout(r, 50 + Math.random() * 150));
+    }
+  }
+  // Unreachable — the loop either returns or throws.
+  throw new Error("persistItinerary: exhausted retries");
+}
+
+async function persistItineraryOnce(tripId: string, ai: ItineraryAI) {
   const nextVersion =
     ((
       await db.itinerary.findFirst({
