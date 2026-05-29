@@ -486,9 +486,16 @@ async function persistItineraryOnce(tripId: string, ai: ItineraryAI) {
     // Default Prisma interactive-transaction timeout is 5s — too tight
     // for multi-leg trips (more items + the supersede sweep + the
     // notification fan-out). Bump to 30s so realistic large itineraries
-    // commit without false aborts. maxWait is how long we'll queue if
-    // another txn holds the lock.
-    maxWait: 15000,
+    // commit without false aborts.
+    //
+    // maxWait is how long Prisma will queue waiting for a free pool
+    // slot before giving up with "Unable to start a transaction in the
+    // given time". On slow networks the /workspace poll holds 1-2
+    // connections at a time and a typical build runs other queries in
+    // parallel (member prefs, conversation summary, etc.); 15s was
+    // tight enough that hotspot users hit it. 60s gives real headroom
+    // without papering over a genuinely-stuck pool.
+    maxWait: 60000,
     timeout: 30000,
   }).then(async (it) => {
     await audit({

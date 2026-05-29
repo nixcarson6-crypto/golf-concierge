@@ -67,7 +67,12 @@ export function QuizLoading({ tripId }: { tripId?: string }) {
       }
     };
     void tick();
-    const id = setInterval(tick, 2000);
+    // 5s instead of 2s — on slow networks each /workspace call can
+    // take 15-20s, so polling every 2s saturates the Neon connection
+    // pool and starves the actual build of transactions ("Unable to
+    // start a transaction in the given time"). 5s keeps the progress
+    // text feeling live without monopolising connections.
+    const id = setInterval(tick, 5000);
     return () => {
       stopped = true;
       clearInterval(id);
