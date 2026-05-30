@@ -240,6 +240,19 @@ export function LivePreview({
         suggestedFlights={trip.suggestedFlights}
       />
       <CartFooter tripId={tripId} bookings={bookings} />
+      <TravelerProfileModal
+        open={profileModalOpen}
+        onOpenChange={setProfileModalOpen}
+        profile={me.profile}
+        defaultEmail={me.email}
+        onSaved={() => {
+          // Refetch the workspace so `me.profile` updates and the
+          // "Add traveler info" banner hides itself.
+          void qcForProfile.invalidateQueries({
+            queryKey: ["workspace", tripId],
+          });
+        }}
+      />
     </div>
   );
 }
@@ -1015,19 +1028,6 @@ function SuggestedFlightsSection({
           }}
         />
       )}
-      <TravelerProfileModal
-        open={profileModalOpen}
-        onOpenChange={setProfileModalOpen}
-        profile={me.profile}
-        defaultEmail={me.email}
-        onSaved={() => {
-          // Refetch the workspace so `me.profile` updates and the
-          // "Add traveler info" banner hides itself.
-          void qcForProfile.invalidateQueries({
-            queryKey: ["workspace", tripId],
-          });
-        }}
-      />
     </>
   );
 }
