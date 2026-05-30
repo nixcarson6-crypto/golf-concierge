@@ -40,6 +40,7 @@ import {
 import { BookingDetailsDialog } from "./booking-details-dialog";
 import { SuggestedFlightDialog } from "./suggested-flight-dialog";
 import { FlightBookingModal } from "./flight-booking-modal";
+import { TravelerProfileModal } from "./traveler-profile-modal";
 import { buildUberDeepLink } from "@/lib/uber-deep-link";
 import type {
   WorkspaceBooking,
@@ -75,6 +76,21 @@ export function LivePreview({
     url.searchParams.delete("buildError");
     router.replace(url.pathname + url.search);
   }, [router]);
+
+  // Traveler profile completeness — if the user is missing any of the
+  // airline-required fields, surface a copper banner that opens the
+  // profile collection modal. Without this, customers hit Book All and
+  // get a toast saying "fill in your profile first" with no obvious way
+  // to do it.
+  const profileComplete = Boolean(
+    me.profile.legalGivenName &&
+      me.profile.legalFamilyName &&
+      me.profile.dateOfBirth &&
+      (me.profile.gender === "m" || me.profile.gender === "f") &&
+      me.profile.phone,
+  );
+  const [profileModalOpen, setProfileModalOpen] = React.useState(false);
+  const qcForProfile = useQueryClient();
 
   const datesLine = trip.startDate
     ? formatDateRange(
@@ -151,6 +167,32 @@ export function LivePreview({
                 onClick={() => router.push("/dashboard")}
               >
                 Back to dashboard
+              </Button>
+            </div>
+          </div>
+        )}
+        {!profileComplete && (
+          <div className="mx-4 mt-4 rounded-2xl border border-[hsl(var(--copper))]/30 bg-[hsl(var(--copper))]/8 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1 min-w-0">
+                <p className="text-sm font-semibold text-[hsl(var(--copper))]">
+                  Add your traveler info
+                </p>
+                <p className="text-xs text-foreground/80 leading-relaxed">
+                  Airlines need full legal name, date of birth, gender, email,
+                  and phone before they&apos;ll issue a ticket. Save it once
+                  and every future booking is one tap. We won&apos;t book or
+                  charge anything from this step.
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                onClick={() => setProfileModalOpen(true)}
+                className="bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
+              >
+                Add traveler info
               </Button>
             </div>
           </div>
@@ -973,6 +1015,19 @@ function SuggestedFlightsSection({
           }}
         />
       )}
+      <TravelerProfileModal
+        open={profileModalOpen}
+        onOpenChange={setProfileModalOpen}
+        profile={me.profile}
+        defaultEmail={me.email}
+        onSaved={() => {
+          // Refetch the workspace so `me.profile` updates and the
+          // "Add traveler info" banner hides itself.
+          void qcForProfile.invalidateQueries({
+            queryKey: ["workspace", tripId],
+          });
+        }}
+      />
     </>
   );
 }
