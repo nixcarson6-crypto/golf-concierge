@@ -38,6 +38,7 @@ import {
 import { BookingDetailsDialog } from "./booking-details-dialog";
 import { SuggestedFlightDialog } from "./suggested-flight-dialog";
 import { FlightBookingModal } from "./flight-booking-modal";
+import { buildUberDeepLink } from "@/lib/uber-deep-link";
 import type {
   WorkspaceBooking,
   WorkspaceItinerary,
@@ -1793,6 +1794,29 @@ function ItineraryItemDialog({
               {item.description}
             </p>
           )}
+          {item.type === "TRANSPORT" && (() => {
+            // MVP: deep-link into the Uber app for any TRANSPORT item.
+            // Once the Central API key lands we'll swap this for in-app
+            // booking; until then the customer confirms + pays through
+            // Uber directly. The link opens m.uber.com which redirects
+            // into the app if installed, falls back to web otherwise.
+            const url = buildUberDeepLink({
+              dropoffName: item.title,
+              dropoffAddress: item.location,
+            });
+            if (!url) return null;
+            return (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 rounded-2xl bg-black text-white text-sm font-semibold px-4 py-3 hover:bg-neutral-800 transition"
+              >
+                <Car className="size-4" />
+                Ride with Uber
+              </a>
+            );
+          })()}
           {item.aiRationale && (
             <div className="rounded-xl border border-border/60 bg-surface-raised/50 px-4 py-3">
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
