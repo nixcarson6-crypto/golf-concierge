@@ -197,12 +197,86 @@ hasn't been merged in a while.
 ## Next-up priorities
 
 1. **Stripe** — must do, 30-min signup, unlocks all real money flows. Then
-   ~1 hour to wire checkout.
+   ~1 hour to wire checkout. **Now doubly critical** — it's also the vault
+   + funding source for the browser-agent booking flow (see below).
 2. **Duffel live key** — apply at duffel.com dashboard. Usually 1-3 days.
    Combined with Stripe = first real flight booking with real revenue.
 3. **Per-companion saved profiles** so multi-traveler Book All works (today
    only the lead traveller has saved DOB etc.; group bookings get skipped
    at the flight step with a clear message).
+
+## Browser-agent booking (planned architecture — SERIOUS, don't lose this)
+
+The big bet for booking everything we DON'T have an API for — beach clubs,
+restaurants, boat tours, activities, basically any venue with a web
+booking form. Came out of looking at real venues Carson visited (La
+Fontelina beach club + Lucibello boat tours in Capri/Positano). Both have
+structured online booking forms; neither has an API. A Claude-powered
+**browser agent** that fills these forms like a human is the unlock —
+ONE agent generalises across venues (no per-site scripts), because it
+reads the page visually instead of relying on hardcoded selectors.
+
+**Why it generalises:** the same agent that books Lucibello's boat tour
+books a restaurant reservation, a beach club, a spa — anything with a web
+form. So "browser agent" = the booking engine for the entire long tail of
+venues that will never give us an API. This is most of the luxury
+inventory customers actually want.
+
+**The decided payment flow (Carson + Claude worked this out in full):**
+Money flows **Customer → Pyltrix → Vendor.** Concretely:
+  1. Customer's REAL card is stored once in Stripe's vault (we never see
+     or store the raw number — Stripe holds it, hands us a token).
+  2. On "Book," we charge their real card for (vendor cost + our service
+     fee). That money lands in OUR Stripe balance. **This is the moment
+     Pyltrix earns revenue** — we take margin here (e.g. €3000 tour +
+     €150 fee → pay vendor €3000, keep €150).
+  3. **Stripe Issuing** generates a single-use VIRTUAL Visa card, funded
+     from our balance, limit = exactly the vendor cost, locked to that
+     one merchant. It is a REAL Visa with real money on it (NOT fake) —
+     the vendor's checkout charges it like any card. Think "a real Visa
+     gift card pre-loaded with exactly €3000 that only works at
+     Lucibello, once."
+  4. The agent types the virtual card into the vendor's checkout and
+     completes the booking.
+  5. The agent captures the vendor's REAL confirmation (order #, email)
+     and we show that to the customer. When they show up at the desk,
+     it's a genuine paid reservation in the vendor's own system.
+
+**Why this design (decisions we already litigated, don't re-open lightly):**
+- **Agent finishes the WHOLE booking incl. payment** — NOT a human
+  handoff. We considered "agent fills form, customer types card at the
+  end" but rejected it: any human handoff has a fragile seam (page
+  refresh / session timeout / customer lands on a blank un-filled form
+  and goes "what about the agent?"). Zero-seam = agent does it all.
+- **Virtual/burner card, NOT the customer's real card typed by the
+  agent.** Having our system touch a raw card number puts us in PCI-DSS
+  scope at the highest tier (SAQ D) — a legal/certification landmine,
+  NOT something we can engineer past with "good security." Card networks
+  fine $5k–100k/mo; Stripe terminates us. The virtual card sidesteps all
+  of it: Stripe holds the real card, the virtual number is worthless if
+  leaked (single-use, one merchant, already funded). All the
+  virtual-card plumbing is INVISIBLE to the customer — from their side
+  it's one tap → "Booked ✓".
+- **Fails visibly, never silently.** If a vendor rejects the virtual
+  card (a few block prepaid) or the agent gets stuck, it surfaces the
+  decline/error and falls back to "couldn't auto-book, here's the
+  link/number to finish yourself." Never a fake "you're booked."
+
+**Infra required (in order):**
+1. **Stripe** (vault + the charge to the customer) — priority #1 anyway.
+2. **Stripe Issuing** (generates the virtual cards) — a toggle once
+   Stripe-approved.
+3. **Browserbase** (or similar) — headless browser infra; can't run a
+   persistent browser on Vercel serverless. ~$0.20/session. Agent loop
+   adds ~$0.10–0.40 in Claude tokens per booking attempt. Reliability
+   ~75–85%, so the visible-fallback above is mandatory.
+
+**Build sequence:** `ReservationRequest` queue (step zero — captures
+venue + date + party + traveler info so the agent has marching orders) →
+Stripe + Issuing → Browserbase agent that drains the queue. The queue is
+useful even before the agent exists: Carson (or a VA) drains it by hand
+in seconds since the data's pre-captured. Same "concierge-by-hand for
+the first ~30 customers" model Amex Centurion / Quintessentially used.
 
 ## API application checklist (in priority order)
 
