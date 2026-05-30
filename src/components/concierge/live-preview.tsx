@@ -21,6 +21,8 @@ import {
   Trash2,
   ArrowDown,
   ArrowUp,
+  Phone,
+  Globe,
 } from "lucide-react";
 import type { ItineraryItemType } from "@prisma/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -1529,6 +1531,11 @@ function ItineraryItemDialog({
   const [photoLoading, setPhotoLoading] = React.useState(false);
   const [photoFailed, setPhotoFailed] = React.useState(false);
   const photoUrl = photoUrls[photoIndex] ?? null;
+  // Venue contact info from Google Places — powers the "Visit website"
+  // and "Call" buttons we show for any item we don't book directly so
+  // the customer can handle their own reservation in one tap.
+  const [venueWebsite, setVenueWebsite] = React.useState<string | null>(null);
+  const [venuePhone, setVenuePhone] = React.useState<string | null>(null);
   const [swapping, setSwapping] = React.useState(false);
   const [swapApplying, setSwapApplying] = React.useState(false);
 
@@ -1642,6 +1649,23 @@ function ItineraryItemDialog({
       })
       .catch(() => setPhotoFailed(true))
       .finally(() => setPhotoLoading(false));
+
+    // Fan out a parallel fetch for the venue's website + phone so we
+    // can show "Visit website" and "Call" buttons when this isn't
+    // something we book directly. Same query/loc combo as photos so
+    // both hit Google's cache. Silent failure — buttons just don't
+    // render if Places doesn't know the venue.
+    setVenueWebsite(null);
+    setVenuePhone(null);
+    fetch(`/api/places/contact?${params.toString()}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (typeof data?.website === "string") setVenueWebsite(data.website);
+        if (typeof data?.phone === "string") setVenuePhone(data.phone);
+      })
+      .catch(() => {
+        // Non-fatal — buttons just won't render.
+      });
   }, [open, item.title, item.location, item.type]);
 
   const startTime = item.startTime ? new Date(item.startTime) : null;
@@ -1817,6 +1841,36 @@ function ItineraryItemDialog({
               </a>
             );
           })()}
+          {/* "Almost hands-free" pattern for anything we can't book
+              directly (DINING, SPA, ACTIVITY, NIGHTLIFE, etc.): give
+              the customer the venue's website + phone in one tap so
+              they handle their own reservation without leaving the
+              itinerary card.  Only renders the buttons we actually
+              found — silent when Places doesn't know the venue. */}
+          {(venueWebsite || venuePhone) && item.type !== "TRANSPORT" && (
+            <div className="flex flex-wrap items-center gap-2">
+              {venueWebsite && (
+                <a
+                  href={venueWebsite}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-2xl bg-[hsl(var(--navy))] text-white text-sm font-semibold px-4 py-3 hover:bg-[hsl(var(--navy))]/90 transition"
+                >
+                  <Globe className="size-4" />
+                  Visit website
+                </a>
+              )}
+              {venuePhone && (
+                <a
+                  href={`tel:${venuePhone.replace(/[^+\d]/g, "")}`}
+                  className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-2xl border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/8 text-[hsl(var(--copper))] text-sm font-semibold px-4 py-3 hover:bg-[hsl(var(--copper))]/15 transition"
+                >
+                  <Phone className="size-4" />
+                  Call {venuePhone}
+                </a>
+              )}
+            </div>
+          )}
           {item.aiRationale && (
             <div className="rounded-xl border border-border/60 bg-surface-raised/50 px-4 py-3">
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
