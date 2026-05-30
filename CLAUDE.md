@@ -248,9 +248,12 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
       Croatia. `ferryhopper.com/en/business`. Drafted copy needed.
 
 ### Tier 4 — Luxury chauffeur + restaurants
-- [ ] **Blacklane** — real API key. Stub already wired in
+- [x] **Blacklane** — emailed business@blacklane.com directly with
+      the API/technology-partner pitch. Their self-serve travel-agency
+      signup gated on an IATA/CLIA accreditation number we don't have
+      pre-launch, so we went around it via the contact address surfaced
+      on that same form. Stub already wired in
       `src/lib/bookings/providers/blacklane.ts`.
-      `blacklane.com/en/business` or `partner.blacklane.com`.
 - [ ] **Resy** — covers Carbone, Don Angie, etc. that OpenTable misses.
       `resy.com/about/business`.
 - [ ] **Tock** — Eleven Madison Park, Atomix, French Laundry tier.
