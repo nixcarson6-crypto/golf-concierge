@@ -207,20 +207,28 @@ hasn't been merged in a while.
 
 ## Browser-agent booking (planned architecture — SERIOUS, don't lose this)
 
-The big bet for booking everything we DON'T have an API for — beach clubs,
-restaurants, boat tours, activities, basically any venue with a web
-booking form. Came out of looking at real venues Carson visited (La
-Fontelina beach club + Lucibello boat tours in Capri/Positano). Both have
-structured online booking forms; neither has an API. A Claude-powered
-**browser agent** that fills these forms like a human is the unlock —
-ONE agent generalises across venues (no per-site scripts), because it
-reads the page visually instead of relying on hardcoded selectors.
+The big bet for booking everything we DON'T have an API for — golf tee
+times, beach clubs, restaurants, boat tours, activities, hotels, basically
+any venue with a web booking form. Came out of looking at real venues
+Carson visited (La Fontelina beach club + Lucibello boat tours in
+Capri/Positano). Both have structured online booking forms; neither has
+an API. A Claude-powered **browser agent** that fills these forms like a
+human is the unlock — ONE agent generalises across venues (no per-site
+scripts), because it reads the page visually instead of relying on
+hardcoded selectors.
 
 **Why it generalises:** the same agent that books Lucibello's boat tour
-books a restaurant reservation, a beach club, a spa — anything with a web
-form. So "browser agent" = the booking engine for the entire long tail of
-venues that will never give us an API. This is most of the luxury
-inventory customers actually want.
+books a restaurant reservation, a beach club, a spa, **a tee time at any
+independent golf course, and a room at any hotel's own website** —
+anything with a web form. So "browser agent" = the booking engine for
+~95% of the bookable surface of a luxury golf trip. The only things it
+does NOT cover are (a) flights (Duffel) and (b) the big hotel
+aggregators Booking.com / Expedia (use their affiliate clickouts — they
+ban bots in ToS, and their affiliate programs are legit and fast to get
+via CJ Affiliate where we're already approved as publisher 7962835).
+This makes the agent the SPINE of the product, not a long-tail
+nice-to-have. We can launch without GolfNow, TeeOff, Hotelbeds, or any
+other pending API — the agent covers it.
 
 **The decided payment flow (Carson + Claude worked this out in full):**
 Money flows **Customer → Pyltrix → Vendor.** Concretely:
