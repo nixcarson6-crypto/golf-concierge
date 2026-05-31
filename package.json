@@ -16,6 +16,7 @@
     "check:env": "dotenv -e .env.local -- tsx scripts/check-env.ts",
     "check:places": "dotenv -e .env.local -- tsx scripts/check-places.ts",
     "check:uber": "dotenv -e .env.local -- tsx scripts/check-uber.ts",
+    "check:brain": "tsx src/lib/bookings/browser-agent/brain.check.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
