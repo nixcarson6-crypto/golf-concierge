@@ -76,6 +76,9 @@ const definitions = {
   BROWSERBASE_API_KEY: { required: false },
   BROWSERBASE_PROJECT_ID: { required: false },
   BROWSERBASE_REGION: { required: false, default: "us-east-1" },
+  // "true" to enable paid Browserbase features (advancedStealth + proxies +
+  // captcha solving). Default off so the agent runs on the free tier.
+  BROWSERBASE_PREMIUM: { required: false },
   // Model used by the computer-use loop. Defaults to the orchestrator
   // model; can override to a smaller/cheaper one for low-value bookings.
   ANTHROPIC_MODEL_COMPUTER_USE: {

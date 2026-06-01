@@ -92,18 +92,21 @@ export async function openSession(): Promise<AgentSession> {
   let sessionId: string;
   let connectUrl: string;
   try {
+    // Stealth / residential proxies / CAPTCHA-solving are PAID Browserbase
+    // features (advancedStealth is Enterprise-only). Default to the bare
+    // free-tier config (viewport only) so the agent runs on any plan; flip
+    // BROWSERBASE_PREMIUM=true once on a paid plan to harden against
+    // bot-walls. Free tier still works for most independent venue sites —
+    // they're not the ones running aggressive bot detection.
+    const premium = optionalEnv("BROWSERBASE_PREMIUM") === "true";
     const session = await bb.sessions.create({
       projectId,
       region,
-      // Stealth + residential proxies + CAPTCHA solving reduce the chance
-      // a venue site bot-walls us. We're booking one reservation as a
-      // human would, not scraping inventory.
       browserSettings: {
-        advancedStealth: true,
-        solveCaptchas: true,
         viewport: { width: AGENT_VIEWPORT.width, height: AGENT_VIEWPORT.height },
+        ...(premium ? { advancedStealth: true, solveCaptchas: true } : {}),
       },
-      proxies: true,
+      ...(premium ? { proxies: true } : {}),
     });
     sessionId = session.id;
     connectUrl = session.connectUrl;
