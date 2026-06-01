@@ -31,8 +31,8 @@ export const AGENT_VIEWPORT = { width: 1280, height: 800 } as const;
 
 /** Hard wall-clock budget for an entire booking attempt. Defense in depth — */
 /** the agent loop also caps iterations + tokens; this is the outermost gate. */
-/** 5 min is enough for La-Fontelina-class multi-step forms; bump for hotels. */
-const SESSION_TIMEOUT_MS = 300_000;
+/** 10 min covers multi-field forms (La Fontelina is ~30+ fields with steps). */
+const SESSION_TIMEOUT_MS = 600_000;
 
 /* -------------------------------------------------------------------------- */
 /* Public surface                                                             */

@@ -52,7 +52,7 @@ const COMPUTER_TOOL_TYPE = "computer_20250124" as const;
  *  Itinerary/destination/etc. agents elsewhere in the codebase still use Opus —
  *  only this booking agent specifically needs the computer_20250124 tool. */
 const DEFAULT_MODEL = "claude-sonnet-4-5";
-const DEFAULT_MAX_ITERATIONS = 80;
+const DEFAULT_MAX_ITERATIONS = 120;
 const DEFAULT_MAX_TOKENS_PER_TURN = 1536;
 /** Approximate ceiling on total INPUT tokens consumed by the loop. */
 const DEFAULT_INPUT_TOKEN_BUDGET = 200_000;

@@ -156,15 +156,31 @@ async function main(): Promise<void> {
       // takes its first screenshot.
       await new Promise((r) => setTimeout(r, 2500));
       console.log("─".repeat(72));
-      return runAgent({
-        page: session.page,
-        system: goal.system,
-        firstUserMessage: goal.firstUserMessage,
-        cardProvider: unavailableCardProvider,
-        onStep: ({ iteration, label }) => {
-          console.log(`  [${String(iteration).padStart(2, " ")}] ${label}`);
-        },
-      });
+      try {
+        return await runAgent({
+          page: session.page,
+          system: goal.system,
+          firstUserMessage: goal.firstUserMessage,
+          cardProvider: unavailableCardProvider,
+          onStep: ({ iteration, label }) => {
+            console.log(`  [${String(iteration).padStart(2, " ")}] ${label}`);
+          },
+        });
+      } finally {
+        // ALWAYS save a final screenshot — even on timeout / error — so
+        // you can SEE exactly where the agent got stuck instead of just
+        // reading step labels. Lives next to the project as agent-final.png.
+        try {
+          const shot = await session.page.screenshot({ type: "png", fullPage: true });
+          const fs = await import("node:fs");
+          const path = `${process.cwd()}/agent-final.png`;
+          fs.writeFileSync(path, shot);
+          console.log(`\n  📸 Final screenshot saved to ${path}`);
+          console.log("     (open it to see where the agent stopped)");
+        } catch {
+          // Best-effort.
+        }
+      }
     });
   } catch (err) {
     console.error("\nFATAL — session/runtime failed:");
