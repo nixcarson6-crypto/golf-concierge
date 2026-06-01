@@ -44,7 +44,7 @@ import {
 /* Config                                                                      */
 /* -------------------------------------------------------------------------- */
 
-const COMPUTER_USE_BETA = "computer-use-2025-11-24" as const;
+const COMPUTER_USE_BETA = "computer-use-2025-01-24" as const;
 const COMPUTER_TOOL_TYPE = "computer_20250124" as const;
 
 /** Defaults. All overridable via the loop options for low-value-booking tunings. */
