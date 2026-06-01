@@ -225,6 +225,23 @@ Scope:
    dialog can render live states.
 5. `/api/internal/nudge` bridge (so Inngest can push SSE updates to the
    browser — see plan file in /root/.claude/plans).
+6. **The "Booked ✓" reassurance end-state** (Carson's explicit ask — the
+   customer must FEEL the agent really booked it). Keep it simple, don't
+   over-engineer. The agent already captures everything; just display it:
+   - **Store the final screenshot** so the UI can show it. Simplest MVP
+     path: save the agent's `finalScreenshot` (base64 PNG) as a data URL
+     on `Booking.screenshotUrl` (or stash the Browserbase session-replay
+     URL) — NO blob-storage infra needed for v1.
+   - **Booked dialog shows three independent proofs:** (a) the captured
+     screenshot of the venue's actual confirmation page (tap to enlarge),
+     (b) the confirmation number + amount charged, (c) a line telling the
+     customer the venue is emailing them directly — plus the existing
+     Visit-website / Call buttons. This is stronger than a bare "here's a
+     link" because most venues need a login to view a guest reservation;
+     the screenshot + number + venue email give zero-click verification.
+   - Do NOT build the pre-submit "approve before booking" gate for v1
+     unless it's trivial — Carson wants reassurance AFTER booking via the
+     proof above, not another confirmation step that adds friction.
 
 ### P0 — this week (critical path)
 
