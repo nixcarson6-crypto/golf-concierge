@@ -69,6 +69,20 @@ const definitions = {
   YELP_FUSION_API_KEY: { required: false },
   YELP_FUSION_CLIENT_ID: { required: false },
 
+  // Browser-agent booking infra. Browserbase = headless browser the agent
+  // drives over CDP. Configured ⇒ the agent dryrun script + (later) the
+  // BookingPartner `browser-agent` provider can actually run; unset ⇒
+  // both gracefully no-op so the rest of the app keeps working as today.
+  BROWSERBASE_API_KEY: { required: false },
+  BROWSERBASE_PROJECT_ID: { required: false },
+  BROWSERBASE_REGION: { required: false, default: "us-east-1" },
+  // Model used by the computer-use loop. Defaults to the orchestrator
+  // model; can override to a smaller/cheaper one for low-value bookings.
+  ANTHROPIC_MODEL_COMPUTER_USE: {
+    required: false,
+    default: "claude-opus-4-7",
+  },
+
   NEXT_PUBLIC_APP_URL: {
     required: false,
     default: "http://localhost:3000",
