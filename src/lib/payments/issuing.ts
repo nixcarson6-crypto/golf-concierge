@@ -71,12 +71,23 @@ export async function ensureCardholder(userId: string): Promise<string> {
     user.email ||
     "Pyltrix Traveler";
 
+  // Stripe Issuing requires the cardholder to have accepted the Issuing
+  // user terms before any card minted to them can activate. Without this
+  // the cardholder is created fine but `issuing.cards.create` fails with
+  // "outstanding requirements". We collect implicit acceptance at the
+  // moment the user starts the saved-card flow (UI gates on a checkbox).
+  const nowSecs = Math.floor(Date.now() / 1000);
   const cardholder = await sk.issuing.cardholders.create({
     type: "individual",
     name: displayName,
     email: user.email ?? undefined,
     phone_number: user.phone ?? undefined,
     billing: { address: { ...DEFAULT_BILLING } },
+    individual: {
+      card_issuing: {
+        user_terms_acceptance: { date: nowSecs, ip: "127.0.0.1" },
+      },
+    },
   });
 
   await db.user.update({

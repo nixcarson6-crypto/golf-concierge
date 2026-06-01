@@ -72,6 +72,16 @@ async function main(): Promise<void> {
           country: "US",
         },
       },
+      // Required so issued cards can activate — without this the cardholder
+      // is created with "outstanding requirements" and card create fails.
+      individual: {
+        card_issuing: {
+          user_terms_acceptance: {
+            date: Math.floor(Date.now() / 1000),
+            ip: "127.0.0.1",
+          },
+        },
+      },
     });
     console.log(`   ✓ cardholder ${cardholder.id}`);
 
