@@ -79,11 +79,12 @@ const definitions = {
   // "true" to enable paid Browserbase features (advancedStealth + proxies +
   // captcha solving). Default off so the agent runs on the free tier.
   BROWSERBASE_PREMIUM: { required: false },
-  // Model used by the computer-use loop. Defaults to the orchestrator
-  // model; can override to a smaller/cheaper one for low-value bookings.
+  // Model used by the booking agent's computer-use loop. MUST be a model
+  // that supports the computer_20250124 tool — that's a Sonnet-line
+  // capability; Opus 4.x doesn't carry it. Sonnet 4.5 is the stable default.
   ANTHROPIC_MODEL_COMPUTER_USE: {
     required: false,
-    default: "claude-opus-4-7",
+    default: "claude-sonnet-4-5",
   },
 
   NEXT_PUBLIC_APP_URL: {

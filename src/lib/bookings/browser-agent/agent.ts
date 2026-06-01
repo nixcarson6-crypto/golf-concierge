@@ -48,7 +48,10 @@ const COMPUTER_USE_BETA = "computer-use-2025-01-24" as const;
 const COMPUTER_TOOL_TYPE = "computer_20250124" as const;
 
 /** Defaults. All overridable via the loop options for low-value-booking tunings. */
-const DEFAULT_MODEL = "claude-opus-4-7";
+/** Computer use is a Sonnet-line capability; the 4.x Opus models don't carry it.
+ *  Itinerary/destination/etc. agents elsewhere in the codebase still use Opus —
+ *  only this booking agent specifically needs the computer_20250124 tool. */
+const DEFAULT_MODEL = "claude-sonnet-4-5";
 const DEFAULT_MAX_ITERATIONS = 40;
 const DEFAULT_MAX_TOKENS_PER_TURN = 1536;
 /** Approximate ceiling on total INPUT tokens consumed by the loop. */
