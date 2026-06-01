@@ -32,6 +32,13 @@ model User {
   gender          String?   // "m" | "f" — airline ticketing requirement
   phone           String?   // E.164 format, e.g. +12125550100
 
+  // Stripe billing identity — reused across all of this user's trips.
+  // stripeCustomerId holds their saved card (vault); stripeCardholderId
+  // is their Issuing cardholder for minting single-use virtual cards.
+  stripeCustomerId       String?
+  stripeCardholderId     String?
+  defaultPaymentMethodId String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -273,6 +280,8 @@ enum AgentType {
   FALLBACK
   PAYMENT
   SUMMARY
+  // Autonomous browser-agent booking run (drives the live status steps).
+  BROWSER_BOOKING
 }
 
 model AgentRun {
@@ -419,6 +428,11 @@ enum BookingStatus {
   CONFIRMED
   FAILED
   CANCELLED
+  // Browser-agent booking that completed with uncertain/low-confidence
+  // evidence, or a high-value booking paused before charging — a human
+  // verifies before we confirm or charge. The brain's verifyOutcome()
+  // downgrades anything unproven to this rather than a false CONFIRMED.
+  NEEDS_REVIEW
 }
 
 enum BookingProvider {
@@ -434,6 +448,9 @@ enum BookingProvider {
   UBER_FOR_BUSINESS
   BLACKLANE
   MANUAL
+  // Autonomous Claude browser agent that books on a vendor's own website
+  // and pays with a single-use Stripe Issuing virtual card.
+  BROWSER_AGENT
 }
 
 model Booking {
@@ -452,6 +469,18 @@ model Booking {
   attempts           Int             @default(0)
   heldUntil          DateTime?
   confirmedAt        DateTime?
+
+  // Browser-agent + Stripe Issuing linkage. stripeIssuingCardId is indexed
+  // because the real-time authorization webhook must look the booking up by
+  // card id and respond within ~2s. The rest are for reconciliation + the
+  // per-item live-status link.
+  stripeIssuingCardId String?
+  stripeAuthId        String?
+  stripeChargeId      String?
+  agentRunId          String?
+  screenshotUrl       String?
+  vendorUrl           String?
+
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
@@ -459,6 +488,7 @@ model Booking {
   itineraryItem      ItineraryItem @relation(fields: [itineraryItemId], references: [id], onDelete: Cascade)
 
   @@index([tripId, status])
+  @@index([stripeIssuingCardId])
 }
 
 // ---------------------------------------------------------------------------

@@ -76,5 +76,7 @@ export function providerLabel(provider: BookingProvider): string {
       return "Concierge";
     case "MANUAL":
       return "Concierge — manual";
+    case "BROWSER_AGENT":
+      return "Pyltrix — auto-booked";
   }
 }

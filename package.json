@@ -19,6 +19,7 @@
     "check:brain": "tsx src/lib/bookings/browser-agent/brain.check.ts",
     "check:agent": "dotenv -e .env.local -- tsx scripts/agent-dryrun.ts",
     "check:browser": "dotenv -e .env.local -- tsx scripts/browser-smoke.ts",
+    "check:stripe": "dotenv -e .env.local -- tsx scripts/check-stripe.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
