@@ -196,14 +196,124 @@ hasn't been merged in a while.
 
 ## Next-up priorities
 
-1. **Stripe** — must do, 30-min signup, unlocks all real money flows. Then
-   ~1 hour to wire checkout. **Now doubly critical** — it's also the vault
-   + funding source for the browser-agent booking flow (see below).
-2. **Duffel live key** — apply at duffel.com dashboard. Usually 1-3 days.
-   Combined with Stripe = first real flight booking with real revenue.
-3. **Per-companion saved profiles** so multi-traveler Book All works (today
-   only the lead traveller has saved DOB etc.; group bookings get skipped
-   at the flight step with a clear message).
+### 🔴 RESUME HERE (when Carson is back at his desk)
+
+**Wire the "Book it for me" button into `ItineraryItemDialog`.** The browser
+agent is proven working end-to-end (tonight's La Fontelina dry-run filled
+the entire reservation form — date, time, party, name, email, country —
+and correctly stopped at the reCAPTCHA, reporting NEEDS_REVIEW via the
+brain's safety gate). Time to make it real in the app. Carson approved
+this as the immediate next build.
+
+Scope:
+1. `POST /api/trips/[tripId]/items/[itemId]/book-agent` — auth via
+   `requireTripAccess`, idempotency check, creates `Booking { provider:
+   BROWSER_AGENT, status: SEARCHING }` + `AgentRun { agentType:
+   BROWSER_BOOKING }`, emits Inngest `trip/booking.agent_requested`,
+   returns immediately.
+2. `onBookingAgentRequested` Inngest function in `src/lib/jobs/index.ts`
+   — runs the full agent inside `withAgentRun` (live progress), opens
+   Browserbase session, navigates to venue (from Places contact),
+   runs `runAgent`, on payment step mints virtual card via Stripe
+   Issuing + reveals to agent, persists outcome, calls `nudge`.
+3. The button itself in `live-preview.tsx` `ItineraryItemDialog` (~line
+   1870) — copper primary, sits ABOVE the existing Visit-website/Call
+   buttons. Shown when item isn't CONFIRMED. Hidden during agent run
+   (replaced by status: "Booking… [step]").
+4. Workspace route extension to expose `booking { status, confirmationCode,
+   failureReason }` and the linked `AgentRun.progress` per item so the
+   dialog can render live states.
+5. `/api/internal/nudge` bridge (so Inngest can push SSE updates to the
+   browser — see plan file in /root/.claude/plans).
+
+### P0 — this week (critical path)
+
+| Task | Why | Effort |
+|---|---|---|
+| **Wire "Book it for me" button + endpoint + Inngest fn** | Connects the proven agent to the actual app. Carson sees real one-tap booking. | ~3 hrs |
+| **"Save your card" UI** (Stripe.js SetupIntent) | Customers add their card once; required before agent can book paid venues. | ~2 hrs |
+| **Live booking-status states on item cards** (Booking… / Booked ✓ / Needs review / Fallback) | Makes the agent's work visible to the customer in real time. | ~2 hrs |
+| **Apply: Stripe live mode** | 1-3 day approval window — submit early. | 30 min |
+| **Apply: Duffel live key** | Same 1-3 day window. Real flight bookings need it. | 30 min |
+
+### P1 — next week (launch readiness)
+
+- **Browserbase ~$39/mo tier + flip `BROWSERBASE_PREMIUM=true`** — captcha
+  solving unblocks La-Fontelina-class venues. Day-of-launch only;
+  don't pay during testing.
+- **Real end-to-end test bookings** — Carson takes 3-5 trips for real to
+  find failure modes before paying customers do.
+- **pyltrix.com production deploy** — currently localhost.
+- **Result-page polish pass** — last-mile UX.
+- **LLC / business entity** — required for Stripe live anyway.
+
+### P2 — post-launch (v1.1, after first paying customers)
+
+- Per-companion saved traveler profiles (group bookings beyond lead).
+- Pyltrix-controlled inbox for vendor confirmation emails (concierge polish
+  that consolidates 8 venue emails into one).
+- "Book everything" checkbox version of Book-All.
+- Custom failure messages per venue type.
+
+### CUT from v1 (deliberate — resist building these)
+
+- Self-healing trips (auto-rebook on disruption).
+- Voice intake / voice rebooking.
+- Memory / cross-trip personalization.
+- SMS / push notifications.
+- Auto trip-recap with photos.
+- Per-trip Pyltrix inbox (the email-forwarding polish).
+- **Any pre-launch partner API applications** — Carson's call: GolfNow
+  rejected us pre-website, the browser agent makes API partners optional,
+  applications are wasted motion until pyltrix.com has real traffic +
+  the company exists as an entity. *Exception:* warm leads where the
+  partner is already engaged in conversation (e.g. the Supreme Golf
+  call — see below).
+
+## Supreme Golf call prep
+
+Carson has a scheduled call with Supreme Golf for API access. This is
+RADICALLY different from the cold applications that have been rejected —
+they're already interested, so the pre-launch rejection bias doesn't
+apply. Worth real prep.
+
+**Why Supreme Golf is a legitimate add-on (vs. the agent):**
+- Aggregates GolfNow + TeeOff + direct courses in one feed → one
+  integration covers ~3 inventory sources.
+- API tee-time lookups are FAST (seconds) vs. agent runs (~3 min).
+  Lets the quiz surface live availability before booking, not just at
+  the booking step. That's a real product-experience upgrade.
+- Doesn't replace the agent — the agent still books independent courses
+  Supreme Golf doesn't aggregate, plus everything non-golf.
+
+**What to lead with on the call:**
+> "Pyltrix is an AI luxury golf travel concierge at pyltrix.com.
+> Customers answer a quiz, our AI builds a complete bookable trip —
+> flights, lodging, tee times, dining, transport — and we book it all
+> end-to-end. We want Supreme Golf as our primary tee-time inventory
+> source because aggregated coverage matters for multi-destination
+> luxury golf trips."
+
+**What they'll likely ask + how to answer:**
+- Site URL → `pyltrix.com`
+- Business entity → "LLC in formation" (or active if Carson's done it)
+- Current booking method → "Direct customer bookings today; we want
+  Supreme Golf as our primary tee-time API going forward."
+- Expected volume → "Pre-launch; first bookings Q3 2026. Conservatively
+  20-50 tee times/month at launch, scaling with our trip volume."
+- Payment processor → "Stripe."
+- Integration timeline they need → ask THEM what's typical.
+
+**Questions to ASK them (shows seriousness):**
+- Sandbox / test environment available?
+- Minimum volume commitments?
+- Commission split (transparent on rate + their cut)?
+- What does their integration timeline typically look like
+  (sandbox → certification → production)?
+- Coverage map — which destinations have the strongest inventory?
+
+**DO NOT mention the browser agent.** It's a defensive moat / fallback,
+not a sales pitch. Lead with the customer experience.
 
 ## Browser-agent booking (planned architecture — SERIOUS, don't lose this)
 
