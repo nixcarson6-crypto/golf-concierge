@@ -144,6 +144,17 @@ async function main(): Promise<void> {
         console.log(`Live view:     ${session.liveViewUrl}`);
         console.log("              (open in a browser to watch the agent work)");
       }
+      // CRITICAL: pre-navigate to the venue URL BEFORE running the agent.
+      // Without this the agent sees a blank screen on its first screenshot
+      // and starts thrashing — trying to "launch Firefox", typing in the
+      // URL bar — because the computer-use model is trained on full
+      // desktops and assumes it has to open a browser itself.
+      console.log(`Navigating to ${url} …`);
+      const { navigate } = await import("../src/lib/bookings/browser-agent/runtime");
+      await navigate(session.page, url);
+      // Tiny settle so any client-side JS form renders before the agent
+      // takes its first screenshot.
+      await new Promise((r) => setTimeout(r, 2500));
       console.log("─".repeat(72));
       return runAgent({
         page: session.page,
