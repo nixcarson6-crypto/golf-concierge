@@ -30,6 +30,7 @@ export async function GET(
     summary,
     auditEvents,
     bookings,
+    tripLegs,
   ] = await Promise.all([
     db.chatMessage.findMany({
       where: { tripId: trip.id },
@@ -72,21 +73,20 @@ export async function GET(
       include: { itineraryItem: { select: { title: true, type: true } } },
       orderBy: { createdAt: "asc" },
     }),
+    // Trip legs (multi-destination). Folded into the parallel batch so the
+    // whole snapshot is one round-trip wave instead of an extra sequential
+    // query — meaningful on slow connections. Single-destination trips have
+    // one leg; legacy trips (pre-TripLeg) return [] → treated as single-dest.
+    db.tripLeg.findMany({
+      where: { tripId },
+      orderBy: { legIndex: "asc" },
+    }),
   ]);
 
   const myMember = members.find((m) => m.userId === me.id);
   const approvedCount = members.filter((m) => m.approvalStatus === "APPROVED").length;
   const total = members.length;
   const quorum = total <= 3 ? total : Math.ceil(total * (2 / 3));
-
-  // Fetch trip legs (multi-destination support). Single-destination trips
-  // have exactly one leg; multi-destination trips have N legs ordered by
-  // legIndex. Empty array for trips created before the TripLeg model
-  // landed — UI treats that as legacy single-destination.
-  const tripLegs = await db.tripLeg.findMany({
-    where: { tripId },
-    orderBy: { legIndex: "asc" },
-  });
 
   return NextResponse.json({
     trip: {

@@ -48,31 +48,27 @@ export function QuizLoading({ tripId }: { tripId?: string }) {
     let stopped = false;
     const tick = async () => {
       try {
-        const r = await fetch(`/api/trips/${tripId}/workspace`, {
+        // Poll the ultra-light progress endpoint (one DB query) — NOT the
+        // heavy /workspace snapshot. During a build the connection pool is
+        // tiny and the build needs it; hammering /workspace here used to
+        // starve the build itself on slow connections.
+        const r = await fetch(`/api/trips/${tripId}/progress`, {
           cache: "no-store",
         });
         if (!r.ok || stopped) return;
         const data = (await r.json()) as {
-          agentRuns?: Array<{
-            status: string;
-            progress: string | null;
-          }>;
+          progress?: string | null;
+          agentStatus?: string | null;
         };
-        const running = data.agentRuns?.find((r) => r.status === "RUNNING");
-        if (running?.progress) {
-          setLiveProgress(running.progress);
-        }
+        if (data.progress) setLiveProgress(data.progress);
       } catch {
         // Ignore — keep showing the rotating fallback.
       }
     };
     void tick();
-    // 5s instead of 2s — on slow networks each /workspace call can
-    // take 15-20s, so polling every 2s saturates the Neon connection
-    // pool and starves the actual build of transactions ("Unable to
-    // start a transaction in the given time"). 5s keeps the progress
-    // text feeling live without monopolising connections.
-    const id = setInterval(tick, 5000);
+    // 4s poll against the light endpoint — cheap enough to feel live
+    // without competing with the build for the connection pool.
+    const id = setInterval(tick, 4000);
     return () => {
       stopped = true;
       clearInterval(id);
