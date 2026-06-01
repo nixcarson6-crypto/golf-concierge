@@ -55,10 +55,24 @@ End every run by calling the \`report_outcome\` tool exactly once:
 - status "needs_review" + what you're unsure about.
 Never end the session without calling \`report_outcome\`.`;
 
+export type BuildGoalOptions = {
+  /**
+   * Test/dry-run mode. When true, the agent fills the ENTIRE form and
+   * navigates to the final submit/confirm step — but must NOT click the
+   * final submit button. Instead it reports `needs_review` describing
+   * exactly what it would have submitted. This lets us validate the agent
+   * against REAL venue sites without spamming them with test reservations.
+   */
+  dryRun?: boolean;
+};
+
 /**
  * Build the system + first-user messages for one booking attempt.
  */
-export function buildGoal(task: BookingTask): {
+export function buildGoal(
+  task: BookingTask,
+  opts: BuildGoalOptions = {},
+): {
   system: string;
   firstUserMessage: string;
 } {
@@ -66,6 +80,20 @@ export function buildGoal(task: BookingTask): {
   const v = task.venue;
 
   const lines: string[] = [];
+  if (opts.dryRun) {
+    lines.push(
+      `# ⚠️ TEST MODE — DO NOT SUBMIT THE BOOKING`,
+      ``,
+      `This is a DRY RUN to verify you can complete the form. Fill out every`,
+      `field correctly and navigate all the way to the FINAL submit/confirm/pay`,
+      `button — but DO NOT click it. The moment you can see the final submit`,
+      `button (with the whole form filled and ready), STOP and call`,
+      `report_outcome with status "needs_review" and a message describing`,
+      `exactly what would be submitted (date, time, party, the button label).`,
+      `Do NOT actually place the reservation. Do NOT call request_payment_card.`,
+      ``,
+    );
+  }
   lines.push(`# Booking task`);
   lines.push(``);
   lines.push(`**Venue:** ${v.name}`);

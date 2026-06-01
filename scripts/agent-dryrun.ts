@@ -110,8 +110,12 @@ async function main(): Promise<void> {
     metadata: {},
   };
 
+  // SAFETY: default to dry-run (fill the form, stop before final submit) so
+  // testing against real venues never sends them a junk reservation. Pass
+  // --submit ONLY when there's genuine booking intent.
+  const reallySubmit = process.argv.includes("--submit");
   const task = buildBookingTask({ request, traveler, venue });
-  const goal = buildGoal(task);
+  const goal = buildGoal(task, { dryRun: !reallySubmit });
 
   console.log("─".repeat(72));
   console.log(`Agent dry-run → ${venueName}`);
@@ -123,6 +127,11 @@ async function main(): Promise<void> {
   console.log(`Party:    ${traveler.partySize}`);
   console.log(`Budget:   ${task.budgetUsd ? `$${task.budgetUsd}` : "none"}`);
   console.log(`Traveler: ${traveler.givenName} ${traveler.familyName} <${traveler.email}>`);
+  console.log(
+    reallySubmit
+      ? "Mode:     ⚠️  LIVE — the agent WILL submit a real reservation."
+      : "Mode:     🧪 TEST — fills the form, stops before final submit (no real reservation).",
+  );
   console.log("─".repeat(72));
   console.log("Opening Browserbase session…");
 
