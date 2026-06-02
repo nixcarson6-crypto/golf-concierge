@@ -204,21 +204,19 @@ export function LivePreview({
           bookings={bookings}
           suggestedFlights={trip.suggestedFlights}
         />
-        {trip.suggestedFlights && trip.suggestedFlights.offers.length > 0 ? (
-          <SuggestedFlightsSection
-            tripId={tripId}
-            suggested={trip.suggestedFlights}
-            me={me}
-          />
-        ) : (
-          // No live offers yet → prompt for the home airport. The most
-          // common reason a build comes out flight-less is that the quiz
-          // didn't capture an origin. One small form fixes it without
-          // re-doing the whole quiz.
-          itinerary && itinerary.items.some((i) => i.type === "FLIGHT") && (
+        {/* Flights live in the categorized itinerary's Flights section
+            below — two real cards (outbound + return) with airline, times,
+            and price already wired in from the Duffel offer. Booking
+            happens via the global "Book all" CTA, so there is no separate
+            "Pick your flight" section here. The only thing we still need
+            to surface is the SetOriginBanner when the build couldn't run
+            Duffel (no origin captured) — without that, the flight cards
+            stay as placeholders. */}
+        {!(trip.suggestedFlights && trip.suggestedFlights.offers.length > 0) &&
+          itinerary &&
+          itinerary.items.some((i) => i.type === "FLIGHT") && (
             <SetOriginBanner tripId={tripId} />
-          )
-        )}
+          )}
         {itinerary && itinerary.items.length > 0 && (
           <ItineraryCategoriesSection tripId={tripId} itinerary={itinerary} />
         )}
