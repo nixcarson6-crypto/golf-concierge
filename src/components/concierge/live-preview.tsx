@@ -42,6 +42,7 @@ import { SuggestedFlightDialog } from "./suggested-flight-dialog";
 import { FlightBookingModal } from "./flight-booking-modal";
 import { TravelerProfileModal } from "./traveler-profile-modal";
 import { AgentBookingPanel } from "./agent-booking-panel";
+import { SetOriginBanner } from "./set-origin-banner";
 import { buildUberDeepLink } from "@/lib/uber-deep-link";
 import type {
   WorkspaceBooking,
@@ -203,12 +204,20 @@ export function LivePreview({
           bookings={bookings}
           suggestedFlights={trip.suggestedFlights}
         />
-        {trip.suggestedFlights && trip.suggestedFlights.offers.length > 0 && (
+        {trip.suggestedFlights && trip.suggestedFlights.offers.length > 0 ? (
           <SuggestedFlightsSection
             tripId={tripId}
             suggested={trip.suggestedFlights}
             me={me}
           />
+        ) : (
+          // No live offers yet → prompt for the home airport. The most
+          // common reason a build comes out flight-less is that the quiz
+          // didn't capture an origin. One small form fixes it without
+          // re-doing the whole quiz.
+          itinerary && itinerary.items.some((i) => i.type === "FLIGHT") && (
+            <SetOriginBanner tripId={tripId} />
+          )
         )}
         {itinerary && itinerary.items.length > 0 && (
           <ItineraryCategoriesSection tripId={tripId} itinerary={itinerary} />
