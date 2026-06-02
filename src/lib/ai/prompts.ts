@@ -318,9 +318,19 @@ Coverage:
   fees from the brief × group size for cost.
 - Lodging block (USE a real hotel from the brief, anchor cost to the
   nightly rate × nights × rooms).
-- Flights (only if user asked for them — otherwise mark a transport item
-  for "ground travel" or include arrival/departure as flights with realistic
-  estimates).
+- Flights — ALWAYS include outbound + return flight items as the trip
+  bookends when the customer is flying in (which is the default). Only
+  skip flights when the trip is genuinely drivable (≤ 4 hours from the
+  origin) AND the customer didn't specify "fly" anywhere. For multi-leg
+  trips, emit a FLIGHT for the home → leg-0 outbound, for every inter-
+  leg hop unless it's < 4 hours drive/train, and for the final leg →
+  home return. Tag each FLIGHT with metadata.from and metadata.to set to
+  the airport IATA codes (e.g. metadata.from="DFW", metadata.to="PBI").
+  If you don't know the exact code for a market, use null for cost and
+  give a realistic estimate-band in the description ("≈$600-900 pp,
+  business class") — the trip pipeline runs a live Duffel search after
+  you emit the items, so DO NOT skip the items just because you're not
+  sure about the price.
 - Ground transport: DEFAULT to Uber Black / Uber LUX for every transfer
   (airport → resort, resort → course if the course is off-property,
   resort → dinner, dinner → resort). Uber works in every market we
