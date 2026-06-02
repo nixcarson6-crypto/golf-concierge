@@ -140,6 +140,47 @@ export async function buildMultiLegItinerary(args: {
     throw new Error(`Multi-leg build failed for every leg: ${firstErr}`);
   }
 
+  // Synthesize the flight BOOKENDS so the Flights section always appears,
+  // even before (or without) a live Duffel search. The per-leg agents are
+  // told NOT to emit flights, so without this a multi-leg trip would show
+  // ZERO flights (the bug Carson hit). The trip pipeline's Duffel pre-search
+  // still runs separately and enriches these with real "pick your flight"
+  // fares when an origin airport is set. Inter-leg movement is left to each
+  // leg's ground transport (a drive/train between nearby stops — correct for
+  // e.g. two Florida resorts).
+  const firstLeg = args.legs[0];
+  const lastLeg = args.legs[args.legs.length - 1];
+  const outbound: ItineraryItemAI = {
+    type: "FLIGHT",
+    title: `Flight to ${firstLeg.destination}`,
+    description:
+      "Outbound flight. Live business-class fares are pulled from Duffel once your home airport is set — pick your exact flight on the trip page.",
+    location: null,
+    address: null,
+    startTime: firstLeg.startDate ? `${firstLeg.startDate}T08:00:00` : null,
+    endTime: null,
+    cost: null,
+    aiRationale: null,
+    metadata: { legIndex: 0, segment: "outbound" } as Record<string, unknown>,
+  };
+  const returnFlight: ItineraryItemAI = {
+    type: "FLIGHT",
+    title: `Return flight home from ${lastLeg.destination}`,
+    description:
+      "Return flight. Live fares pulled from Duffel once your home airport is set.",
+    location: null,
+    address: null,
+    startTime: lastLeg.endDate ? `${lastLeg.endDate}T17:00:00` : null,
+    endTime: null,
+    cost: null,
+    aiRationale: null,
+    metadata: {
+      legIndex: args.legs.length - 1,
+      segment: "return",
+    } as Record<string, unknown>,
+  };
+  mergedItems.push(outbound, returnFlight);
+
   // Sort items by leg, then by startTime within a leg — so the UI's
   // chronological groupings stay consistent.
   mergedItems.sort((a, b) => {
@@ -173,11 +214,36 @@ function buildLegConstraints(
   leg: LegWithDates,
   legIndex: number,
 ): TripConstraints {
+  // Split the trip budget across legs by their share of total nights, so
+  // each leg targets ITS portion (not the whole budget — which made every
+  // leg either lowball or, worse, each try to spend the full amount). The
+  // summed legs then land near the real trip budget. Flights are excluded
+  // from per-leg budgets (the trip pipeline handles them), so reserve a
+  // slice for flights by only allocating ~85% of the budget across legs.
+  const nightsOf = (l: LegWithDates) => {
+    if (!l.startDate || !l.endDate) return 1;
+    const ms = Date.parse(l.endDate) - Date.parse(l.startDate);
+    return Math.max(1, Math.round(ms / 86_400_000));
+  };
+  const totalNights = allLegs.reduce((s, l) => s + nightsOf(l), 0);
+  const legShare = nightsOf(leg) / Math.max(totalNights, 1);
+  const groundBudgetFraction = 0.85; // leave ~15% headroom for flights
+  const splitBudget = (v: number | null | undefined): number | null =>
+    typeof v === "number" && v > 0
+      ? Math.round(v * groundBudgetFraction * legShare)
+      : null;
+
+  const legBudgetTotal = splitBudget(base.budgetTotal);
+  const legBudgetPerPerson = splitBudget(base.budgetPerPerson);
+
   const note = [
     `THIS IS LEG ${legIndex + 1} OF ${allLegs.length} (zero-based legIndex=${legIndex}) — focus ONLY on ${leg.destination}.`,
     `Other destinations on this trip are planned by separate agent calls and will be merged. Do NOT plan items for them.`,
     `Do NOT emit any FLIGHT items — the trip pipeline books all flights separately based on the leg airports.`,
     `Plan lodging, golf, dining, ground transport (Uber/transfers), activities, and free time for this destination only.`,
+    legBudgetTotal
+      ? `This leg's budget is about $${legBudgetTotal.toLocaleString()} total (your share of the trip across ${allLegs.length} stops). SPEND IT — pick the top lodging tier + best options this leg's share supports; don't come in far under.`
+      : "",
     `Tag every item with metadata.legIndex=${legIndex}.`,
     base.notes ?? "",
   ]
@@ -189,6 +255,8 @@ function buildLegConstraints(
     destination: leg.destination,
     startDate: leg.startDate,
     endDate: leg.endDate,
+    budgetTotal: legBudgetTotal,
+    budgetPerPerson: legBudgetPerPerson,
     notes: note,
   };
 }
