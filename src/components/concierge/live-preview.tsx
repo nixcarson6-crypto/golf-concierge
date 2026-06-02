@@ -927,86 +927,38 @@ function SuggestedFlightsSection({
             );
           })}
         </div>
-        {suggested.offers.map((offer, idx) => {
-          const total = Math.round(offer.totalAmount / 100);
-          const out = offer.slices[0];
-          const ret = offer.slices[1];
-          return (
-            <button
-              key={offer.id}
-              type="button"
-              onClick={() => setActiveOffer(offer)}
-              className="w-full text-left rounded-2xl border border-border/60 bg-surface-raised/70 p-3 hover:border-[hsl(var(--copper))]/50 hover:bg-surface-raised transition"
-            >
-              <div className="flex items-baseline justify-between gap-2 mb-2">
-                <p className="font-semibold text-sm leading-none truncate">
-                  {offer.airlineName}
-                  {idx === 0 && (
-                    <span className="ml-2 text-[10px] uppercase tracking-widest text-[hsl(var(--copper))] font-medium">
-                      best fit
-                    </span>
-                  )}
-                </p>
-                <p className="text-base font-semibold tabular-nums">
-                  ${total.toLocaleString()}
-                </p>
-              </div>
-              {out && (
-                <div className="text-xs text-foreground/85 flex items-center gap-2 leading-snug">
-                  <span className="tabular-nums font-mono">{out.origin}</span>
-                  <span className="text-muted-foreground/70">
-                    {fmtTime(out.departing)}
-                  </span>
-                  <span className="text-muted-foreground/40">→</span>
-                  <span className="tabular-nums font-mono">
-                    {out.destination}
-                  </span>
-                  <span className="text-muted-foreground/70">
-                    {fmtTime(out.arriving)}
-                  </span>
-                  <span className="ml-auto text-muted-foreground/60 text-[10px]">
-                    {fmtDate(out.departing)} ·{" "}
-                    {fmtDuration(out.durationMinutes)} ·{" "}
-                    {out.stops === 0
-                      ? "nonstop"
-                      : `${out.stops} stop${out.stops > 1 ? "s" : ""}`}
-                  </span>
-                </div>
-              )}
-              {ret && (
-                <div className="mt-1 text-xs text-foreground/85 flex items-center gap-2 leading-snug">
-                  <span className="tabular-nums font-mono">{ret.origin}</span>
-                  <span className="text-muted-foreground/70">
-                    {fmtTime(ret.departing)}
-                  </span>
-                  <span className="text-muted-foreground/40">→</span>
-                  <span className="tabular-nums font-mono">
-                    {ret.destination}
-                  </span>
-                  <span className="text-muted-foreground/70">
-                    {fmtTime(ret.arriving)}
-                  </span>
-                  <span className="ml-auto text-muted-foreground/60 text-[10px]">
-                    {fmtDate(ret.departing)} ·{" "}
-                    {fmtDuration(ret.durationMinutes)} ·{" "}
-                    {ret.stops === 0
-                      ? "nonstop"
-                      : `${ret.stops} stop${ret.stops > 1 ? "s" : ""}`}
-                  </span>
-                </div>
-              )}
-              <div className="mt-2.5 flex items-center justify-between gap-2">
-                <p className="text-[10px] text-muted-foreground">
-                  ${Math.round(offer.perPassengerAmount / 100).toLocaleString()}{" "}
-                  per traveller
-                </p>
-                <span className="text-[11px] font-medium px-3 py-1 rounded-full border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/10 text-[hsl(var(--copper))]">
-                  View &amp; book →
+        {/* The actual flight cards live in the itinerary's Flights section
+            below (outbound + return, with real airline/times/price). Here
+            we only keep the refinement chips above + a single book button
+            for the best-fit offer — no duplicate offer cards. Tapping it
+            opens the View & book flow for offers[0]; booking flips the
+            Flights-section cards to a Booked state. */}
+        {suggested.offers[0] && (
+          <button
+            type="button"
+            onClick={() => setActiveOffer(suggested.offers[0])}
+            className="w-full flex items-center justify-between gap-2 rounded-2xl border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/8 px-4 py-3 hover:bg-[hsl(var(--copper))]/12 transition"
+          >
+            <div className="min-w-0 text-left">
+              <p className="text-sm font-semibold">
+                {suggested.offers[0].airlineName} ·{" "}
+                <span className="text-[hsl(var(--copper))]">
+                  ${Math.round(suggested.offers[0].totalAmount / 100).toLocaleString()}
                 </span>
-              </div>
-            </button>
-          );
-        })}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                $
+                {Math.round(
+                  suggested.offers[0].perPassengerAmount / 100,
+                ).toLocaleString()}{" "}
+                per traveller · {suggested.origin} ⇄ {suggested.destination}
+              </p>
+            </div>
+            <span className="shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full bg-[hsl(var(--copper))] text-white">
+              View &amp; book →
+            </span>
+          </button>
+        )}
       </div>
       {activeOffer && (
         <SuggestedFlightDialog
