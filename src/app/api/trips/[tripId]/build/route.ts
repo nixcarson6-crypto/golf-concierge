@@ -564,6 +564,24 @@ export async function POST(
             } as object,
           },
         });
+
+        // Replace the synthesized placeholder FLIGHT items in the
+        // itinerary ("Flight to <destination>", "Return flight home from
+        // <destination>") with REAL data from the best Duffel offer —
+        // airline, exact airports, real departure/arrival times, per-
+        // person cost. Customer now sees the same content in the
+        // itinerary's Flights section as on the live "View & Book" card
+        // up top, instead of two placeholder cards.
+        try {
+          await rewriteFlightItemsFromOffer({
+            tripId,
+            offer: offers[0],
+            passengers: groupSize,
+          });
+        } catch (err) {
+          console.warn("[build] couldn't rewrite flight items from offer:", err);
+        }
+
         nudge(tripId);
       } else {
         console.warn(`[build] flight search returned error:`, result.error);
@@ -593,6 +611,121 @@ export async function POST(
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
+}
+
+/**
+ * Replace the synthesized placeholder FLIGHT items in the persisted
+ * itinerary ("Flight to <destination>", "Return flight home from
+ * <destination>") with REAL data from the chosen Duffel offer. After
+ * this runs, the itinerary's Flights section shows the same airline +
+ * airports + times + per-traveller price as the live "View & book" card.
+ *
+ * Matches items by metadata.segment ("outbound" / "return") when present,
+ * otherwise by chronological order. No-ops cleanly if the items shape
+ * is unexpected — flight cards just stay as their placeholder text.
+ */
+async function rewriteFlightItemsFromOffer(args: {
+  tripId: string;
+  offer: import("@/lib/bookings/providers/duffel-search").FlightOfferSummary;
+  passengers: number;
+}): Promise<void> {
+  const { offer } = args;
+  if (!offer || !Array.isArray(offer.slices) || offer.slices.length === 0) return;
+
+  const currentItinerary = await db.itinerary.findFirst({
+    where: { tripId: args.tripId, status: "CURRENT" },
+    orderBy: { version: "desc" },
+    select: { id: true },
+  });
+  if (!currentItinerary) return;
+
+  const flightItems = await db.itineraryItem.findMany({
+    where: { itineraryId: currentItinerary.id, type: "FLIGHT" },
+    orderBy: { orderIndex: "asc" },
+  });
+  if (flightItems.length === 0) return;
+
+  const fmtDuration = (mins: number): string => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  };
+
+  // Map outbound + return by metadata.segment when set, else positional.
+  const outbound = offer.slices[0];
+  const returnSlice = offer.slices[offer.slices.length - 1];
+
+  for (const item of flightItems) {
+    const meta = (item.metadata as Record<string, unknown> | null) ?? {};
+    const segment =
+      meta.segment === "return"
+        ? "return"
+        : meta.segment === "outbound"
+          ? "outbound"
+          : null;
+    let slice: typeof outbound | null = null;
+    if (segment === "return") slice = returnSlice;
+    else if (segment === "outbound") slice = outbound;
+    else {
+      // Position-based fallback when segment metadata is missing.
+      const idx = flightItems.indexOf(item);
+      slice = idx === 0 ? outbound : returnSlice;
+    }
+    if (!slice) continue;
+
+    const title = `${offer.airlineName} · ${slice.origin} → ${slice.destination}`;
+    const stopsLabel = slice.stops === 0 ? "nonstop" : `${slice.stops} stop`;
+    const description = `${slice.origin} ${formatTime(slice.departing)} → ${slice.destination} ${formatTime(slice.arriving)} · ${fmtDuration(slice.durationMinutes)} · ${stopsLabel} · ${formatCabin(slice.cabin)}`;
+    const startTime = parseIsoDate(slice.departing);
+    const endTime = parseIsoDate(slice.arriving);
+    // Per-pax × passengers, in cents — same shape as priced items.
+    const costCents = Math.round(offer.perPassengerAmount * args.passengers);
+
+    await db.itineraryItem.update({
+      where: { id: item.id },
+      data: {
+        title,
+        description,
+        startTime,
+        endTime,
+        cost: costCents,
+        location: `${slice.origin} → ${slice.destination}`,
+        metadata: {
+          ...meta,
+          from: slice.origin,
+          to: slice.destination,
+          airline: offer.airlineName,
+          airlineCode: offer.airlineIataCode,
+          offerId: offer.id,
+          segment: segment ?? (item === flightItems[0] ? "outbound" : "return"),
+        } as object,
+      },
+    });
+  }
+}
+
+function parseIsoDate(iso: string): Date | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatTime(iso: string): string {
+  const d = parseIsoDate(iso);
+  if (!d) return "";
+  return d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+  });
+}
+
+function formatCabin(cabin: string): string {
+  const c = (cabin ?? "").toLowerCase();
+  if (c === "business") return "business class";
+  if (c === "first") return "first class";
+  if (c === "premium_economy") return "premium economy";
+  return "economy";
 }
 
 /**
