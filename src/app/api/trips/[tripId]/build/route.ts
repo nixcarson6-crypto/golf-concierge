@@ -463,25 +463,39 @@ export async function POST(
     flightItems.length <= 2 &&
     (flightItems[0]?.to ?? preSearch.airports.first) === preSearch.airports.first;
 
-  if (flightItems.length > 0 && constraints.startDate && constraints.endDate) {
+  // Run the flight search when EITHER we have IATA-tagged FLIGHT items to
+  // slice on, OR the parallel pre-search already returned offers. The
+  // second case is critical for multi-leg trips: those synthesize flight
+  // BOOKENDS with no IATA metadata (flightItems is empty), but the
+  // pre-search (home → leg0, lastLeg → home) DID run off the resolved
+  // origin + destination airports. Previously this block was gated on
+  // flightItems.length > 0, so multi-leg trips silently dropped the live
+  // "Pick your flight" offers even though we had them.
+  const haveSomethingToSearch =
+    (flightItems.length > 0 || (preSearch != null && preSearch.offers.length > 0)) &&
+    constraints.startDate &&
+    constraints.endDate;
+
+  if (haveSomethingToSearch) {
     try {
       const groupSize = constraints.groupSize ?? 1;
-      const result = preSearchUsable
-        ? { ok: true as const, offers: preSearch!.offers }
-        : await searchFlights({
-            // One Duffel slice per emitted FLIGHT item — same shape
-            // whether it's a 2-flight round trip or a 3-flight multi-
-            // city run.
-            slices: flightItems.map((f) => ({
-              origin: f.from,
-              destination: f.to,
-              departureDate: f.date,
-            })),
-            passengers: groupSize,
-            cabin,
-            maxOffers: 5,
-          });
-      if (preSearchUsable) {
+      const result =
+        preSearchUsable || flightItems.length === 0
+          ? { ok: true as const, offers: preSearch?.offers ?? [] }
+          : await searchFlights({
+              // One Duffel slice per emitted FLIGHT item — same shape
+              // whether it's a 2-flight round trip or a 3-flight multi-
+              // city run.
+              slices: flightItems.map((f) => ({
+                origin: f.from,
+                destination: f.to,
+                departureDate: f.date,
+              })),
+              passengers: groupSize,
+              cabin,
+              maxOffers: 5,
+            });
+      if (preSearchUsable || flightItems.length === 0) {
         console.info("[build] using parallel pre-search results");
       }
       if (result.ok) {
@@ -519,7 +533,7 @@ export async function POST(
         suggestedFlights = {
           fetchedAt: new Date().toISOString(),
           origin: originFromQuiz,
-          destination: flightItems[0]?.to ?? "",
+          destination: flightItems[0]?.to ?? preSearch?.airports.first ?? "",
           cabin,
           passengers: groupSize,
           offers: offers.slice(0, 3),
