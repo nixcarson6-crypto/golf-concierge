@@ -18,4 +18,15 @@ export type Events = {
   "trip/summary.generate_requested": {
     data: { tripId: string };
   };
+  /** Autonomous browser-agent booking request. The route handler creates
+   *  the Booking row synchronously then fires this so the long-running
+   *  agent loop can run outside the request lifecycle (via Inngest). */
+  "trip/booking.agent_requested": {
+    data: {
+      tripId: string;
+      bookingId: string;
+      itineraryItemId: string;
+      userId: string;
+    };
+  };
 };

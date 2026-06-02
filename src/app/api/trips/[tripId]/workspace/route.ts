@@ -41,7 +41,27 @@ export async function GET(
     db.itinerary.findFirst({
       where: { tripId: trip.id, status: { in: ["DRAFT", "CURRENT", "APPROVED"] } },
       orderBy: { version: "desc" },
-      include: { items: { orderBy: { orderIndex: "asc" } } },
+      include: {
+        items: {
+          orderBy: { orderIndex: "asc" },
+          // Pull the booking summary onto each item so the dialog can render
+          // live status / confirmation / screenshot without a round-trip.
+          include: {
+            booking: {
+              select: {
+                id: true,
+                status: true,
+                provider: true,
+                confirmationCode: true,
+                screenshotUrl: true,
+                vendorUrl: true,
+                agentRunId: true,
+                metadata: true,
+              },
+            },
+          },
+        },
+      },
     }),
     db.agentRun.findMany({
       where: { tripId: trip.id },
@@ -156,22 +176,59 @@ export async function GET(
           perPersonCost: itinerary.perPersonCost,
           changes:
             ((itinerary.diff as { changes?: string[] } | null)?.changes) ?? [],
-          items: itinerary.items.map((i) => ({
-            id: i.id,
-            type: i.type,
-            title: i.title,
-            description: i.description,
-            location: i.location,
-            startTime: i.startTime?.toISOString() ?? null,
-            endTime: i.endTime?.toISOString() ?? null,
-            cost: i.cost,
-            status: i.status,
-            confirmationState: i.confirmationState,
-            aiRationale: i.aiRationale,
-            locked: Boolean(
-              (i.metadata as { locked?: boolean } | null)?.locked,
-            ),
-          })),
+          items: itinerary.items.map((i) => {
+            const b = i.booking;
+            const bMeta = (b?.metadata as Record<string, unknown> | null) ?? null;
+            // Find the latest matching agent run for this item's booking so
+            // the dialog can render the current progress string ("Filling
+            // the form…", "Opening venue site…", etc.) without an extra
+            // client-side join.
+            const run = b?.agentRunId
+              ? agentRuns.find((r) => r.id === b.agentRunId)
+              : null;
+            return {
+              id: i.id,
+              type: i.type,
+              title: i.title,
+              description: i.description,
+              location: i.location,
+              startTime: i.startTime?.toISOString() ?? null,
+              endTime: i.endTime?.toISOString() ?? null,
+              cost: i.cost,
+              status: i.status,
+              confirmationState: i.confirmationState,
+              aiRationale: i.aiRationale,
+              locked: Boolean(
+                (i.metadata as { locked?: boolean } | null)?.locked,
+              ),
+              booking: b
+                ? {
+                    id: b.id,
+                    status: b.status,
+                    provider: b.provider,
+                    confirmationCode: b.confirmationCode,
+                    screenshotUrl: b.screenshotUrl,
+                    vendorUrl: b.vendorUrl,
+                    agentRunId: b.agentRunId,
+                    failureReason:
+                      typeof bMeta?.failureReason === "string"
+                        ? (bMeta.failureReason as string)
+                        : null,
+                    fallbackContact:
+                      (bMeta?.fallbackContact as {
+                        website?: string | null;
+                        phone?: string | null;
+                      } | null) ?? null,
+                    amountChargedCents:
+                      typeof bMeta?.amountChargedCents === "number"
+                        ? (bMeta.amountChargedCents as number)
+                        : null,
+                    agentProgress: run?.progress ?? null,
+                    agentStatus: run?.status ?? null,
+                  }
+                : null,
+            };
+          }),
         }
       : null,
     agentRuns: agentRuns.map((r) => ({

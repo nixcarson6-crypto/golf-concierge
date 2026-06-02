@@ -128,6 +128,28 @@ export type WorkspaceMessage = {
   author: { id: string; name: string | null; imageUrl: string | null } | null;
 };
 
+export type WorkspaceItemBooking = {
+  id: string;
+  status:
+    | "PENDING"
+    | "SEARCHING"
+    | "HELD"
+    | "CONFIRMED"
+    | "FAILED"
+    | "CANCELLED"
+    | "NEEDS_REVIEW";
+  provider: string;
+  confirmationCode: string | null;
+  screenshotUrl: string | null;
+  vendorUrl: string | null;
+  agentRunId: string | null;
+  failureReason: string | null;
+  fallbackContact: { website?: string | null; phone?: string | null } | null;
+  amountChargedCents: number | null;
+  agentProgress: string | null;
+  agentStatus: string | null;
+};
+
 export type WorkspaceItineraryItem = {
   id: string;
   type: ItineraryItemType;
@@ -141,6 +163,7 @@ export type WorkspaceItineraryItem = {
   confirmationState: ConfirmationState;
   aiRationale: string | null;
   locked: boolean;
+  booking?: WorkspaceItemBooking | null;
 };
 
 export type WorkspaceItinerary = {

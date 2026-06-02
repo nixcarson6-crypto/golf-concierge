@@ -86,6 +86,12 @@ const definitions = {
     required: false,
     default: "claude-sonnet-4-5",
   },
+  // Shared secret guarding the internal nudge bridge: the Inngest worker
+  // (which runs separately from the web process) posts to this route to
+  // push live agent progress over the SSE pipe. Set in .env.local; any
+  // string the worker + web both see. If unset, live progress falls back
+  // to client-side polling.
+  INTERNAL_NUDGE_SECRET: { required: false },
 
   NEXT_PUBLIC_APP_URL: {
     required: false,

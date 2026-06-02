@@ -5,6 +5,7 @@ import { runItineraryAgent } from "../ai/agents/itinerary";
 import { runSummaryAgent } from "../ai/agents/summary";
 import { runWeatherWatchForAllTrips } from "../ai/agents/weatherWatch";
 import { runCostWatchdog } from "../ai/agents/costWatchdog";
+import { runBrowserBooking } from "../bookings/browser-agent/run-booking";
 import { runPaymentReminders } from "./payment-reminders";
 import type { ItineraryAI, TripConstraints } from "../ai/schemas";
 
@@ -19,6 +20,27 @@ export const onItineraryApproved = inngest.createFunction(
   { event: "trip/itinerary.approved" },
   async ({ event }) => {
     await executeItineraryBookings(event.data.itineraryId);
+  },
+);
+
+/**
+ * Browser-agent booking. The route handler creates the Booking row + emits
+ * this event, then returns immediately so the user gets instant UI feedback.
+ * The agent loop (5–10 minutes) runs HERE, outside the request lifecycle.
+ *
+ * Retries: Inngest retries on thrown errors. `runBrowserBooking` is idempotent
+ * (skips already-CONFIRMED/FAILED bookings) so a retry doesn't double-book.
+ */
+export const onBookingAgentRequested = inngest.createFunction(
+  { id: "browser-agent-book-one", retries: 2 },
+  { event: "trip/booking.agent_requested" },
+  async ({ event }) => {
+    await runBrowserBooking({
+      tripId: event.data.tripId,
+      bookingId: event.data.bookingId,
+      itineraryItemId: event.data.itineraryItemId,
+      userId: event.data.userId,
+    });
   },
 );
 
@@ -172,6 +194,7 @@ export const paymentRemindersDaily = inngest.createFunction(
 
 export const functions = [
   onItineraryApproved,
+  onBookingAgentRequested,
   onRefineRequested,
   onSummaryRequested,
   weatherWatchDaily,

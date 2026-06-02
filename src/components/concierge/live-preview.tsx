@@ -41,6 +41,7 @@ import { BookingDetailsDialog } from "./booking-details-dialog";
 import { SuggestedFlightDialog } from "./suggested-flight-dialog";
 import { FlightBookingModal } from "./flight-booking-modal";
 import { TravelerProfileModal } from "./traveler-profile-modal";
+import { AgentBookingPanel } from "./agent-booking-panel";
 import { buildUberDeepLink } from "@/lib/uber-deep-link";
 import type {
   WorkspaceBooking,
@@ -1896,36 +1897,41 @@ function ItineraryItemDialog({
               </a>
             );
           })()}
-          {/* "Almost hands-free" pattern for anything we can't book
-              directly (DINING, SPA, ACTIVITY, NIGHTLIFE, etc.): give
-              the customer the venue's website + phone in one tap so
-              they handle their own reservation without leaving the
-              itinerary card.  Only renders the buttons we actually
-              found — silent when Places doesn't know the venue. */}
-          {(venueWebsite || venuePhone) && item.type !== "TRANSPORT" && (
-            <div className="flex flex-wrap items-center gap-2">
-              {venueWebsite && (
-                <a
-                  href={venueWebsite}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-2xl bg-[hsl(var(--navy))] text-white text-sm font-semibold px-4 py-3 hover:bg-[hsl(var(--navy))]/90 transition"
-                >
-                  <Globe className="size-4" />
-                  Visit website
-                </a>
-              )}
-              {venuePhone && (
-                <a
-                  href={`tel:${venuePhone.replace(/[^+\d]/g, "")}`}
-                  className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-2xl border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/8 text-[hsl(var(--copper))] text-sm font-semibold px-4 py-3 hover:bg-[hsl(var(--copper))]/15 transition"
-                >
-                  <Phone className="size-4" />
-                  Call {venuePhone}
-                </a>
-              )}
-            </div>
-          )}
+          {/* Pyltrix agent booking — primary CTA + live status + booked
+              reassurance card + honest failure fallback. Renders nothing
+              for non-bookable item types (FLIGHT/FREE_TIME/TRANSPORT). */}
+          <AgentBookingPanel
+            tripId={tripId}
+            item={item}
+            fallback={{ website: venueWebsite, phone: venuePhone }}
+          />
+          {/* Manual fallback for un-bookable types (FREE_TIME / TRANSPORT
+              backup) — only show when the panel didn't render. */}
+          {(venueWebsite || venuePhone) &&
+            (item.type === "FREE_TIME" || item.type === "TRANSPORT") && (
+              <div className="flex flex-wrap items-center gap-2">
+                {venueWebsite && (
+                  <a
+                    href={venueWebsite}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-2xl bg-[hsl(var(--navy))] text-white text-sm font-semibold px-4 py-3 hover:bg-[hsl(var(--navy))]/90 transition"
+                  >
+                    <Globe className="size-4" />
+                    Visit website
+                  </a>
+                )}
+                {venuePhone && (
+                  <a
+                    href={`tel:${venuePhone.replace(/[^+\d]/g, "")}`}
+                    className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-2xl border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/8 text-[hsl(var(--copper))] text-sm font-semibold px-4 py-3 hover:bg-[hsl(var(--copper))]/15 transition"
+                  >
+                    <Phone className="size-4" />
+                    Call {venuePhone}
+                  </a>
+                )}
+              </div>
+            )}
           {item.aiRationale && (
             <div className="rounded-xl border border-border/60 bg-surface-raised/50 px-4 py-3">
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
