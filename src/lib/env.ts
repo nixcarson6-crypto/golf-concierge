@@ -92,6 +92,10 @@ const definitions = {
   // string the worker + web both see. If unset, live progress falls back
   // to client-side polling.
   INTERNAL_NUDGE_SECRET: { required: false },
+  // How many destination legs to plan in parallel on a multi-leg trip.
+  // Default 2 — keeps low-tier Anthropic accounts under the rate limit so
+  // parallel calls don't trigger a backoff storm. Bump on a higher API tier.
+  MULTI_LEG_CONCURRENCY: { required: false },
 
   NEXT_PUBLIC_APP_URL: {
     required: false,

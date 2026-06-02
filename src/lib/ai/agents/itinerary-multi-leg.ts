@@ -20,6 +20,7 @@
  */
 
 import { runItineraryAgent } from "./itinerary";
+import { optionalEnv } from "@/lib/env";
 import type { ItineraryAI, ItineraryItemAI, TripConstraints } from "../schemas";
 import type { LegWithDates } from "@/lib/quiz/parse-legs";
 
@@ -36,6 +37,21 @@ export type MultiLegResult = {
 };
 
 /**
+ * Max legs planned at once. Firing ALL legs in parallel hammers the Anthropic
+ * rate limit on low-tier accounts → the SDK silently backs off + retries (5×
+ * by default) → a "4-place" trip takes 15+ minutes. Capping concurrency at 2
+ * keeps us under the per-minute token limit, so on a tier-1 account this is
+ * actually FASTER than all-at-once. Bump via MULTI_LEG_CONCURRENCY once on a
+ * higher API tier.
+ */
+const DEFAULT_CONCURRENCY = 2;
+
+/** Hard ceiling per leg. A single stuck Opus call (truncation-retry loop,
+ *  overload backoff) can't hang the whole build past this — it just fails
+ *  that leg and the others still land. */
+const PER_LEG_TIMEOUT_MS = 150_000;
+
+/**
  * Plan every leg in parallel + merge. Throws ONLY if ALL legs fail; any
  * partial success returns a valid (smaller) itinerary.
  */
@@ -44,15 +60,27 @@ export async function buildMultiLegItinerary(args: {
   constraints: TripConstraints;
   legs: LegWithDates[];
 }): Promise<MultiLegResult> {
-  const settled = await Promise.allSettled(
-    args.legs.map((leg, idx) =>
-      runItineraryAgent({
-        tripId: args.tripId,
-        destination: leg.destination,
-        constraints: buildLegConstraints(args.constraints, args.legs, leg, idx),
-        priorItinerary: null,
-      }),
-    ),
+  const concurrency = Math.max(
+    1,
+    Number(optionalEnv("MULTI_LEG_CONCURRENCY")) || DEFAULT_CONCURRENCY,
+  );
+
+  // Concurrency-limited fan-out. Each leg is wrapped in a hard timeout so a
+  // single stuck call can never hang the whole build.
+  const settled = await mapWithConcurrency(
+    args.legs,
+    concurrency,
+    (leg, idx) =>
+      withTimeout(
+        runItineraryAgent({
+          tripId: args.tripId,
+          destination: leg.destination,
+          constraints: buildLegConstraints(args.constraints, args.legs, leg, idx),
+          priorItinerary: null,
+        }),
+        PER_LEG_TIMEOUT_MS,
+        `Leg "${leg.destination}" timed out after ${Math.round(PER_LEG_TIMEOUT_MS / 1000)}s`,
+      ),
   );
 
   const perLeg: MultiLegResult["legs"] = [];
@@ -163,4 +191,53 @@ function buildLegConstraints(
     endDate: leg.endDate,
     notes: note,
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Concurrency + timeout helpers                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Run `fn` over `items` with at most `limit` in flight at once, preserving
+ * order in the returned settled array. (No p-map dependency — a tiny worker
+ * pool does the job.)
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < items.length) {
+      const i = cursor++;
+      try {
+        results[i] = { status: "fulfilled", value: await fn(items[i], i) };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason };
+      }
+    }
+  };
+  const pool = Array.from({ length: Math.min(limit, items.length) }, worker);
+  await Promise.all(pool);
+  return results;
+}
+
+/** Reject if `p` doesn't settle within `ms`. The underlying agent call keeps
+ *  running but its result is discarded — acceptable, the leg is marked failed. */
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
 }
