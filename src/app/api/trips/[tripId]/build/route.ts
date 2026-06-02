@@ -384,11 +384,11 @@ export async function POST(
       nudge(tripId);
     }
   } catch (err) {
+    // Full stack to the terminal for diagnostics; humane, JSON-free copy to
+    // the customer. A Zod dump in the UI is unacceptable.
     console.error("[build] itinerary step failed:", err);
     const rawMsg = err instanceof Error ? err.message : String(err);
-    const userMsg = rawMsg.includes("truncated at max_tokens")
-      ? "This trip is more complex than we could fit in one pass. Try fewer destinations, a shorter trip, or simpler preferences and retry."
-      : `Couldn't build the itinerary: ${rawMsg}. Your trip details were saved — try again or simplify the request.`;
+    const userMsg = friendlyBuildError(rawMsg);
     return new Response(
       JSON.stringify({ error: userMsg }),
       { status: 502, headers: { "Content-Type": "application/json" } },
@@ -568,6 +568,37 @@ export async function POST(
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );
+}
+
+/**
+ * Translate the raw error from a failed itinerary build into a single
+ * humane sentence. NEVER returns a Zod dump, JSON, stack trace, or any
+ * other developer-facing string — those go to the terminal only.
+ */
+function friendlyBuildError(rawMsg: string): string {
+  const msg = (rawMsg ?? "").toLowerCase();
+  if (msg.includes("truncated at max_tokens") || msg.includes("too large")) {
+    return "This trip was a bit too much for one pass. Try fewer destinations or a shorter window — your answers are saved.";
+  }
+  if (
+    msg.includes("schema validation failed") ||
+    msg.includes("did not return a tool_use") ||
+    msg.includes("invalid_type")
+  ) {
+    return "We hit a hiccup on the planning step. Tap retry — it usually goes through on the second try. Your answers are saved.";
+  }
+  if (
+    msg.includes("overloaded") ||
+    msg.includes("rate_limit") ||
+    msg.includes("429") ||
+    msg.includes("529")
+  ) {
+    return "The planner is briefly overloaded. Give it a minute and tap retry — your answers are saved.";
+  }
+  if (msg.includes("timed out") || msg.includes("timeout") || msg.includes("aborterror")) {
+    return "Planning took longer than usual. Tap retry, or simplify the request if you asked for many destinations at once.";
+  }
+  return "We couldn't finish your itinerary. Your details are saved — tap retry to try again.";
 }
 
 /**
