@@ -12,6 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { quizAnswersToConstraints } from "@/lib/quiz/golf-questions";
 import { runDestinationAgent } from "@/lib/ai/agents/destination";
 import { runItineraryAgent } from "@/lib/ai/agents/itinerary";
+import { buildMultiLegItinerary } from "@/lib/ai/agents/itinerary-multi-leg";
 import {
   persistItinerary,
   autoTitle,
@@ -335,22 +336,53 @@ export async function POST(
   })();
 
   // Step 2: itinerary. Runs in parallel with the pre-search above.
+  //
+  // Branch on leg count. Single-leg trips run the original one-shot Opus
+  // call. Multi-leg trips fan out — ONE itinerary-agent call per leg, all
+  // in parallel — and merge. This keeps each call small + fast and prevents
+  // the 8-minute client timeout we used to hit on 3+ destinations (where
+  // one giant tool-use payload would either truncate at max_tokens or just
+  // take longer than the wall clock allowed).
   let itineraryOutput;
   let preSearch: Awaited<typeof preSearchPromise> = null;
+  let partialLegFailures: string[] = [];
   try {
-    const [run, ps] = await Promise.all([
-      runItineraryAgent({
-        tripId,
-        destination: chosenDestination,
-        constraints: itineraryConstraints,
-        priorItinerary: null,
-      }),
-      preSearchPromise,
-    ]);
-    itineraryOutput = run.output;
-    preSearch = ps;
-    await persistItinerary(tripId, itineraryOutput);
-    nudge(tripId);
+    if (isMultiLeg && legs.length >= 2) {
+      const [multi, ps] = await Promise.all([
+        buildMultiLegItinerary({
+          tripId,
+          constraints: itineraryConstraints,
+          legs,
+        }),
+        preSearchPromise,
+      ]);
+      itineraryOutput = multi.itinerary;
+      preSearch = ps;
+      partialLegFailures = multi.legs
+        .filter((l) => l.status === "failed")
+        .map((l) => l.destination);
+      if (partialLegFailures.length > 0) {
+        console.warn(
+          `[build] multi-leg partial: failed legs = ${partialLegFailures.join(", ")}`,
+        );
+      }
+      await persistItinerary(tripId, itineraryOutput);
+      nudge(tripId);
+    } else {
+      const [run, ps] = await Promise.all([
+        runItineraryAgent({
+          tripId,
+          destination: chosenDestination,
+          constraints: itineraryConstraints,
+          priorItinerary: null,
+        }),
+        preSearchPromise,
+      ]);
+      itineraryOutput = run.output;
+      preSearch = ps;
+      await persistItinerary(tripId, itineraryOutput);
+      nudge(tripId);
+    }
   } catch (err) {
     console.error("[build] itinerary step failed:", err);
     const rawMsg = err instanceof Error ? err.message : String(err);
@@ -529,6 +561,10 @@ export async function POST(
       tripId,
       destination: chosenDestination,
       suggestedFlights,
+      // Surface partial-success info from multi-leg fan-out so the UI can
+      // show "we got 3 of 4 — couldn't plan Lake Como, refine and retry".
+      partialLegFailures:
+        partialLegFailures.length > 0 ? partialLegFailures : undefined,
     }),
     { status: 200, headers: { "Content-Type": "application/json" } },
   );

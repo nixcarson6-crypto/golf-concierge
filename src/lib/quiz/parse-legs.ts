@@ -36,8 +36,14 @@ export function parseLegs(input: string): ParsedLeg[] | null {
   const s = input.trim();
   if (!s) return null;
 
-  // Split on connectors: "then", "and then", "plus", "after that", "followed by"
-  const SPLIT_RE = /\s+(?:then|and\s+then|plus|after\s+that|followed\s+by)\s+/i;
+  // Split on every common multi-destination connector. Order matters —
+  // longer phrases first so "and then" doesn't get eaten by " and ".
+  // We also split on commas (`"Capri, Lake Como, Portofino"`) and on plain
+  // " and " (`"Capri and Sorrento and Positano"`). parseLeg + cleanDestination
+  // reject garbage parts, so over-aggressive splitting safely falls back to
+  // a single-leg result when the parts don't validate as real destinations.
+  const SPLIT_RE =
+    /\s*(?:,\s*(?:and\s+)?|\s+(?:and\s+then|after\s+that|followed\s+by|then|plus|and)\s+)\s*/i;
   const parts = s.split(SPLIT_RE);
   if (parts.length < 2) return null; // single-leg, caller handles
 
