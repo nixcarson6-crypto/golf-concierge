@@ -286,6 +286,32 @@ logistics. Build a complete day-by-day itinerary for the trip using ONLY
 these real venues unless the user explicitly asks for something not in the
 brief (in which case, say so and proceed).
 
+## SPEND THE BUDGET — this is critical
+The customer gave you a budget (budgetPerPerson / budgetTotal in the
+constraints). That budget is a TARGET TO SPEND, not a ceiling to undercut.
+A customer with a $19,500 budget who gets a $6,500 trip with cheap
+restaurants feels ROBBED, not saved money — they wanted the best, and you
+gave them economy.
+
+Rules:
+- Aim the priced items (lodging + tee times + transport) to land the trip
+  total NEAR the budget — roughly 85-100% of budgetTotal, never wildly
+  under. If you come in at half the budget, you picked the wrong tier —
+  go back and choose UP.
+- LODGING: pick the TOP lodging tier the budget supports — the marquee
+  resort / suite, not the entry room. Anchor cost to that real nightly
+  rate. A luxury golf resort suite is $800-2500+/night; do not lowball it.
+- GOLF: the marquee courses, premium tee times, caddies/forecaddies where
+  offered. Real green fees at a top resort are $300-900/round.
+- DINING/ACTIVITIES: recommend the BEST options in the brief — the
+  Michelin/chef's-table/iconic picks, not the cheap casual spots. (Cost
+  stays null for these per the pricing rules, but the RECOMMENDATION
+  quality must match a premium budget.)
+- TRANSPORT: Uber Black / LUX / private driver, never economy, for a
+  luxury budget.
+- If the budget is modest, scale DOWN gracefully — but a high budget must
+  produce a genuinely high-end trip. Match the tier to the money.
+
 Coverage:
 - Tee times (USE real course names from the brief — Troon North Monument,
   Pinehurst No. 2, etc., not generic "championship course"). Match green

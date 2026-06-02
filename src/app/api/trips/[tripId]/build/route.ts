@@ -260,7 +260,18 @@ export async function POST(
       ? ((answers.originAirportCustom as string | undefined) ?? "")
       : ((answers.originAirport as string | undefined) ?? "");
   const cleanedOrigin = rawOrigin.replace(/\s+/g, "").toUpperCase();
-  const originFromQuiz = /^[A-Z]{3}$/.test(cleanedOrigin) ? cleanedOrigin : "";
+  // Resolve the origin to an IATA code ONCE, here, so every downstream
+  // flight path (pre-search, post-itinerary search, display) uses it.
+  // Fast path: the quiz already gave a clean 3-letter code. Otherwise
+  // resolve a typed city/airport NAME ("Tampa", "Dallas") via the same
+  // lookup we use for destinations — the old behaviour required a clean
+  // IATA and silently skipped the flight search otherwise, leaving
+  // placeholder flights with no fares (the bug Carson hit).
+  const originFromQuiz = /^[A-Z]{3}$/.test(cleanedOrigin)
+    ? cleanedOrigin
+    : rawOrigin
+      ? (await airportForDestination(rawOrigin)) ?? ""
+      : "";
   const airlinePref = answers.airlinePreference as string | undefined;
   const cabinAnswer =
     airlinePref === "best_rate"

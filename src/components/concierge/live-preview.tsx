@@ -1101,6 +1101,49 @@ function TotalsBanner({
   );
 }
 
+/**
+ * True when an ACTIVITY/NIGHTLIFE title is a generic activity rather than a
+ * named venue — in which case a Google Places photo search returns a random
+ * nearby business (a grocery store for "Shopping", a pool-supply lab for
+ * "Pool"). We skip the photo for these and show the clean icon instead.
+ */
+function isGenericVenueTitle(title: string): boolean {
+  const t = title.toLowerCase().trim();
+  // Common generic phrases the AI emits for downtime/leisure blocks.
+  const GENERIC = [
+    "pool",
+    "downtime",
+    "free time",
+    "leisure",
+    "relax",
+    "rest",
+    "shopping",
+    "shop",
+    "explore",
+    "walk",
+    "stroll",
+    "beach day",
+    "beach time",
+    "town",
+    "sightseeing",
+    "spa day",
+    "breakfast",
+    "lunch",
+    "dinner",
+    "drinks",
+    "nightcap",
+    "cocktails",
+    "at the turn",
+    "clubhouse",
+  ];
+  if (GENERIC.some((g) => t.includes(g))) return true;
+  // Heuristic: a real venue name has a capitalized proper noun. If the title
+  // (ignoring the first word) has no capitalized word, treat as generic.
+  const words = title.trim().split(/\s+/).slice(1);
+  const hasProperNoun = words.some((w) => /^[A-Z][a-zA-Z'’]/.test(w));
+  return !hasProperNoun;
+}
+
 /** Map ItineraryItemType → Lucide icon. Replaces the old emoji glyphs
  *  for a cleaner, brand-consistent look that scales with text. */
 function ItineraryItemIcon({
@@ -1671,22 +1714,34 @@ function ItineraryItemDialog({
     setPhotoUrls([]);
     setPhotoIndex(0);
     setPhotoFailed(false);
-    // Skip photo lookup for purely logistical items where a venue photo
-    // wouldn't make sense (e.g. "Drive Pinehurst → RDU + rental return").
-    const skipTypes = new Set(["TRANSPORT", "CAR"]);
-    if (skipTypes.has(item.type)) return;
-    // Clean noisy suffixes before sending to Google Places. Lodging
-    // titles like "The Prairie Club — Lodge Room (2 nights)" don't
-    // match Google's hotel index because of the room-type + duration
-    // tail. Strip the parenthesized "(N nights/days/rooms)" suffix and,
-    // for LODGING specifically, anything after the first " — " which is
-    // almost always the room class. Courses keep the full title because
-    // " — Monument" is a real course identifier (Troon North).
+    // Skip photo lookup for items where a Google Places text search returns
+    // GARBAGE rather than the venue: logistics (transport) AND generic
+    // free-time/activity items. "Pool / downtime", "Shopping", "Free time"
+    // match a random pool-supply lab or grocery store near the destination —
+    // a wrong photo is far worse than no photo (we show the clean icon
+    // instead). Only search when the title names a real, specific venue.
+    const skipTypes = new Set(["TRANSPORT", "CAR", "FREE_TIME"]);
+    if (skipTypes.has(item.type)) {
+      setPhotoFailed(true);
+      return;
+    }
     let query = item.title;
     if (!query) return;
+    // Strip "(N nights/days/rooms)" + (for lodging) the room-class tail.
     query = query.replace(/\s*\([^)]*\b(night|day|room)s?\b[^)]*\)\s*/gi, "").trim();
     if (item.type === "LODGING") {
       query = query.split(/\s+[—–-]\s+/)[0].trim();
+    }
+    // For DINING/TEE_TIME/LODGING/SPA the title is normally a real venue
+    // name — search it. For ACTIVITY/NIGHTLIFE, only search when the title
+    // looks like a NAMED venue (has a proper noun beyond a generic lead
+    // word); otherwise skip so we don't pull a grocery-store photo.
+    if (
+      (item.type === "ACTIVITY" || item.type === "NIGHTLIFE") &&
+      isGenericVenueTitle(query)
+    ) {
+      setPhotoFailed(true);
+      return;
     }
     const loc = item.location ?? "";
     setPhotoLoading(true);
