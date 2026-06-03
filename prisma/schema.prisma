@@ -39,6 +39,12 @@ model User {
   stripeCardholderId     String?
   defaultPaymentMethodId String?
 
+  // Sticky home airport. Set the first time the user picks an origin in
+  // the quiz OR types one into the SetOriginBanner; every future trip
+  // build falls back to this when the quiz didn't capture an origin, so
+  // they don't have to retype it for each trip.
+  defaultOriginAirport String? // IATA — e.g. "DFW"
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

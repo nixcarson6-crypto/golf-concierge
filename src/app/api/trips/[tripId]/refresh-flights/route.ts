@@ -158,6 +158,15 @@ export async function POST(
       } as object,
     },
   });
+  // Stick the chosen origin to the user's profile so every future trip
+  // build pre-fills with this airport — the customer will not see the
+  // "Set your home airport" banner again.
+  void db.user
+    .update({
+      where: { id: user.id },
+      data: { defaultOriginAirport: originIata },
+    })
+    .catch(() => {});
   nudge(tripId);
 
   return NextResponse.json({

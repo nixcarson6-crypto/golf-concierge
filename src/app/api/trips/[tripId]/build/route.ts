@@ -267,11 +267,36 @@ export async function POST(
   // lookup we use for destinations — the old behaviour required a clean
   // IATA and silently skipped the flight search otherwise, leaving
   // placeholder flights with no fares (the bug Carson hit).
-  const originFromQuiz = /^[A-Z]{3}$/.test(cleanedOrigin)
+  let originFromQuiz = /^[A-Z]{3}$/.test(cleanedOrigin)
     ? cleanedOrigin
     : rawOrigin
       ? (await airportForDestination(rawOrigin)) ?? ""
       : "";
+  // Sticky home airport: if the quiz didn't capture an origin, fall back
+  // to whatever the user picked on a previous trip (saved on the User row
+  // by this same code path and by the SetOriginBanner). This is why a
+  // returning customer never sees the "Set your home airport" banner
+  // again — the choice persists.
+  if (!originFromQuiz) {
+    const saved = await db.user.findUnique({
+      where: { id: user.id },
+      select: { defaultOriginAirport: true },
+    });
+    if (saved?.defaultOriginAirport && /^[A-Z]{3}$/.test(saved.defaultOriginAirport)) {
+      originFromQuiz = saved.defaultOriginAirport;
+    }
+  }
+  // Conversely, when we DID get an origin from the quiz (and the user
+  // doesn't already have one saved), persist it so the next trip starts
+  // pre-filled. Fire-and-forget — never block the build on a profile write.
+  if (originFromQuiz) {
+    void db.user
+      .updateMany({
+        where: { id: user.id, defaultOriginAirport: null },
+        data: { defaultOriginAirport: originFromQuiz },
+      })
+      .catch(() => {});
+  }
   const airlinePref = answers.airlinePreference as string | undefined;
   const cabinAnswer =
     airlinePref === "best_rate"
