@@ -541,8 +541,11 @@ export function cleanDestination(raw: string | null | undefined): string | null 
   // optional adverb ("over", "down", "out", "up", "across") between the
   // verb and "to" so "head over to Alabama" / "fly out to Bandon" /
   // "go down to Pinehurst" all get cleaned to just the place name.
+  // The BARE verb form ("head over to streamsong resort") is stripped
+  // too — users often skip the "I want to" / "let's" preamble and just
+  // type the directive.
   s = s.replace(
-    /^(let'?s\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|i\s+(?:want|wanna|would\s+like|need)\s+to\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|take\s+me\s+to|we\s+(?:should|want\s+to|wanna|need\s+to)\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|i'?d\s+like\s+to\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|going\s+to|trip\s+to|book\s+(?:us|me)\s+to|plan\s+(?:a\s+trip\s+to|me\s+a\s+trip\s+to)|how\s+about|let'?s\s+do|let'?s\s+try)\s+/i,
+    /^(let'?s\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|i\s+(?:want|wanna|would\s+like|need)\s+to\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|take\s+me\s+to|we\s+(?:should|want\s+to|wanna|need\s+to)\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|i'?d\s+like\s+to\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|going\s+to|trip\s+to|book\s+(?:us|me)\s+to|plan\s+(?:a\s+trip\s+to|me\s+a\s+trip\s+to)|how\s+about|let'?s\s+do|let'?s\s+try|(?:head|go|fly|drive|travel)\s+(?:over|down|out|up|across|on)\s+to|(?:head|fly|drive|travel)\s+to)\s+/i,
     "",
   );
   // Strip trailing phrases that describe what to do AT the destination.
