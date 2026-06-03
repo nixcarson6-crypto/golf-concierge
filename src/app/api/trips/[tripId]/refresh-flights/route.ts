@@ -160,13 +160,22 @@ export async function POST(
   });
   // Stick the chosen origin to the user's profile so every future trip
   // build pre-fills with this airport — the customer will not see the
-  // "Set your home airport" banner again.
-  void db.user
-    .update({
+  // "Set your home airport" banner again. AWAITED + logged so a failure
+  // here doesn't silently strand the user with a reappearing banner.
+  try {
+    await db.user.update({
       where: { id: user.id },
       data: { defaultOriginAirport: originIata },
-    })
-    .catch(() => {});
+    });
+    console.log(
+      `[refresh-flights] Saved defaultOriginAirport=${originIata} for user ${user.id}.`,
+    );
+  } catch (err) {
+    console.error(
+      `[refresh-flights] FAILED to save defaultOriginAirport for user ${user.id}:`,
+      err,
+    );
+  }
   nudge(tripId);
 
   return NextResponse.json({

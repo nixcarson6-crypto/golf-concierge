@@ -287,16 +287,27 @@ export async function POST(
       originFromQuiz = saved.defaultOriginAirport;
     }
   }
-  // Conversely, when we DID get an origin from the quiz (and the user
-  // doesn't already have one saved), persist it so the next trip starts
-  // pre-filled. Fire-and-forget — never block the build on a profile write.
+  // Conversely, when we DID get an origin (from the quiz OR the user's
+  // saved profile), persist it back to the user row so the next trip
+  // starts pre-filled. Unconditional update — we WANT the most recent
+  // typed/used airport to be the sticky one (overwrite stale values).
+  // No `void`/silent catch — a failure here is the root cause of the
+  // "Set your home airport" banner reappearing, so we log it loudly.
   if (originFromQuiz) {
-    void db.user
-      .updateMany({
-        where: { id: user.id, defaultOriginAirport: null },
+    try {
+      await db.user.update({
+        where: { id: user.id },
         data: { defaultOriginAirport: originFromQuiz },
-      })
-      .catch(() => {});
+      });
+      console.log(
+        `[build] Saved defaultOriginAirport=${originFromQuiz} for user ${user.id}.`,
+      );
+    } catch (err) {
+      console.error(
+        `[build] FAILED to save defaultOriginAirport for user ${user.id}:`,
+        err,
+      );
+    }
   }
   const airlinePref = answers.airlinePreference as string | undefined;
   const cabinAnswer =
