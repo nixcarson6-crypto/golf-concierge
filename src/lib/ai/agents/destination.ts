@@ -34,13 +34,11 @@ export async function runDestinationAgent(input: DestinationAgentInput) {
       // model would have responded fine.
       const runOnce = (): Promise<DestinationListAI> =>
         runStructured({
-          // Picking + ranking 3 destinations from a CURATED knowledge
-          // base is a selection task, not deep reasoning — Haiku handles
-          // it well at ~1/15th the Opus cost. This is the single biggest
-          // per-build saving: the destination call ships the entire
-          // destinations KB as input, so running it on Opus was the
-          // most expensive token-heavy call in the pipeline.
-          tier: "fast",
+          // Opus 4.7. Carson's call: quality over cost, no compromise.
+          // Destination choice sets the whole tone of the trip, so it
+          // gets the strongest model even though a cheaper one could
+          // do the raw ranking.
+          tier: "orchestrator",
           system: DESTINATION_SYSTEM,
           cacheSystem: true,
           schema: destinationListSchema,
