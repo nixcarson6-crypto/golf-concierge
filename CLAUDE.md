@@ -28,7 +28,7 @@ costs were 10x").
 - **Auth**: Clerk (`@clerk/nextjs` v6) — supports keyless dev mode
 - **DB**: Neon Postgres + Prisma (NOT Supabase — we tried, picked Neon for
   branching). Schema in `prisma/schema.prisma`
-- **AI**: Anthropic Claude — `claude-opus-4-7` for orchestration,
+- **AI**: Anthropic Claude — `claude-opus-4-8` for orchestration,
   `claude-haiku-4-5-20251001` for fast scoring + per-card swap suggestions.
   Hand-rolled orchestrator in `src/lib/ai/`
 - **Payments**: Stripe (not yet integrated end-to-end)
@@ -92,7 +92,7 @@ otherwise read `.env` only, not `.env.local`.
 
 | Provider | Status | Notes |
 |---|---|---|
-| Anthropic | ✅ | Required. Opus 4.7 + Haiku 4.5 |
+| Anthropic | ✅ | Required. Opus 4.8 + Haiku 4.5 |
 | Neon (DB) | ✅ | `DATABASE_URL` = pooled (with `?connection_limit=5&pool_timeout=30` set in code), `DIRECT_URL` = direct |
 | Clerk | ✅ | Real test keys |
 | Duffel | ✅ test mode | Live flight searches work; bookings are sandbox PNRs. Apply for live mode at duffel.com dashboard — usually approved in 1-3 days |

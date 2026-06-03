@@ -21,7 +21,7 @@ const definitions = {
   ANTHROPIC_API_KEY: { required: true },
   ANTHROPIC_MODEL_ORCHESTRATOR: {
     required: false,
-    default: "claude-opus-4-7",
+    default: "claude-opus-4-8",
   },
   ANTHROPIC_MODEL_FAST: {
     required: false,
