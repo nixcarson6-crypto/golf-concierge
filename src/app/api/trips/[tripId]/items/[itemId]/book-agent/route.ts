@@ -103,48 +103,48 @@ export async function POST(
 
   nudge(tripId);
 
-  // Fire the long-running job. Don't await — Inngest's worker picks it up.
-  // If Inngest isn't configured locally (no INNGEST_EVENT_KEY, no worker
-  // running), fall back to a fire-and-forget async run so local dev still
-  // works without `pnpm dlx inngest-cli dev`. In production with Inngest
-  // configured the event-based path is used as designed.
-  try {
-    await inngest.send({
-      name: "trip/booking.agent_requested",
-      data: {
-        tripId,
-        bookingId: booking.id,
-        itineraryItemId: itemId,
-        userId: user.id,
-      },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (
-      msg.includes("401") ||
-      msg.includes("Event key not found") ||
-      msg.includes("ECONNREFUSED")
-    ) {
-      console.warn(
-        "[book-agent] Inngest not available — running agent locally (fire-and-forget). In production, set INNGEST_EVENT_KEY + INNGEST_SIGNING_KEY and run the worker.",
+  // Fire the long-running job. In production we hand the event to
+  // Inngest; in local dev (no INNGEST_EVENT_KEY) we run the agent
+  // in-process as fire-and-forget so the customer sees progress without
+  // having to also run `pnpm dlx inngest-cli dev`.
+  const hasInngestWorker = Boolean(process.env.INNGEST_EVENT_KEY);
+  if (hasInngestWorker) {
+    try {
+      await inngest.send({
+        name: "trip/booking.agent_requested",
+        data: {
+          tripId,
+          bookingId: booking.id,
+          itineraryItemId: itemId,
+          userId: user.id,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[book-agent] Inngest send failed (${msg}) — falling back to in-process run.`,
       );
-      // Fire-and-forget — the route still returns immediately so the UI
-      // shows live progress via the SSE bridge. Errors inside are logged
-      // by runBrowserBooking itself.
-      const { runBrowserBooking } = await import(
-        "@/lib/bookings/browser-agent/run-booking"
-      );
-      void runBrowserBooking({
-        tripId,
-        bookingId: booking.id,
-        itineraryItemId: itemId,
-        userId: user.id,
-      }).catch((e) =>
-        console.error("[book-agent] local fire-and-forget failed:", e),
-      );
-    } else {
-      throw err;
+      await runInProcess();
     }
+  } else {
+    console.warn(
+      "[book-agent] INNGEST_EVENT_KEY not set — running agent in-process (local-dev mode).",
+    );
+    await runInProcess();
+  }
+
+  async function runInProcess() {
+    const { runBrowserBooking } = await import(
+      "@/lib/bookings/browser-agent/run-booking"
+    );
+    void runBrowserBooking({
+      tripId,
+      bookingId: booking.id,
+      itineraryItemId: itemId,
+      userId: user.id,
+    }).catch((e) =>
+      console.error("[book-agent] in-process run failed:", e),
+    );
   }
 
   return NextResponse.json({
