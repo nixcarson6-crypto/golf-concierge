@@ -537,9 +537,12 @@ export function cleanDestination(raw: string | null | undefined): string | null 
   if (!raw) return null;
   let s = raw.trim();
   if (!s) return null;
-  // Strip leading conversational phrases.
+  // Strip leading conversational phrases. The verb group accepts an
+  // optional adverb ("over", "down", "out", "up", "across") between the
+  // verb and "to" so "head over to Alabama" / "fly out to Bandon" /
+  // "go down to Pinehurst" all get cleaned to just the place name.
   s = s.replace(
-    /^(let'?s\s+(?:go|head|fly|travel)\s+to|i\s+(?:want|wanna|would\s+like|need)\s+to\s+(?:go|head|fly|travel)\s+to|take\s+me\s+to|we\s+(?:should|want\s+to|wanna|need\s+to)\s+(?:go|head|fly|travel)\s+to|i'?d\s+like\s+to\s+(?:go|head|fly|travel)\s+to|going\s+to|trip\s+to|book\s+(?:us|me)\s+to|plan\s+(?:a\s+trip\s+to|me\s+a\s+trip\s+to)|how\s+about|let'?s\s+do|let'?s\s+try)\s+/i,
+    /^(let'?s\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|i\s+(?:want|wanna|would\s+like|need)\s+to\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|take\s+me\s+to|we\s+(?:should|want\s+to|wanna|need\s+to)\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|i'?d\s+like\s+to\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|going\s+to|trip\s+to|book\s+(?:us|me)\s+to|plan\s+(?:a\s+trip\s+to|me\s+a\s+trip\s+to)|how\s+about|let'?s\s+do|let'?s\s+try)\s+/i,
     "",
   );
   // Strip trailing phrases that describe what to do AT the destination.
@@ -583,6 +586,17 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     /^(go|here|there|somewhere|anywhere|wherever)$/i,
     /^(maybe|idk|dunno|whatever|surprise\s+me)$/i,
     /^(nice|good|great|fun|cool)$/i,
+    // Multi-word verb phrases that survived the prefix strip — anything
+    // that STARTS with one of these is a conversational fragment, not a
+    // place name. Catches "I want", "I want to", "we want to play",
+    // "let's go somewhere", "play their nicest", "pick the best",
+    // "find me a", "show me", "give us", "book me a"…
+    /^(i|we|you|they|us)\s+(want|need|wanna|would|gonna|going|should|might|could|hope|love|like|plan|think)\b/i,
+    /^(let'?s|let\s+(?:us|me))\s+/i,
+    /^(play|pick|find|book|show|give|get|grab|do|see|visit|check|try)\s+(me|us|them|the|their|your|some|a|an|any|out)\b/i,
+    // Pure imperative verb followed by an article — "play the nicest",
+    // "pick the best course" — no proper-noun signal.
+    /^(play|pick|find|book|show|give|do|see|visit|check|try|stay)\s+(the|a|an|some|any)\s+/i,
   ];
   if (garbagePatterns.some((re) => re.test(s))) return null;
   return s.length > 0 ? titleCaseDestination(s) : null;

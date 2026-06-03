@@ -49,12 +49,19 @@ export function parseLegs(input: string): ParsedLeg[] | null {
 
   // For each leg, extract destination + optional night count
   // ("Pinehurst for 5 days" → { destination: "Pinehurst", nights: 5 })
+  // CRITICAL: if ANY part fails to clean, the whole input was
+  // conversational ("I want to go then play the nicest course") — not a
+  // real leg list. Return null so the caller falls through to
+  // "Surprise me" mode and lets the destination agent pick real places,
+  // instead of persisting "I Want" / "Play Their Nicest Course" as
+  // trip legs.
   const legs: ParsedLeg[] = [];
   for (const raw of parts) {
     const leg = parseLeg(raw);
-    if (leg) legs.push(leg);
+    if (!leg) return null;
+    legs.push(leg);
   }
-  if (legs.length < 2) return null; // fewer than 2 valid legs parsed
+  if (legs.length < 2) return null;
   return legs;
 }
 
