@@ -29,8 +29,24 @@ export default async function TripLayout({
       OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
     },
     orderBy: { updatedAt: "desc" },
-    select: { id: true, title: true },
+    select: {
+      id: true,
+      title: true,
+      destination: true,
+      legs: { select: { destination: true }, orderBy: { legIndex: "asc" } },
+    },
     take: 12,
+  });
+  // Pull the active trip's legs so the main header label matches the tabs.
+  const activeLegs = await db.tripLeg.findMany({
+    where: { tripId: trip.id },
+    orderBy: { legIndex: "asc" },
+    select: { destination: true },
+  });
+  const activeLabel = tripDisplayLabel({
+    title: trip.title,
+    destination: trip.destination,
+    legs: activeLegs,
   });
 
   return (
@@ -49,7 +65,7 @@ export default async function TripLayout({
               /
             </span>
             <h1 className="text-display text-base sm:text-lg tracking-tight truncate min-w-0">
-              {trip.title}
+              {activeLabel}
             </h1>
           </div>
           <div className="shrink-0">
@@ -64,11 +80,36 @@ export default async function TripLayout({
   );
 }
 
+/**
+ * Single source of truth for what a trip is called in headers and tabs.
+ * Just the destinations — joined by " / " for multi-leg — never the noisy
+ * AI title (which used to embed party size + month, like "pinehurst · 2
+ * players · Jun"). Falls back to the raw title only if we genuinely have
+ * no destination yet (a trip that's still being built).
+ */
+function tripDisplayLabel(t: {
+  title: string;
+  destination: string | null;
+  legs: { destination: string }[];
+}): string {
+  const legNames = t.legs
+    .map((l) => l.destination?.trim())
+    .filter((s): s is string => Boolean(s));
+  if (legNames.length > 0) return legNames.join(" / ");
+  if (t.destination?.trim()) return t.destination.trim();
+  return t.title;
+}
+
 function TripTabs({
   trips,
   activeId,
 }: {
-  trips: { id: string; title: string }[];
+  trips: {
+    id: string;
+    title: string;
+    destination: string | null;
+    legs: { destination: string }[];
+  }[];
   activeId: string;
 }) {
   return (
@@ -76,19 +117,20 @@ function TripTabs({
       <div className="container py-2 flex items-center gap-1 overflow-x-auto no-scrollbar">
         {trips.map((t) => {
           const active = t.id === activeId;
+          const label = tripDisplayLabel(t);
           return (
             <Link
               key={t.id}
               href={`/trips/${t.id}`}
               className={cn(
-                "shrink-0 px-3 py-1.5 rounded-lg text-sm transition whitespace-nowrap max-w-[180px] truncate",
+                "shrink-0 px-3 py-1.5 rounded-lg text-sm transition whitespace-nowrap max-w-[220px] truncate",
                 active
                   ? "bg-surface-raised text-foreground"
                   : "text-muted-foreground hover:text-foreground hover:bg-surface-raised/60",
               )}
-              title={t.title}
+              title={label}
             >
-              {t.title}
+              {label}
             </Link>
           );
         })}
