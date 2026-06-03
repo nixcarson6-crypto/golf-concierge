@@ -229,11 +229,16 @@ export async function POST(
       ];
     }
   } catch (err) {
-    console.error("[build] destination/leg resolution failed:", err);
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    console.error(
+      `[build] DESTINATION STEP FAILED — root cause: ${rawMsg.slice(0, 500)}`,
+    );
+    console.error("[build] full stack:", err);
+    // Run through friendlyBuildError so model glitches at the
+    // destination stage get the same humane copy as itinerary glitches
+    // (currently they leak the raw 'Destination step failed: ...').
     return new Response(
-      JSON.stringify({
-        error: `Destination step failed: ${err instanceof Error ? err.message : String(err)}`,
-      }),
+      JSON.stringify({ error: friendlyBuildError(rawMsg) }),
       { status: 502, headers: { "Content-Type": "application/json" } },
     );
   }
@@ -461,8 +466,14 @@ export async function POST(
   } catch (err) {
     // Full stack to the terminal for diagnostics; humane, JSON-free copy to
     // the customer. A Zod dump in the UI is unacceptable.
-    console.error("[build] itinerary step failed:", err);
     const rawMsg = err instanceof Error ? err.message : String(err);
+    // Print a tagged single-line summary so it's grep-able in the dev
+    // terminal, THEN the full stack below. Without the tagged line it's
+    // way too easy to miss the root cause inside a wall of stack noise.
+    console.error(
+      `[build] ITINERARY STEP FAILED — root cause: ${rawMsg.slice(0, 500)}`,
+    );
+    console.error("[build] full stack:", err);
     const userMsg = friendlyBuildError(rawMsg);
     return new Response(
       JSON.stringify({ error: userMsg }),

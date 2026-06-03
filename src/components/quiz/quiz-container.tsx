@@ -134,13 +134,28 @@ export function QuizContainer({ tripId }: { tripId: string }) {
     // spinner with clear progress text.
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), 8 * 60 * 1000);
-    try {
-      const res = await fetch(`/api/trips/${tripId}/build`, {
+    // One silent auto-retry on transient server failures (502, network
+    // blip) before we dump the customer to the error banner. Most
+    // 'we couldn't finish your itinerary' failures are model-tier
+    // hiccups that resolve on the second try — surfacing the banner
+    // first then making them tap retry is just user-hostile.
+    const callBuildOnce = async (): Promise<Response> =>
+      fetch(`/api/trips/${tripId}/build`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answers }),
         signal: controller.signal,
       });
+    try {
+      let res = await callBuildOnce();
+      if (!res.ok && res.status >= 500) {
+        // Server returned a 5xx — try one more time before bailing.
+        await new Promise((r) => setTimeout(r, 3000));
+        console.warn(
+          `[quiz] build returned ${res.status} — silently retrying once before showing the error.`,
+        );
+        res = await callBuildOnce();
+      }
       if (!res.ok) {
         // Server returns { error: "..." } JSON on failures. Surface that
         // exact message to the user instead of a bare "Build failed: 500".
