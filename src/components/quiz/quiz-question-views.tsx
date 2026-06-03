@@ -25,8 +25,8 @@ export function SingleSelectView({
   onFreeTextSubmit?: () => void;
 }) {
   return (
-    <div className="max-w-2xl mx-auto w-full space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="max-w-2xl mx-auto w-full space-y-6">
+      <div className="grid gap-2.5 sm:grid-cols-2">
         {question.options.map((opt) => {
           const selected = value === opt.value;
           return (
@@ -35,25 +35,33 @@ export function SingleSelectView({
               type="button"
               onClick={() => onAnswer(opt.value)}
               className={cn(
-                "group relative text-left rounded-2xl border bg-surface-raised/70 px-5 py-4 transition",
-                "hover:border-foreground/40 hover:bg-surface-raised hover:scale-[1.01]",
+                "group relative text-left rounded-xl border bg-background px-5 py-4 transition-all duration-150",
+                "hover:border-foreground hover:shadow-[0_1px_0_0_hsl(var(--foreground))]",
                 selected
-                  ? "border-[hsl(var(--copper))] bg-[hsl(var(--copper))]/8 ring-2 ring-[hsl(var(--copper))]/30"
-                  : "border-border/60",
+                  ? "border-foreground shadow-[0_1px_0_0_hsl(var(--foreground))]"
+                  : "border-border",
               )}
             >
-              <div className="flex items-start gap-3">
+              {/* Selected marker — a small filled square in the top-right.
+                  Monochrome version of the old copper ring + tint. */}
+              <span
+                className={cn(
+                  "absolute right-4 top-4 size-2 rounded-full transition-all",
+                  selected ? "bg-foreground scale-100" : "bg-transparent scale-0",
+                )}
+              />
+              <div className="flex items-start gap-3 pr-4">
                 {opt.glyph && (
-                  <span className="text-2xl leading-none shrink-0 mt-0.5">
+                  <span className="text-xl leading-none shrink-0 mt-0.5 grayscale opacity-80">
                     {opt.glyph}
                   </span>
                 )}
                 <div className="min-w-0">
-                  <p className="font-semibold text-foreground leading-snug">
+                  <p className="font-medium text-foreground leading-snug">
                     {opt.label}
                   </p>
                   {opt.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                       {opt.description}
                     </p>
                   )}
@@ -146,8 +154,8 @@ export function MultiSelectView({
     hasFreeText;
 
   return (
-    <div className="max-w-2xl mx-auto w-full space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="max-w-2xl mx-auto w-full space-y-6">
+      <div className="grid gap-2.5 sm:grid-cols-2">
         {question.options.map((opt) => {
           const isSelected = selected.includes(opt.value);
           return (
@@ -156,25 +164,32 @@ export function MultiSelectView({
               type="button"
               onClick={() => toggle(opt.value)}
               className={cn(
-                "group text-left rounded-2xl border bg-surface-raised/70 px-5 py-4 transition",
-                "hover:border-foreground/40 hover:bg-surface-raised",
+                "group relative text-left rounded-xl border bg-background px-5 py-4 transition-all duration-150",
+                "hover:border-foreground",
                 isSelected
-                  ? "border-[hsl(var(--copper))] bg-[hsl(var(--copper))]/8 ring-2 ring-[hsl(var(--copper))]/30"
-                  : "border-border/60",
+                  ? "border-foreground shadow-[0_1px_0_0_hsl(var(--foreground))]"
+                  : "border-border",
               )}
             >
-              <div className="flex items-start gap-3">
+              {/* Tiny filled square in the corner replaces the gold ring. */}
+              <span
+                className={cn(
+                  "absolute right-4 top-4 size-2 rounded-full transition-all",
+                  isSelected ? "bg-foreground scale-100" : "bg-transparent scale-0",
+                )}
+              />
+              <div className="flex items-start gap-3 pr-4">
                 {opt.glyph && (
-                  <span className="text-2xl leading-none shrink-0 mt-0.5">
+                  <span className="text-xl leading-none shrink-0 mt-0.5 grayscale opacity-80">
                     {opt.glyph}
                   </span>
                 )}
                 <div className="min-w-0">
-                  <p className="font-semibold text-foreground leading-snug">
+                  <p className="font-medium text-foreground leading-snug">
                     {opt.label}
                   </p>
                   {opt.description && (
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                       {opt.description}
                     </p>
                   )}
@@ -235,7 +250,7 @@ export function SliderView({
   return (
     <div className="max-w-xl mx-auto w-full space-y-6">
       <div className="text-center space-y-2">
-        <p className="text-5xl font-bold tabular-nums text-[hsl(var(--copper))]">
+        <p className="text-display text-6xl tracking-tight tabular-nums text-foreground">
           {display}
         </p>
       </div>
@@ -246,7 +261,7 @@ export function SliderView({
         step={question.step}
         value={current}
         onChange={(e) => onChange(parseInt(e.target.value, 10))}
-        className="w-full accent-[hsl(var(--copper))]"
+        className="w-full accent-foreground"
       />
       <div className="flex items-center justify-between text-xs text-muted-foreground tabular-nums">
         <span>

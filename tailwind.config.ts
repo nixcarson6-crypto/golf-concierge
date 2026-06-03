@@ -75,8 +75,7 @@ export default {
         sm: "calc(var(--radius) - 8px)",
       },
       backgroundImage: {
-        "concierge-radial":
-          "radial-gradient(1200px 600px at 20% -10%, hsl(var(--navy) / 0.06), transparent 60%), radial-gradient(900px 500px at 100% 10%, hsl(var(--copper) / 0.04), transparent 55%)",
+        "concierge-radial": "none",
       },
       keyframes: {
         "accordion-down": {
@@ -95,12 +94,20 @@ export default {
           "0%, 100%": { opacity: "0.55" },
           "50%": { opacity: "1" },
         },
+        // The thin sweeping bar used on the build-loading screen — a
+        // single foreground-colored segment that slides across a hairline
+        // track. Reads as 'system is working' without color or pulsing.
+        buildSweep: {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(400%)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         shimmer: "shimmer 2.4s linear infinite",
         "pulse-soft": "pulseSoft 2.8s ease-in-out infinite",
+        "build-sweep": "buildSweep 1.6s ease-in-out infinite",
       },
     },
   },

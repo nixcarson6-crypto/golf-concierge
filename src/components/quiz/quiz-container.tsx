@@ -238,9 +238,9 @@ export function QuizContainer({ tripId }: { tripId: string }) {
             >
               <ArrowLeft className="size-4" />
             </button>
-            <div className="flex-1 h-1.5 rounded-full bg-surface-raised overflow-hidden">
+            <div className="flex-1 h-px bg-border overflow-hidden">
               <div
-                className="h-full bg-[hsl(var(--copper))] transition-all duration-300 ease-out"
+                className="h-full bg-foreground transition-all duration-300 ease-out"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -255,10 +255,10 @@ export function QuizContainer({ tripId }: { tripId: string }) {
                 className={cn(
                   "transition",
                   s.done
-                    ? "text-[hsl(var(--copper))]"
+                    ? "text-foreground font-medium"
                     : s.reached
-                      ? "text-foreground font-medium"
-                      : "text-muted-foreground/50",
+                      ? "text-foreground/70"
+                      : "text-muted-foreground/40",
                 )}
               >
                 {s.label}

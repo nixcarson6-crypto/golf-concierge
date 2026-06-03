@@ -4,48 +4,54 @@
 
 @layer base {
   :root {
-    /* Light, editorial palette — bone white background, deep navy accent,
-     * sparing copper micro-accent. Inspired by yacht-luxury / quiet print. */
-    --background: 36 28% 94%;       /* #F5F1EA bone white */
-    --foreground: 210 51% 8%;       /* #0B1620 ink */
+    /* Pure monochrome palette. White background, black ink. Every "accent"
+     * color (navy / copper / emerald) collapses to black so the whole app
+     * reads as quiet editorial print — no gold, no blue, no green. The
+     * only contrast lever is greyscale weight. */
+    --background: 0 0% 100%;        /* pure white */
+    --foreground: 0 0% 4%;          /* near-black ink */
 
-    --surface: 34 22% 97%;
-    --surface-raised: 34 14% 99%;
-    --surface-sunken: 36 28% 91%;
+    --surface: 0 0% 100%;
+    --surface-raised: 0 0% 100%;
+    --surface-sunken: 0 0% 96%;
 
-    --card: 34 22% 97%;
-    --card-foreground: 210 51% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
 
-    --popover: 34 14% 99%;
-    --popover-foreground: 210 51% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
 
-    --primary: 215 41% 18%;         /* deep navy */
-    --primary-foreground: 36 28% 96%;
+    --primary: 0 0% 4%;             /* black */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 215 24% 28%;
-    --secondary-foreground: 36 28% 96%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 36 16% 88%;
-    --muted-foreground: 215 12% 38%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 38%;
 
-    --accent: 24 49% 56%;           /* copper — for sparing micro-accents */
-    --accent-foreground: 36 28% 96%;
+    --accent: 0 0% 4%;              /* black — was copper */
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 4 64% 48%;
-    --destructive-foreground: 36 28% 96%;
+    --destructive: 0 0% 4%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 215 14% 82%;
-    --input: 215 14% 86%;
-    --ring: 215 41% 28%;
+    --border: 0 0% 88%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 4%;
 
-    --navy: 215 41% 18%;            /* #1B2A41 primary accent */
-    --navy-muted: 215 28% 32%;
-    --copper: 24 49% 56%;           /* #C18F5C micro-accent, sparing */
-    --copper-muted: 24 32% 44%;
-    --emerald: 158 38% 32%;         /* darker green that reads on light bg */
-    --emerald-muted: 158 24% 26%;
-    --warning: 32 78% 44%;
-    --success: 158 44% 32%;
+    /* Legacy accent tokens — all collapsed to black/grey so any component
+     * still referencing them renders monochrome. Removing them entirely
+     * would require touching ~80 files; pointing them at black is the
+     * one-line sweep. */
+    --navy: 0 0% 4%;
+    --navy-muted: 0 0% 24%;
+    --copper: 0 0% 4%;
+    --copper-muted: 0 0% 24%;
+    --emerald: 0 0% 4%;
+    --emerald-muted: 0 0% 24%;
+    --warning: 0 0% 4%;
+    --success: 0 0% 4%;
 
     --radius: 0.875rem;
 
@@ -74,14 +80,10 @@
 
   body {
     @apply bg-background text-foreground;
-    background-image:
-      radial-gradient(1200px 600px at 18% -10%, hsl(var(--navy) / 0.05), transparent 60%),
-      radial-gradient(900px 500px at 100% 8%, hsl(var(--copper) / 0.04), transparent 55%);
-    background-attachment: fixed;
   }
 
   ::selection {
-    background-color: hsl(var(--navy) / 0.18);
+    background-color: hsl(0 0% 4% / 0.12);
     color: hsl(var(--foreground));
   }
 
