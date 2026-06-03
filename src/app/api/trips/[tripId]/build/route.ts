@@ -137,10 +137,14 @@ export async function POST(
       }
       legs = withDates;
       chosenDestination = legs[0].destination;
-      // Update the primary trip destination to leg 0 for the header.
+      // Update the primary trip destination AND title to leg 0 for the
+      // header. Title is force-set (not gated on placeholder) so even
+      // when the user typed a conversational sentence ("the top-rated
+      // course in Tennessee, if they have a resort…") the header
+      // shows the resolved leg name, never the raw input.
       await db.trip.update({
         where: { id: tripId },
-        data: { destination: chosenDestination },
+        data: { destination: chosenDestination, title: chosenDestination },
       });
       multiLegContextNote =
         `MULTI-LEG TRIP — ${legs.length} legs. Plan an itinerary that ` +
@@ -158,18 +162,37 @@ export async function POST(
     } else {
       // Single-leg destination resolution: specific known place vs hint
       // routing (existing logic).
+      // We use cleanedPrimary (which is null when the input was
+      // conversational) for the "useDirectly" check, but we fall back
+      // to the RAW user input as a hint for the destination agent.
+      // Without this, typing "the top-rated course in Tennessee"
+      // would lose the Tennessee + top-rated hints entirely once
+      // cleanDestination rejected the sentence, and the agent would
+      // pick from nowhere in particular.
       const userTyped = constraints.destination?.trim() ?? "";
+      const rawHint = rawDest && rawDest !== userTyped ? rawDest : "";
       const useDirectly =
         userTyped.length > 0 && !looksLikeHintNotPlace(userTyped);
 
       if (useDirectly) {
         chosenDestination = userTyped;
+        // Sync trip.title to the typed destination so the header reads
+        // "Pinehurst" instead of "Untitled trip".
+        await db.trip.update({
+          where: { id: tripId },
+          data: { title: chosenDestination },
+        });
       } else {
-        const constraintsForAgent = userTyped
+        // Pass the user's hint to the agent — whichever survived. Prefer
+        // the cleaned form (a real-ish phrase) but fall back to the raw
+        // input so the agent still sees "the top-rated course in
+        // Tennessee" even though cleanDestination rejected the sentence.
+        const hintForAgent = userTyped || rawHint;
+        const constraintsForAgent = hintForAgent
           ? {
               ...constraints,
               destination: null,
-              notes: `User's destination hint: "${userTyped}". Pick a real bookable golf destination that matches this hint. ${constraints.notes ?? ""}`.trim(),
+              notes: `User's destination hint: "${hintForAgent}". Pick a real bookable golf destination that matches this hint. ${constraints.notes ?? ""}`.trim(),
             }
           : { ...constraints, destination: null };
         const destRun = await runDestinationAgent({
@@ -187,9 +210,13 @@ export async function POST(
           );
         }
         chosenDestination = top.name;
+        // Force trip.title to match the agent-picked place too — same
+        // reasoning as the multi-leg branch above. If the user typed
+        // gibberish, the title now reflects the bookable course
+        // ("Sweetens Cove") instead of the gibberish.
         await db.trip.update({
           where: { id: tripId },
-          data: { destination: chosenDestination },
+          data: { destination: chosenDestination, title: chosenDestination },
         });
         nudge(tripId);
       }

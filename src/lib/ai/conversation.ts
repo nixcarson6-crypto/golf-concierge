@@ -604,8 +604,30 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     // safe). When parseLegs is strict-fail, false-rejections here just
     // route through the destination agent, which is fine.
     /^(play|stay|eat|drink|sleep|relax|chill|enjoy|hit|swim|surf|ski|shop|tour|explore|drive|find|pick|book|show|give|get|grab|do|see|visit|check|try|head|fly|go|take)\s+\S+/i,
+    // Conditional / clause openers — "if", "only if", "but", "unless",
+    // "that'd be nice", "maybe", "hopefully". These start dependent
+    // clauses, not place names.
+    /^(if|only|but|unless|maybe|hopefully|ideally|preferably|possibly|otherwise|though|although|whereas)\b/i,
+    /^(that'?d|that'?s|that\s+is|that\s+would|i'?d|i'?ll|we'?d|we'?ll)\b/i,
+    // Descriptive determiner + superlative — "the top-rated course",
+    // "the best place", "the cheapest hotel", "the nicest resort".
+    // These describe what the user WANTS, they're not a name.
+    /^the\s+(top[\s-]?rated|best|cheapest|nicest|finest|greatest|top|fanciest|most[\s-]?expensive|highest[\s-]?rated|coolest|hottest|trendiest|cheapest|priciest)\b/i,
+    // Article + adjective + noun ("a links course", "an island
+    // hideaway") — these are descriptions, not names. Real venue
+    // names don't typically start with "a"/"an" + adjective.
+    /^(a|an)\s+\w+\s+(course|resort|hotel|club|destination|place|spot|trip)\b/i,
   ];
   if (garbagePatterns.some((re) => re.test(s))) return null;
+  // Sentence-shape rejections:
+  //   - Mid-string period followed by space + more text → multi-sentence
+  //     input, not a place name ("Tennessee. If they have a resort…").
+  //   - Contains common conversational connectives that don't belong in
+  //     any real venue name ("if", "but", "only", "unless", "would",
+  //     "could", "should", "might", "maybe"). Real names like
+  //     "The Inn at Spanish Bay" survive (no conditional tokens).
+  if (/\.\s+\S/.test(s)) return null;
+  if (/\b(if|but|only|unless|would|could|should|might|maybe|preferably|ideally|honestly|basically|otherwise)\b/i.test(s)) return null;
   return s.length > 0 ? titleCaseDestination(s) : null;
 }
 

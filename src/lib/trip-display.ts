@@ -23,12 +23,34 @@ export type TripDisplayInput = {
 export function tripDisplayLabel(t: TripDisplayInput): string {
   const legNames =
     (t.legs ?? [])
-      .map((l) => titleCaseDestination((l.destination ?? "").trim()))
-      .filter((s) => s.length > 0);
+      .map((l) => (l.destination ?? "").trim())
+      .filter((s) => s.length > 0 && !looksLikeSentence(s))
+      .map(titleCaseDestination);
   if (legNames.length > 0) return legNames.join(" / ");
-  const d = titleCaseDestination((t.destination ?? "").trim());
-  if (d.length > 0) return d;
-  return (t.title ?? "").trim() || "Untitled trip";
+  const d = (t.destination ?? "").trim();
+  if (d.length > 0 && !looksLikeSentence(d)) return titleCaseDestination(d);
+  const title = (t.title ?? "").trim();
+  if (title.length > 0 && !looksLikeSentence(title)) return titleCaseDestination(title);
+  return "Generating destination…";
+}
+
+/**
+ * Reject obviously-conversational strings at the display layer so a
+ * stale DB row from before the parser hardening lands ("The Top-Rated
+ * Course in Tennessee. If they have a resort…") doesn't render as a
+ * trip title. Mirrors the same shape-checks in cleanDestination —
+ * sentence punctuation, conditional connectives, descriptive
+ * determiners + superlatives. Anything that survives is short enough
+ * to plausibly be a real place name.
+ */
+function looksLikeSentence(s: string): boolean {
+  if (!s) return false;
+  if (s.length > 70) return true;
+  if (/\.\s+\S/.test(s)) return true;
+  if (/\b(if|but|only|unless|would|could|should|might|maybe|preferably|ideally)\b/i.test(s)) return true;
+  if (/^the\s+(top[\s-]?rated|best|cheapest|nicest|finest|greatest|fanciest|highest[\s-]?rated)\b/i.test(s)) return true;
+  if (/^(i|we|you|they|us)\s+(want|need|wanna|would|gonna|going|should|might|could|hope|love|like|plan|think)\b/i.test(s)) return true;
+  return false;
 }
 
 /**
