@@ -19,6 +19,7 @@ import {
   searchFlights,
   type FlightOfferSummary,
 } from "@/lib/bookings/providers/duffel-search";
+import { rewriteFlightItemsFromOffer } from "@/lib/flights/rewrite-items";
 
 const bodySchema = z.object({
   modifier: z.enum([
@@ -166,6 +167,24 @@ export async function POST(
       } as object,
     },
   });
+
+  // Rewrite the persisted FLIGHT itinerary items so the cards on screen
+  // reflect the new top offer (airline, airports, times, cost). Without
+  // this the chips would only change the invisible suggestedFlights blob
+  // and the visible flight cards would stay stale.
+  const topOffer = updatedBlock.offers[0];
+  if (topOffer) {
+    try {
+      await rewriteFlightItemsFromOffer({
+        tripId,
+        offer: topOffer,
+        passengers: updatedBlock.passengers,
+      });
+    } catch (err) {
+      console.error("[refine-flights] rewrite items failed:", err);
+    }
+  }
+
   nudge(tripId);
 
   return new Response(

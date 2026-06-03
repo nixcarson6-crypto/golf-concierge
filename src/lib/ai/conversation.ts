@@ -585,7 +585,37 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     /^(nice|good|great|fun|cool)$/i,
   ];
   if (garbagePatterns.some((re) => re.test(s))) return null;
-  return s.length > 0 ? s : null;
+  return s.length > 0 ? titleCaseDestination(s) : null;
+}
+
+/**
+ * Title-case a destination string so user-typed input ("erin hills",
+ * "bandon dunes") renders as "Erin Hills" / "Bandon Dunes" in headers,
+ * tabs, and tiles. Preserves all-caps tokens (DFW, USA), articles
+ * stay lowercase mid-string ("The Carolina at Pinehurst" → keep "at"
+ * lowercase), and apostrophed words ("St. Andrew's") survive.
+ */
+function titleCaseDestination(s: string): string {
+  const SMALL_WORDS = new Set([
+    "of", "the", "at", "in", "on", "and", "or", "a", "an", "to", "for",
+    "de", "del", "la", "las", "los", "le", "les", "di", "da", "do",
+  ]);
+  const words = s.split(/(\s+|[-/])/);
+  return words
+    .map((w, i) => {
+      if (/^\s+$/.test(w) || w === "-" || w === "/") return w;
+      // Already mixed-case (McLean) or all-caps abbrev (DFW, USA) — leave it.
+      if (/[A-Z]/.test(w) && /[a-z]/.test(w)) return w;
+      if (/^[A-Z]{2,}$/.test(w)) return w;
+      const lower = w.toLowerCase();
+      if (i > 0 && SMALL_WORDS.has(lower)) return lower;
+      // Capitalize first letter; preserve internal apostrophes/periods.
+      return lower.replace(
+        /([\p{L}])(\p{L}*)/u,
+        (_m, first: string, rest: string) => first.toUpperCase() + rest,
+      );
+    })
+    .join("");
 }
 
 export function autoTitle(args: {

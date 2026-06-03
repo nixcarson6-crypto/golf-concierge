@@ -23,10 +23,40 @@ export type TripDisplayInput = {
 export function tripDisplayLabel(t: TripDisplayInput): string {
   const legNames =
     (t.legs ?? [])
-      .map((l) => (l.destination ?? "").trim())
+      .map((l) => titleCaseDestination((l.destination ?? "").trim()))
       .filter((s) => s.length > 0);
   if (legNames.length > 0) return legNames.join(" / ");
-  const d = (t.destination ?? "").trim();
+  const d = titleCaseDestination((t.destination ?? "").trim());
   if (d.length > 0) return d;
   return (t.title ?? "").trim() || "Untitled trip";
+}
+
+/**
+ * Title-case a destination so user-typed input ("erin hills") renders as
+ * "Erin Hills". Preserves all-caps tokens (DFW), already-mixed-case
+ * words (McLean), and keeps small articles lowercase mid-string.
+ * Mirrors the helper in `src/lib/ai/conversation.ts` — duplicated here
+ * intentionally so this module stays a leaf (no AI/db deps) and is safe
+ * to import from server pages and client components alike.
+ */
+function titleCaseDestination(s: string): string {
+  if (!s) return s;
+  const SMALL_WORDS = new Set([
+    "of", "the", "at", "in", "on", "and", "or", "a", "an", "to", "for",
+    "de", "del", "la", "las", "los", "le", "les", "di", "da", "do",
+  ]);
+  const words = s.split(/(\s+|[-/])/);
+  return words
+    .map((w, i) => {
+      if (/^\s+$/.test(w) || w === "-" || w === "/") return w;
+      if (/[A-Z]/.test(w) && /[a-z]/.test(w)) return w;
+      if (/^[A-Z]{2,}$/.test(w)) return w;
+      const lower = w.toLowerCase();
+      if (i > 0 && SMALL_WORDS.has(lower)) return lower;
+      return lower.replace(
+        /([\p{L}])(\p{L}*)/u,
+        (_m, first: string, rest: string) => first.toUpperCase() + rest,
+      );
+    })
+    .join("");
 }

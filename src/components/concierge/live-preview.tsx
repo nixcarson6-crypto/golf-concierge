@@ -43,6 +43,7 @@ import { FlightBookingModal } from "./flight-booking-modal";
 import { TravelerProfileModal } from "./traveler-profile-modal";
 import { AgentBookingPanel } from "./agent-booking-panel";
 import { SetOriginBanner } from "./set-origin-banner";
+import { tripDisplayLabel } from "@/lib/trip-display";
 import { buildUberDeepLink } from "@/lib/uber-deep-link";
 import type {
   WorkspaceBooking,
@@ -121,7 +122,13 @@ export function LivePreview({
           )}
         </div>
         <h2 className="mt-1 text-display text-xl tracking-tight truncate">
-          {trip.destination ?? "Destination forming…"}
+          {trip.destination || (trip.legs && trip.legs.length > 0)
+            ? tripDisplayLabel({
+                title: trip.title,
+                destination: trip.destination,
+                legs: trip.legs,
+              })
+            : "Destination forming…"}
         </h2>
         {subtitleParts.length > 0 && (
           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -218,7 +225,11 @@ export function LivePreview({
             <SetOriginBanner tripId={tripId} />
           )}
         {itinerary && itinerary.items.length > 0 && (
-          <ItineraryCategoriesSection tripId={tripId} itinerary={itinerary} />
+          <ItineraryCategoriesSection
+            tripId={tripId}
+            itinerary={itinerary}
+            suggestedFlights={trip.suggestedFlights}
+          />
         )}
         {groups.length === 0 ? (
           !trip.suggestedFlights && (!itinerary || itinerary.items.length === 0) ? (
@@ -1195,12 +1206,83 @@ function categoryKeyFor(type: ItineraryItemType): ItineraryCategoryKey {
   }
 }
 
+/**
+ * The 5 per-card refinement chips ("Cheaper / Nonstop only / Earlier /
+ * Later / Different airline") shown ONLY inside the Flights category
+ * section. Tapping a chip hits /refine-flights, which re-runs Duffel
+ * (cheaper = downgrade cabin one notch; others = same params, then
+ * client-side filter) AND rewrites the FLIGHT itinerary items so the
+ * two visible flight cards update in place. Zero AI tokens.
+ */
+function FlightRefineChips({ tripId }: { tripId: string }) {
+  const qc = useQueryClient();
+  const router = useRouter();
+  const [refining, setRefining] = React.useState<FlightRefineModifier | null>(
+    null,
+  );
+
+  const refine = async (modifier: FlightRefineModifier) => {
+    if (refining) return;
+    setRefining(modifier);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/refine-flights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modifier }),
+      });
+      const data = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string; count?: number }
+        | null;
+      if (!res.ok || data?.error) {
+        toast.error(data?.error ?? "Couldn't refine the flight options.");
+      } else {
+        const label = REFINE_CHIPS.find((c) => c.id === modifier)?.label ?? "";
+        toast.success(`Flights updated — ${label.toLowerCase()}.`);
+        await qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+        router.refresh();
+      }
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setRefining(null);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-1.5 px-1 pb-1">
+      {REFINE_CHIPS.map((chip) => {
+        const isRefining = refining === chip.id;
+        const disabled = refining !== null;
+        return (
+          <button
+            key={chip.id}
+            type="button"
+            disabled={disabled}
+            onClick={() => refine(chip.id)}
+            className={cn(
+              "text-[11px] rounded-full px-2.5 py-1 border transition whitespace-nowrap",
+              isRefining
+                ? "border-[hsl(var(--copper))]/60 bg-[hsl(var(--copper))]/10 text-[hsl(var(--copper))]"
+                : "border-border/60 bg-surface-raised/60 text-muted-foreground hover:border-[hsl(var(--copper))]/40 hover:text-foreground",
+              disabled && !isRefining && "opacity-50 cursor-not-allowed",
+            )}
+          >
+            {isRefining ? "…" : chip.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ItineraryCategoriesSection({
   tripId,
   itinerary,
+  suggestedFlights,
 }: {
   tripId: string;
   itinerary: WorkspaceItinerary;
+  suggestedFlights: WorkspaceTrip["suggestedFlights"];
 }) {
   const qc = useQueryClient();
   const router = useRouter();
@@ -1330,6 +1412,11 @@ function ItineraryCategoriesSection({
                   </p>
                 )}
               </div>
+              {key === "FLIGHTS" &&
+                suggestedFlights &&
+                suggestedFlights.offers.length > 0 && (
+                  <FlightRefineChips tripId={tripId} />
+                )}
               <div className="space-y-3">
                 {(shouldShowDayDividers ? days : [{ dayKey: "_all", dayLabel: "", items }]).map(
                   (group) => (
