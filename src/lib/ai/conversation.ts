@@ -596,10 +596,14 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     // "find me a", "show me", "give us", "book me a"…
     /^(i|we|you|they|us)\s+(want|need|wanna|would|gonna|going|should|might|could|hope|love|like|plan|think)\b/i,
     /^(let'?s|let\s+(?:us|me))\s+/i,
-    /^(play|pick|find|book|show|give|get|grab|do|see|visit|check|try)\s+(me|us|them|the|their|your|some|a|an|any|out)\b/i,
-    // Pure imperative verb followed by an article — "play the nicest",
-    // "pick the best course" — no proper-noun signal.
-    /^(play|pick|find|book|show|give|do|see|visit|check|try|stay)\s+(the|a|an|some|any)\s+/i,
+    // ANY bare imperative verb followed by another word is a directive,
+    // not a place name. "Play golf" / "Play their nicest" / "Stay at
+    // the nicest hotels" / "Eat at fancy restaurants" / "Drive there"
+    // — all conversational. Real golf-destination names don't start
+    // with these verbs (Playa del Carmen has the 'a'; the rest are
+    // safe). When parseLegs is strict-fail, false-rejections here just
+    // route through the destination agent, which is fine.
+    /^(play|stay|eat|drink|sleep|relax|chill|enjoy|hit|swim|surf|ski|shop|tour|explore|drive|find|pick|book|show|give|get|grab|do|see|visit|check|try|head|fly|go|take)\s+\S+/i,
   ];
   if (garbagePatterns.some((re) => re.test(s))) return null;
   return s.length > 0 ? titleCaseDestination(s) : null;

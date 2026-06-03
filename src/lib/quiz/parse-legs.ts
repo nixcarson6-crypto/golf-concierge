@@ -47,21 +47,27 @@ export function parseLegs(input: string): ParsedLeg[] | null {
   const parts = s.split(SPLIT_RE);
   if (parts.length < 2) return null; // single-leg, caller handles
 
-  // For each leg, extract destination + optional night count
-  // ("Pinehurst for 5 days" → { destination: "Pinehurst", nights: 5 })
-  // CRITICAL: if ANY part fails to clean, the whole input was
-  // conversational ("I want to go then play the nicest course") — not a
-  // real leg list. Return null so the caller falls through to
-  // "Surprise me" mode and lets the destination agent pick real places,
-  // instead of persisting "I Want" / "Play Their Nicest Course" as
-  // trip legs.
+  // For each part, try to extract a destination + optional night count.
+  // KEEP only parts that look like real places — drop conversational
+  // fragments ("play golf", "stay at the nicest hotels", "i want")
+  // that survived the split. If ≥2 real-looking legs survive, this is
+  // a multi-leg trip ("Lake Como and Dolomites and play golf" →
+  // [Lake Como, Dolomites]). If FEWER than 2 survive — or if MORE
+  // than half the parts were garbage — the whole input was probably
+  // conversational, so return null and let the caller fall back to
+  // single-leg + destination-agent mode rather than persisting a
+  // half-broken leg list.
   const legs: ParsedLeg[] = [];
+  let rejected = 0;
   for (const raw of parts) {
     const leg = parseLeg(raw);
-    if (!leg) return null;
-    legs.push(leg);
+    if (leg) legs.push(leg);
+    else rejected += 1;
   }
   if (legs.length < 2) return null;
+  // If more parts were rejected than kept, the input was mostly
+  // conversational — be safe and bail.
+  if (rejected > legs.length) return null;
   return legs;
 }
 
