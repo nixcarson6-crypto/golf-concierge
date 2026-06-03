@@ -37,17 +37,24 @@ export default async function TripLayout({
     <div className="relative min-h-dvh bg-concierge-radial flex flex-col">
       <header className="border-b border-border/60 bg-surface/50 backdrop-blur-xl sticky top-0 z-30">
         <div className="container py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <Link
               href="/trips"
-              className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition text-sm rounded-lg px-2 py-1 hover:bg-surface-raised"
+              className="inline-flex items-center gap-2 shrink-0 text-muted-foreground hover:text-foreground transition text-sm rounded-lg px-2.5 py-1.5 hover:bg-surface-raised whitespace-nowrap"
             >
-              <LayoutGrid className="size-4" /> My trips
+              <LayoutGrid className="size-4" />
+              <span>My trips</span>
             </Link>
-            <span className="text-muted-foreground/40">·</span>
-            <h1 className="text-display text-base truncate">{trip.title}</h1>
+            <span className="text-border shrink-0" aria-hidden>
+              /
+            </span>
+            <h1 className="text-display text-base sm:text-lg tracking-tight truncate min-w-0">
+              {trip.title}
+            </h1>
           </div>
-          <UserButton afterSignOutUrl="/" />
+          <div className="shrink-0">
+            <UserButton afterSignOutUrl="/" />
+          </div>
         </div>
         <TripTabs trips={trips} activeId={tripId} />
       </header>
