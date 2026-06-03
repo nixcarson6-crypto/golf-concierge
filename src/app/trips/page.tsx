@@ -16,7 +16,10 @@ export default async function TripsListPage() {
         OR: [{ ownerId: user.id }, { members: { some: { userId: user.id } } }],
       },
       orderBy: { updatedAt: "desc" },
-      include: { _count: { select: { members: true } } },
+      include: {
+        _count: { select: { members: true } },
+        legs: { select: { destination: true }, orderBy: { legIndex: "asc" } },
+      },
     }),
     db.notification.findMany({
       where: { userId: user.id },
@@ -57,6 +60,7 @@ export default async function TripsListPage() {
               id: t.id,
               title: t.title,
               destination: t.destination,
+              legs: t.legs,
               startDate: t.startDate?.toISOString() ?? null,
               endDate: t.endDate?.toISOString() ?? null,
               groupSize: t.groupSize,

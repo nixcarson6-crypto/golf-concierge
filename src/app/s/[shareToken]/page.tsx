@@ -5,6 +5,7 @@ import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
 import { formatCurrency, formatDateRange } from "@/lib/utils";
 import { PrintButton } from "./print-button";
 import { renderMarkdownBlock } from "@/lib/markdown";
+import { tripDisplayLabel } from "@/lib/trip-display";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,11 @@ export default async function SharedSummaryPage({
   const summary = await db.tripSummary.findUnique({
     where: { shareToken },
     include: {
-      trip: true,
+      trip: {
+        include: {
+          legs: { select: { destination: true }, orderBy: { legIndex: "asc" } },
+        },
+      },
       itinerary: {
         include: {
           items: {
@@ -36,6 +41,11 @@ export default async function SharedSummaryPage({
   if (!summary) notFound();
 
   const trip = summary.trip;
+  const tripLabel = tripDisplayLabel({
+    title: trip.title,
+    destination: trip.destination,
+    legs: trip.legs,
+  });
   const highlights =
     ((summary.highlights as { items?: string[] } | null)?.items) ?? [];
   const substitutions =
@@ -56,13 +66,13 @@ export default async function SharedSummaryPage({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={summary.coverImageUrl}
-            alt={trip.destination ?? trip.title}
+            alt={tripLabel}
             className="mt-6 w-full aspect-[16/7] object-cover rounded-3xl border border-border print:rounded-none print:border-0"
           />
         )}
 
         <h1 className="mt-6 text-display text-5xl tracking-tight print:text-black">
-          {trip.destination ?? trip.title}
+          {tripLabel}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground print:text-neutral-700">
           {formatDateRange(trip.startDate, trip.endDate)}

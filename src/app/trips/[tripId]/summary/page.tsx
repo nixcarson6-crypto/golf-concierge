@@ -6,6 +6,7 @@ import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatDateRange } from "@/lib/utils";
 import { GenerateSummaryButton } from "./generate-button";
+import { tripDisplayLabel } from "@/lib/trip-display";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,11 @@ export default async function SummaryPage({
   if (!trip) notFound();
 
   const summary = await db.tripSummary.findUnique({ where: { tripId } });
+  const legs = await db.tripLeg.findMany({
+    where: { tripId },
+    orderBy: { legIndex: "asc" },
+    select: { destination: true },
+  });
   const itinerary = await db.itinerary.findFirst({
     where: { tripId, status: "APPROVED" },
     include: { items: { orderBy: { orderIndex: "asc" } } },
@@ -60,7 +66,7 @@ export default async function SummaryPage({
             Trip summary
           </p>
           <h1 className="mt-1 text-display text-3xl tracking-tight">
-            {trip.destination ?? trip.title}
+            {tripDisplayLabel({ title: trip.title, destination: trip.destination, legs })}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {formatDateRange(trip.startDate, trip.endDate)} ·{" "}

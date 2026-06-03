@@ -5,6 +5,7 @@ import { LayoutGrid, Plus } from "lucide-react";
 import { requireTripAccess, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { tripDisplayLabel } from "@/lib/trip-display";
 
 export default async function TripLayout({
   children,
@@ -80,25 +81,6 @@ export default async function TripLayout({
   );
 }
 
-/**
- * Single source of truth for what a trip is called in headers and tabs.
- * Just the destinations — joined by " / " for multi-leg — never the noisy
- * AI title (which used to embed party size + month, like "pinehurst · 2
- * players · Jun"). Falls back to the raw title only if we genuinely have
- * no destination yet (a trip that's still being built).
- */
-function tripDisplayLabel(t: {
-  title: string;
-  destination: string | null;
-  legs: { destination: string }[];
-}): string {
-  const legNames = t.legs
-    .map((l) => l.destination?.trim())
-    .filter((s): s is string => Boolean(s));
-  if (legNames.length > 0) return legNames.join(" / ");
-  if (t.destination?.trim()) return t.destination.trim();
-  return t.title;
-}
 
 function TripTabs({
   trips,

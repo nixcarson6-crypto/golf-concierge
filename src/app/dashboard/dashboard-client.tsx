@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, formatDateRange, relativeTime } from "@/lib/utils";
 import { tripStatusLabel } from "@/lib/trip-status";
+import { tripDisplayLabel } from "@/lib/trip-display";
 import type { TripStatus, NotificationType } from "@prisma/client";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,8 @@ type Trip = {
   id: string;
   title: string;
   destination: string | null;
+  /** Ordered destinations for multi-leg trips. Empty for single-destination. */
+  legs?: { destination: string }[];
   startDate: string | null;
   endDate: string | null;
   groupSize: number | null;
@@ -355,11 +358,8 @@ function TripGrid({
           <Link href={`/trips/${trip.id}`} className="block">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                  {trip.destination ?? "Destination TBD"}
-                </p>
-                <h3 className="mt-1 text-display text-xl tracking-tight truncate">
-                  {trip.title}
+                <h3 className="text-display text-xl tracking-tight truncate">
+                  {tripDisplayLabel(trip)}
                 </h3>
               </div>
               <Badge variant="muted" size="sm">

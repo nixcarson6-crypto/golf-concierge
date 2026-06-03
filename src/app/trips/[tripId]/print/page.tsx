@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireTripAccess } from "@/lib/auth";
 import { formatDateRange } from "@/lib/utils";
 import { PrintAutoTrigger } from "./print-auto-trigger";
+import { tripDisplayLabel } from "@/lib/trip-display";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,10 @@ export default async function PrintPage({
     notFound();
   }
 
-  const trip = await db.trip.findUnique({ where: { id: tripId } });
+  const trip = await db.trip.findUnique({
+    where: { id: tripId },
+    include: { legs: { select: { destination: true }, orderBy: { legIndex: "asc" } } },
+  });
   if (!trip) notFound();
 
   const itinerary = await db.itinerary.findFirst({
@@ -102,7 +106,7 @@ export default async function PrintPage({
           Pyltrix · Trip Itinerary
         </p>
         <h1 className="text-3xl font-semibold mt-1">
-          {trip.destination ?? trip.title ?? "Your trip"}
+          {tripDisplayLabel({ title: trip.title, destination: trip.destination, legs: trip.legs })}
         </h1>
         <p className="text-sm text-neutral-700 mt-1">
           {trip.startDate
