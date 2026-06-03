@@ -289,24 +289,11 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     },
   });
 
-  // Context-aware chat suggestions. Re-fetched whenever the workspace
-  // snapshot changes (destination updates, bookings happen, etc.) so the
-  // suggestions stay aligned with the actual trip state.
-  const snapshotKey = data
-    ? `${data.trip.destination ?? ""}|${data.trip.startDate ?? ""}|${data.trip.groupSize ?? ""}|${data.bookings?.length ?? 0}|${data.messages.length}`
-    : null;
-  const { data: suggestionsData } = useQuery<{ suggestions: string[] }>({
-    queryKey: ["suggestions", tripId, snapshotKey],
-    queryFn: async () => {
-      const res = await fetch(`/api/trips/${tripId}/suggestions`, {
-        cache: "no-store",
-      });
-      if (!res.ok) return { suggestions: [] };
-      return res.json();
-    },
-    enabled: Boolean(data),
-    staleTime: 30_000,
-  });
+  // (Chat suggestions query removed — ConciergeChat is no longer
+  // rendered after the UX pivot to result-page-first, so the
+  // /suggestions endpoint was being called for nothing and spamming
+  // the dev terminal with Anthropic 400s. The endpoint still exists
+  // for future use but nothing in the live UI consumes it.)
 
   React.useEffect(() => {
     const es = new EventSource(`/api/trips/${tripId}/stream`);
@@ -538,23 +525,11 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
   }
 
   const snapshot = data;
-  const chat = (
-    <ConciergeChat
-      tripId={tripId}
-      trip={snapshot.trip}
-      me={snapshot.me}
-      messages={snapshot.messages}
-      destinations={snapshot.destinations}
-      approval={snapshot.approval}
-      currentItineraryId={snapshot.itinerary?.id ?? null}
-      onSend={(text) => void sendStreamingMessage(text)}
-      sending={sendingChat}
-      streamingReply={streamingReply}
-      streamingTools={streamingTools}
-      streamingCards={streamingCards}
-      suggestions={suggestionsData?.suggestions ?? []}
-    />
-  );
+  // Chat is no longer rendered (UX pivot removed it). The construction
+  // was kept around as a reference but it referenced state we just
+  // deleted (suggestionsData) so it had to come out too. Re-introducing
+  // chat would mean restoring the suggestions query, ConciergeChat
+  // props, and the stream send pipeline.
   const preview = (
     <LivePreview
       tripId={tripId}
@@ -571,9 +546,7 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
   // the full result page so what the customer sees IS the trip — real
   // flights to click+book, real bookings as they happen, no
   // conversational text pretending things are confirmed when they
-  // aren't. The chat component is retained in the codebase for power
-  // users / future re-introduction but no longer rendered here.
-  void chat;
+  // aren't.
 
   return (
     <>
