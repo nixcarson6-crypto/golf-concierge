@@ -100,6 +100,12 @@ export async function POST(
     passengers: prior.passengers,
     cabin: cabinForSearch,
     maxOffers: 12, // wider net so post-filter we still have 3 to show
+    // "Cheaper" → price-first ranking (with duration as a soft
+    // tiebreaker so equally-cheap shorter flights still win). Every
+    // other chip stays on the default quality-first ranking — the
+    // customer asked for "Nonstop only" / "Earlier" / "Different
+    // airline", not for the cheapest version of that.
+    rankMode: modifier === "cheaper" ? "price" : "quality",
   });
   if (!result.ok) {
     return new Response(
@@ -147,8 +153,12 @@ export async function POST(
     );
   }
 
-  // Re-sort by price (cheapest first) and keep top 3.
-  filtered.sort((a, b) => a.totalAmount - b.totalAmount);
+  // Keep the order Duffel-search gave us — it already ranked by the
+  // right mode (price-first for "cheaper", quality-first for the
+  // other chips). Old code unconditionally re-sorted by price here,
+  // which broke "Nonstop only" / "Earlier" / "Later" / "Different
+  // airline" by surfacing the cheapest of the filtered set instead
+  // of the fastest. Just keep top 3.
   const updatedBlock: SuggestedFlightsBlock = {
     fetchedAt: new Date().toISOString(),
     origin: prior.origin,

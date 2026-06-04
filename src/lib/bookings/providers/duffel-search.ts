@@ -31,6 +31,15 @@ export type FlightSearchInput = {
   cabin?: CabinClass;
   /** Cap how many offers we ask Duffel to return. */
   maxOffers?: number;
+  /**
+   * How to rank offers before truncating to `maxOffers`.
+   *  - "quality" (default): nonstop + shortest duration win. Price is
+   *    a soft tiebreaker. Best for the default cards the customer sees.
+   *  - "price": cheapest wins. Duration + stops are soft tiebreakers
+   *    so two equally-cheap options still prefer the shorter / fewer-stops
+   *    flight. Used when the customer explicitly taps the "Cheaper" chip.
+   */
+  rankMode?: "quality" | "price";
 };
 
 export type FlightOfferSummary = {
@@ -133,18 +142,23 @@ export async function searchFlights(
   }
 
   const cap = input.maxOffers ?? 5;
-  // Carson's rule: 'find the fastest and most efficient routes — I
-  // don't want to have to go on whatever flight I pick.' So we rank
-  // by route quality, NOT cheapest-first. Score formula:
-  //   - Stops: each stop adds 240 'penalty minutes' (every connection
-  //     burns ~3-4 hours in real elapsed travel, so nonstop dominates).
-  //   - Duration: total travel minutes across all slices.
-  //   - Price: a soft tiebreaker — every $1000 USD adds 30 penalty
-  //     minutes, so we still avoid pathological premium options for a
-  //     5-minute time-saving, but we never trade comfort/speed for a
-  //     small discount.
-  // The 'Cheaper' refinement chip is how the customer opts in to
-  // price-first; the default they see is fast-first.
+  const rankMode = input.rankMode ?? "quality";
+  // Two ranking modes — both score lower-is-better, so we always
+  // sort ascending. The weights flip between modes:
+  //
+  // QUALITY (default — what customers see on first load):
+  //   stops × 240min + duration + (price/$1000) × 30min
+  //   Connections dominate (each ~3-4h elapsed), duration is the
+  //   primary discriminator, price is a soft tiebreaker so a $5k
+  //   nonstop never beats a $400 nonstop.
+  //
+  // PRICE (when customer taps "Cheaper" — they want the deal):
+  //   price-cents + stops × 5000 + duration × 8
+  //   Price dominates, but stops + duration are soft tiebreakers so
+  //   two equally-cheap fares still surface the shorter, fewer-stop
+  //   one. Net: the absolute-cheapest option wins outright, AND if
+  //   there's a fast option at the same rate it floats above the
+  //   slow one. Exactly what Carson asked for.
   const summarized = (json.data.offers ?? [])
     .map(summarizeOffer)
     .filter((o): o is FlightOfferSummary => o !== null);
@@ -154,8 +168,10 @@ export async function searchFlights(
       (sum, s) => sum + s.durationMinutes,
       0,
     );
-    const pricePenalty = (o.totalAmount / 1000) * 30;
-    const score = totalStops * 240 + totalMinutes + pricePenalty;
+    const score =
+      rankMode === "price"
+        ? o.totalAmount + totalStops * 5000 + totalMinutes * 8
+        : totalStops * 240 + totalMinutes + (o.totalAmount / 1000) * 30;
     return { offer: o, score };
   });
   scored.sort((a, b) => a.score - b.score);
