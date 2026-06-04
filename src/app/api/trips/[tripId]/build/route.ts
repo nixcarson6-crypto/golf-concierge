@@ -27,6 +27,7 @@ import {
 } from "@/lib/quiz/parse-legs";
 import { airportForDestination } from "@/lib/data/airport-lookup";
 import { rewriteFlightItemsFromOffer } from "@/lib/flights/rewrite-items";
+import { stripLocationSuffix } from "@/lib/trip-display";
 
 const bodySchema = z.object({
   answers: z.record(z.unknown()),
@@ -135,7 +136,12 @@ export async function POST(
           { status: 400, headers: { "Content-Type": "application/json" } },
         );
       }
-      legs = withDates;
+      // Strip the AI's " in [city]" / ", [region]" suffix from every
+      // leg so display + downstream lookups all see just the venue name.
+      legs = withDates.map((l) => ({
+        ...l,
+        destination: stripLocationSuffix(l.destination),
+      }));
       chosenDestination = legs[0].destination;
       // Update the primary trip destination AND title to leg 0 for the
       // header. Title is force-set (not gated on placeholder) so even
@@ -175,7 +181,7 @@ export async function POST(
         userTyped.length > 0 && !looksLikeHintNotPlace(userTyped);
 
       if (useDirectly) {
-        chosenDestination = userTyped;
+        chosenDestination = stripLocationSuffix(userTyped);
         // Sync trip.title to the typed destination so the header reads
         // "Pinehurst" instead of "Untitled trip".
         await db.trip.update({
@@ -209,11 +215,11 @@ export async function POST(
             { status: 502, headers: { "Content-Type": "application/json" } },
           );
         }
-        chosenDestination = top.name;
-        // Force trip.title to match the agent-picked place too — same
-        // reasoning as the multi-leg branch above. If the user typed
-        // gibberish, the title now reflects the bookable course
-        // ("Sweetens Cove") instead of the gibberish.
+        // Strip the AI's habit of appending " in [city]" / ", [region]"
+        // to venue names — Carson wants just "Fields Ranch", never
+        // "Fields Ranch in Frisco". Same helper used at the display
+        // layer so a stale row from before this fix still renders clean.
+        chosenDestination = stripLocationSuffix(top.name);
         await db.trip.update({
           where: { id: tripId },
           data: { destination: chosenDestination, title: chosenDestination },

@@ -23,15 +23,38 @@ export type TripDisplayInput = {
 export function tripDisplayLabel(t: TripDisplayInput): string {
   const legNames =
     (t.legs ?? [])
-      .map((l) => (l.destination ?? "").trim())
+      .map((l) => stripLocationSuffix((l.destination ?? "").trim()))
       .filter((s) => s.length > 0 && !looksLikeSentence(s))
       .map(titleCaseDestination);
   if (legNames.length > 0) return legNames.join(" / ");
-  const d = (t.destination ?? "").trim();
+  const d = stripLocationSuffix((t.destination ?? "").trim());
   if (d.length > 0 && !looksLikeSentence(d)) return titleCaseDestination(d);
-  const title = (t.title ?? "").trim();
+  const title = stripLocationSuffix((t.title ?? "").trim());
   if (title.length > 0 && !looksLikeSentence(title)) return titleCaseDestination(title);
   return "Generating destination…";
+}
+
+/**
+ * Strip the "in [City]" / ", [Region]" / " - [Country]" suffixes the
+ * AI loves to append to venue names. The agent returns
+ * "Fields Ranch in Frisco" / "Pebble Beach, California" /
+ * "Cabot Cliffs - Nova Scotia" — Carson wants just the venue name.
+ *
+ * Conservative: only strips when the suffix is a separator (in / , / -)
+ * followed by 1-2 word location. Doesn't touch names like
+ * "The Inn at Spanish Bay" (no "in"), "TPC at Sawgrass" (no "in"), or
+ * "St. Andrews" (no separator).
+ */
+export function stripLocationSuffix(s: string): string {
+  if (!s) return s;
+  let out = s;
+  // " in City" or " in City Region" → strip
+  out = out.replace(/\s+in\s+[A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)?$/i, "");
+  // ", City" or ", State" → strip
+  out = out.replace(/,\s*[A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)?$/i, "");
+  // " - Region" or " — Region" → strip
+  out = out.replace(/\s+[-–—]\s+[A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)?$/i, "");
+  return out.trim() || s;
 }
 
 /**

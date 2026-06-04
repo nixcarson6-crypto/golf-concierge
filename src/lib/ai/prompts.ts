@@ -274,6 +274,14 @@ weather by month, and honest base scores. Use this as the source of truth:
 - heroImageQuery: use the KB's heroImageQuery for the market, or a similarly
   specific search term.
 
+## Naming — venue ONLY
+For "name" on each option, emit JUST the venue/resort/market name.
+NEVER append " in <City>" / ", <Region>" / " - <Country>". Examples:
+  ✓ "Fields Ranch"        ✗ "Fields Ranch in Frisco"
+  ✓ "Pebble Beach"        ✗ "Pebble Beach, California"
+  ✓ "Cabot Cliffs"        ✗ "Cabot Cliffs - Nova Scotia"
+The city / region lives in the "region" field, not the name.
+
 Propose 3 destinations, ranked, strongest fit first.
 `.trim();
 
