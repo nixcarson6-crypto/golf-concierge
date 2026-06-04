@@ -16,6 +16,8 @@
  */
 
 import * as React from "react";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   Loader2,
@@ -33,7 +35,23 @@ import {
   PartyPopper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { WorkspaceItinerary, WorkspaceItineraryItem } from "./workspace";
+import type {
+  WorkspaceItinerary,
+  WorkspaceItineraryItem,
+} from "./workspace";
+
+// Item types the browser agent can book directly (matches
+// AgentBookingPanel). Flights go through "Book all" (Duffel), FREE_TIME
+// isn't a reservation, TRANSPORT is an Uber deep-link — so those rows
+// aren't tap-to-book here.
+const AGENT_BOOKABLE = new Set([
+  "LODGING",
+  "TEE_TIME",
+  "DINING",
+  "NIGHTLIFE",
+  "SPA",
+  "ACTIVITY",
+]);
 
 type RowStatus = "confirmed" | "booking" | "review" | "failed" | "pending";
 
@@ -138,10 +156,41 @@ function statusLabel(kind: RowStatus): string {
 }
 
 export function BookingStatusPanel({
+  tripId,
   itinerary,
 }: {
+  tripId: string;
   itinerary: WorkspaceItinerary | null;
 }) {
+  const qc = useQueryClient();
+  const [bookingId, setBookingId] = React.useState<string | null>(null);
+
+  // Tap a not-yet-booked row to have the agent book just that one.
+  const bookItem = React.useCallback(
+    async (item: WorkspaceItineraryItem) => {
+      if (bookingId) return;
+      setBookingId(item.id);
+      try {
+        const res = await fetch(
+          `/api/trips/${tripId}/items/${item.id}/book-agent`,
+          { method: "POST" },
+        );
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          toast.error(err?.error ?? "Couldn't start that booking — try again.");
+          return;
+        }
+        toast.success(`Pyltrix is booking ${item.title}.`);
+        void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+      } catch {
+        toast.error("Network error — try again.");
+      } finally {
+        setBookingId(null);
+      }
+    },
+    [bookingId, qc, tripId],
+  );
+
   // Everything that's meant to be booked. FREE_TIME isn't a reservation.
   const items = React.useMemo(
     () => (itinerary?.items ?? []).filter((i) => i.type !== "FREE_TIME"),
@@ -185,42 +234,69 @@ export function BookingStatusPanel({
         </p>
       </header>
 
-      {/* Rows */}
-      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-2.5 py-2">
-        {rows.map(({ item, kind, code, amountCents }) => (
-          <div
-            key={item.id}
-            className="flex items-start gap-2.5 rounded-xl px-2.5 py-2.5 hover:bg-surface-raised/50 transition"
-          >
-            <StatusBadge kind={kind} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <TypeIcon type={item.type} />
-                <p
-                  className={cn(
-                    "text-[13px] leading-snug truncate",
-                    kind === "confirmed"
-                      ? "font-medium text-foreground"
-                      : "text-foreground/80",
-                  )}
-                >
-                  {item.title}
-                </p>
-              </div>
-              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                <span>{statusLabel(kind)}</span>
-                {code && (
-                  <span className="tabular-nums">· #{code}</span>
-                )}
-                {amountCents != null && amountCents > 0 && (
-                  <span className="tabular-nums">
-                    · ${Math.round(amountCents / 100).toLocaleString()}
+      {/* Rows — visible scrollbar so it's obvious the list scrolls. */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2">
+        {rows.map(({ item, kind, code, amountCents }) => {
+          // A row is tap-to-book when the agent can book it and it isn't
+          // already booked / in flight / under review.
+          const canBook =
+            AGENT_BOOKABLE.has(item.type) &&
+            (kind === "pending" || kind === "failed");
+          const isThisBooking = bookingId === item.id;
+          const rowInner = (
+            <>
+              <StatusBadge kind={isThisBooking ? "booking" : kind} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <TypeIcon type={item.type} />
+                  <p
+                    className={cn(
+                      "text-[13px] leading-snug truncate",
+                      kind === "confirmed"
+                        ? "font-medium text-foreground"
+                        : "text-foreground/80",
+                    )}
+                  >
+                    {item.title}
+                  </p>
+                </div>
+                <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <span>
+                    {isThisBooking
+                      ? "Starting…"
+                      : canBook
+                        ? "Tap to book"
+                        : statusLabel(kind)}
                   </span>
-                )}
+                  {code && <span className="tabular-nums">· #{code}</span>}
+                  {amountCents != null && amountCents > 0 && (
+                    <span className="tabular-nums">
+                      · ${Math.round(amountCents / 100).toLocaleString()}
+                    </span>
+                  )}
+                </div>
               </div>
+            </>
+          );
+          return canBook ? (
+            <button
+              key={item.id}
+              type="button"
+              disabled={bookingId !== null}
+              onClick={() => void bookItem(item)}
+              className="w-full flex items-start gap-2.5 text-left rounded-xl px-2.5 py-2.5 hover:bg-surface-raised transition disabled:opacity-60"
+            >
+              {rowInner}
+            </button>
+          ) : (
+            <div
+              key={item.id}
+              className="flex items-start gap-2.5 rounded-xl px-2.5 py-2.5"
+            >
+              {rowInner}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Footer — the trophy state */}

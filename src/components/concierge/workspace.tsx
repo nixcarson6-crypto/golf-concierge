@@ -541,7 +541,7 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     />
   );
   const bookingStatus = (
-    <BookingStatusPanel itinerary={snapshot.itinerary} />
+    <BookingStatusPanel tripId={tripId} itinerary={snapshot.itinerary} />
   );
 
   // The quiz is the front door now. The chat workspace has been the

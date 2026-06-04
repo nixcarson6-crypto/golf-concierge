@@ -561,6 +561,15 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     /\s+(?:and|to|where\s+we'?ll|so\s+we\s+can)\s+(?:stay|sleep|book|play|golf|do|stay\s+at|stay\s+in|hang\s+out|relax|chill).*$/i,
     "",
   );
+  // Strip trailing "vibe / leftover-time" clauses. "Vail Colorado, the
+  // rest of the days just chill" → "Vail Colorado". "Pebble Beach and
+  // then just relax" → "Pebble Beach". These describe what to DO with
+  // the time, not a second place — so we keep the real destination and
+  // drop the filler instead of nuking the whole string.
+  s = s.replace(
+    /[,;]?\s*(?:and\s+|then\s+|&\s+)*(?:the\s+)?(?:rest\s+of\b.*|just\s+(?:chill|relax|hang|wing).*|chill\b.*|relax\b.*|unwind\b.*|wing\s+it\b.*|hang\s*out\b.*|do\s+nothing\b.*|free\s+time\b.*)$/i,
+    "",
+  );
   s = s.replace(/\s+for\s+(?:a\s+)?(?:weekend|week|trip|vacation|getaway|few\s+days|long\s+weekend|guys'?\s+trip|buddies'?\s+trip).*$/i, "");
   s = s.replace(/\s+with\s+.*$/i, "");
   // Strip terminal punctuation.
@@ -625,6 +634,14 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     // hideaway") — these are descriptions, not names. Real venue
     // names don't typically start with "a"/"an" + adjective.
     /^(a|an)\s+\w+\s+(course|resort|hotel|club|destination|place|spot|trip)\b/i,
+    // Vibe / filler phrases that aren't destinations — "the rest of the
+    // days just chill", "rest of the trip relax", "chill the rest",
+    // "do nothing", "hang out". These describe what to DO with leftover
+    // time, not WHERE to go. Without this, a connector-split leg like
+    // "Vail [and] the rest of the days just chill" turns the filler into
+    // its own destination and the agent picks a random place for it.
+    /^(the\s+)?rest\s+of\b/i,
+    /^(just\s+)?(chill|relax|unwind|rest|wing\s+it|hang\s+out|do\s+nothing|free\s+time|whatever\s+else)\b/i,
   ];
   if (garbagePatterns.some((re) => re.test(s))) return null;
   // Sentence-shape rejections:

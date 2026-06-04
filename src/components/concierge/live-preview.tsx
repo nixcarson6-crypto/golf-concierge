@@ -138,7 +138,7 @@ export function LivePreview({
         )}
       </header>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {buildError && (
           <div className="mx-4 mt-4 rounded-2xl border border-red-500/30 bg-red-500/8 p-4">
             <div className="flex items-start justify-between gap-3">
@@ -1041,6 +1041,18 @@ function TotalsBanner({
   const flightProvision = hasBookedFlight ? 0 : cheapestSuggestedFlight;
   const grandTotal = itineraryTotal + flightProvision;
 
+  // How many bookable items still have NO confirmed price? When most of
+  // the trip isn't priced yet, the running total reads misleadingly low
+  // ("$7,538" when the Four Seasons suite alone is more). Surface the
+  // count so the number is honestly framed as partial, not final.
+  const bookableItems = (itinerary?.items ?? []).filter(
+    (it) => it.type !== "FREE_TIME" && it.type !== "TRANSPORT",
+  );
+  const unpricedCount = bookableItems.filter(
+    (it) => it.cost == null || it.cost === 0,
+  ).length;
+  const partial = unpricedCount > 0;
+
   if (grandTotal === 0 && bookedTotal === 0) return null;
 
   return (
@@ -1048,11 +1060,20 @@ function TotalsBanner({
       <div className="flex items-baseline justify-between gap-3">
         <div>
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none">
-            Real prices so far
+            {partial ? "Confirmed prices so far" : "Trip total estimate"}
           </p>
           <p className="mt-1.5 text-2xl font-semibold tabular-nums text-foreground">
             ${Math.round(grandTotal / 100).toLocaleString()}
+            {partial && (
+              <span className="text-sm font-normal text-muted-foreground">+</span>
+            )}
           </p>
+          {partial && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {unpricedCount} more item{unpricedCount === 1 ? "" : "s"} still
+              being priced — total will rise
+            </p>
+          )}
         </div>
         <div className="text-right">
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none">
