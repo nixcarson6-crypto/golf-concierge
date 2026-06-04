@@ -422,7 +422,22 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
 
 **Today's session ("apply for APIs day"):**
 
-### Tier 1 — Golf inventory (the core product — apply first)
+### Tier 1 — Golf inventory
+
+**⛳ DECISION (Carson, June 2026): golf needs NO APIs — book direct via
+the browser agent on each course's OWN website.** Real-world proof:
+Carson booked a course in Italy through Golfscape (an aggregator); at
+the pro shop they couldn't find the tee time — the aggregator booking
+never propagated to the course's own system. Booking directly on the
+course's site means the course SEES it in their system = secure +
+reliable. This is already how Pyltrix works (golf → full browser agent
+→ course's own site, no aggregator). So GolfNow / TeeOff / Supreme
+Golf / Golfscape / BRS are DE-PRIORITIZED — they're optional
+convenience for live availability lookups at best, and the Golfscape
+failure undercuts even that. Don't chase golf APIs pre-launch; the
+agent covers it. (Pending applications below can sit; no follow-up
+needed.)
+
 - [x] **GolfNow** (NBC Sports) — applied via direct email (not on CJ
       or Awin despite earlier assumption).
 - [x] **TeeOff.com** (PGA Tour) — applied via teeoff.com business
@@ -457,11 +472,16 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
       Croatia. `ferryhopper.com/en/business`. Drafted copy needed.
 
 ### Tier 4 — Luxury chauffeur + restaurants
-- [x] **Blacklane** — emailed business@blacklane.com directly with
-      the API/technology-partner pitch. Their self-serve travel-agency
-      signup gated on an IATA/CLIA accreditation number we don't have
-      pre-launch, so we went around it via the contact address surfaced
-      on that same form. Stub already wired in
+- [~] **Blacklane — PARKED (June 2026).** They replied (Alni, Inside
+      Sales): API access requires **a minimum 50 bookings/month**,
+      confirmed BEFORE they share docs/pricing. Chicken-and-egg gate
+      we can't meet pre-launch. DECISION: park it — ground transport
+      already defaults to Uber Black/LUX, and the browser agent can
+      book any chauffeur's own site for the private-driver case, so
+      Blacklane isn't critical path. A warm "we'll circle back at
+      volume" reply is drafted in Gmail (keeps the door open). Revisit
+      once we naturally hit 50+ ground bookings/month — then we qualify
+      automatically. Stub still wired in
       `src/lib/bookings/providers/blacklane.ts`.
 - [ ] **Resy** — covers Carbone, Don Angie, etc. that OpenTable misses.
       `resy.com/about/business`. **PRIORITY** — most premium-restaurant
