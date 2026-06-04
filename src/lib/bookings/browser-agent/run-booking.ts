@@ -327,7 +327,11 @@ export async function runBrowserBooking(args: {
 /* Helpers                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** Resolve the venue's website + phone via the existing Places lookup. */
+/** Resolve the venue's website + phone via the shared Places lookup.
+ *  Calls the lib DIRECTLY (not the HTTP route) — the route is behind
+ *  Clerk middleware and this runs server-side with no session, so an
+ *  HTTP call would 404 and the agent would never find a website to
+ *  book against. */
 async function resolveVenueContact(args: {
   tripId: string;
   itineraryItemId: string;
@@ -338,26 +342,18 @@ async function resolveVenueContact(args: {
   });
   if (!item?.title) return { website: null, phone: null };
 
-  const appUrl = optionalEnv("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000";
-  const params = new URLSearchParams({ q: item.title });
-  if (item.location) params.set("loc", item.location);
+  // Clean the venue name for the Places search. Itinerary titles carry
+  // a meal/activity prefix ("Dinner — Sunset Monalisa", "Lunch at X",
+  // "Round at Valhalla") that pollutes the search — strip it so we look
+  // up the actual venue name.
+  const venueName = item.title
+    .replace(/^(dinner|lunch|breakfast|brunch|drinks|cocktails|round|tee\s*time|spa|massage)\s*(—|–|-|:|at)\s*/i, "")
+    .replace(/\s*\([^)]*\)\s*/g, " ")
+    .trim() || item.title;
 
-  try {
-    const res = await fetch(`${appUrl}/api/places/contact?${params.toString()}`, {
-      headers: { "x-internal-call": "browser-agent" },
-    });
-    if (!res.ok) return { website: null, phone: null };
-    const data = (await res.json()) as {
-      website?: string | null;
-      phone?: string | null;
-    };
-    return {
-      website: data.website ?? null,
-      phone: data.phone ?? null,
-    };
-  } catch {
-    return { website: null, phone: null };
-  }
+  const { lookupPlaceContact } = await import("@/lib/places/contact");
+  const contact = await lookupPlaceContact(venueName, item.location ?? undefined);
+  return { website: contact.website, phone: contact.phone };
 }
 
 async function postInternalNudge(args: {
