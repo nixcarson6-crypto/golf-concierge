@@ -62,8 +62,6 @@ Make ONE reservation at the SPECIFIED venue, for the SPECIFIED date/time/party, 
 - Mandatory login to an account you don't have, or phone/SMS verification → "failed", reason "login_required".
 - No online booking form at all (phone/email-only venue) → "failed", reason "form_not_found".
 - You've spent too long or are going in circles → "failed", reason "timeout".
-- **OpenTable or Resy.** If the booking flow takes you to opentable.com or resy.com (the reservation widget redirects there, or it's embedded), STOP immediately — do NOT fill it in, do NOT enter any card. Call report_outcome with status "failed", reason "login_required", and put the exact current URL in the message prefixed with "RESERVATION_PLATFORM: ". The app turns that into a one-tap link for the customer. These platforms block automation, so attempting them risks the whole system.
-
 ## Identity check
 Before booking, make sure you're on the CORRECT venue's real booking system (name/address should match). If the site is clearly a different business or an aggregator you weren't sent to, report "failed" with reason "ambiguous" rather than booking the wrong place.
 

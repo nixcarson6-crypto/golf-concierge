@@ -32,11 +32,6 @@ import { buildGoal } from "./goal";
 import { buildBookingTask } from "./types";
 import { verifyOutcome, toBookingStatus, toConfirmationState } from "./outcome";
 import { buildCardProviderForBooking } from "./card-provider";
-import {
-  detectReservationPlatform,
-  platformLabel,
-  type ReservationPlatform,
-} from "./platforms";
 import type { BookingRequest } from "../types";
 
 export async function runBrowserBooking(args: {
@@ -109,22 +104,13 @@ export async function runBrowserBooking(args: {
     return;
   }
 
-  // OpenTable / Resy short-circuit. If the venue's own "website" IS an
-  // OpenTable/Resy page, do NOT bot-automate it (ToS ban + detection
-  // risk) — surface a one-tap clickout to that reservation page instead.
-  // Independent restaurant sites fall through and get fully auto-booked.
-  const platform = detectReservationPlatform(startUrl);
-  if (platform) {
-    await markBookingClickout({
-      booking,
-      itemId: item.id,
-      tripId: args.tripId,
-      platform,
-      url: startUrl,
-      phone: places.phone ?? null,
-    });
-    return;
-  }
+  // (No platform short-circuit. The agent tries every venue, including
+  // OpenTable/Resy. The customer authorised us to book a reservation —
+  // we're filling in the same form a human would. If a captcha/login
+  // wall blocks the agent, the existing failure path shows a "Visit
+  // website" fallback button, which is functionally identical to a
+  // clickout. So we get full automation when it works and the same
+  // graceful fallback when it doesn't.)
 
   const traveler = {
     givenName: user.legalGivenName?.trim() || "",
@@ -234,27 +220,6 @@ export async function runBrowserBooking(args: {
         };
       }
 
-      // Mid-run OpenTable/Resy redirect: the agent was told to STOP and
-      // report "RESERVATION_PLATFORM: <url>" if a booking flow on an
-      // independent site redirects into OpenTable/Resy. Convert that into
-      // the same one-tap clickout instead of a failure.
-      const platformMatch = outcome.message?.match(
-        /RESERVATION_PLATFORM:\s*(\S+)/i,
-      );
-      const redirectedPlatform = platformMatch
-        ? detectReservationPlatform(platformMatch[1])
-        : null;
-      if (redirectedPlatform && platformMatch) {
-        await markBookingClickout({
-          booking,
-          itemId: item.id,
-          tripId: args.tripId,
-          platform: redirectedPlatform,
-          url: platformMatch[1],
-          phone: places.phone ?? null,
-        });
-        return;
-      }
 
       // -------------------------------------------------------------- 5/6
       // Brain gate: refuse to confirm without hard evidence. Downgrades
@@ -450,44 +415,6 @@ async function markBookingFailed(args: {
   } catch {}
 }
 
-/** Mark a booking as a reservation-platform clickout (OpenTable/Resy).
- *  NOT an error — it's the intended path for these venues. The panel
- *  renders a "Reserve on <platform>" primary button pointing at `url`. */
-async function markBookingClickout(args: {
-  booking: { id: string; metadata: unknown };
-  itemId: string;
-  tripId: string;
-  platform: ReservationPlatform;
-  url: string;
-  phone: string | null;
-}): Promise<void> {
-  const existing =
-    (args.booking.metadata as Record<string, unknown> | null) ?? {};
-  const label = platformLabel(args.platform);
-  await db.booking.update({
-    where: { id: args.booking.id },
-    data: {
-      status: "FAILED", // terminal; the clickout metadata drives the UI
-      lastError: null,
-      vendorUrl: args.url,
-      metadata: {
-        ...existing,
-        clickout: { platform: args.platform, label, url: args.url },
-        fallbackContact: { website: args.url, phone: args.phone },
-      } as object,
-    },
-  });
-  await db.itineraryItem.update({
-    where: { id: args.itemId },
-    data: {
-      confirmationState: "FAILED",
-      status: `Reserve on ${label}`,
-    },
-  });
-  try {
-    await postInternalNudge({ tripId: args.tripId });
-  } catch {}
-}
 
 function shortHost(url: string): string {
   try {

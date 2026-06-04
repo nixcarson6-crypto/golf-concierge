@@ -232,14 +232,6 @@ export async function GET(
                       typeof bMeta?.amountChargedCents === "number"
                         ? (bMeta.amountChargedCents as number)
                         : null,
-                    // OpenTable/Resy one-tap clickout — present only when
-                    // the venue books through a platform we don't automate.
-                    clickout:
-                      (bMeta?.clickout as {
-                        platform?: string;
-                        label?: string;
-                        url?: string;
-                      } | null) ?? null,
                     agentProgress: run?.progress ?? null,
                     agentStatus: run?.status ?? null,
                   }
