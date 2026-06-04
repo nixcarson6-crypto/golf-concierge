@@ -4,6 +4,7 @@ import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConciergeChat } from "./chat";
 import { LivePreview } from "./live-preview";
+import { BookingStatusPanel } from "./booking-status-panel";
 import { PushPrompt } from "./push-prompt";
 import { Button } from "@/components/ui/button";
 import { Eye, MessageSquare } from "lucide-react";
@@ -530,11 +531,6 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
   }
 
   const snapshot = data;
-  // Chat is no longer rendered (UX pivot removed it). The construction
-  // was kept around as a reference but it referenced state we just
-  // deleted (suggestionsData) so it had to come out too. Re-introducing
-  // chat would mean restoring the suggestions query, ConciergeChat
-  // props, and the stream send pipeline.
   const preview = (
     <LivePreview
       tripId={tripId}
@@ -543,6 +539,9 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       itinerary={snapshot.itinerary}
       bookings={snapshot.bookings ?? []}
     />
+  );
+  const bookingStatus = (
+    <BookingStatusPanel itinerary={snapshot.itinerary} />
   );
 
   // The quiz is the front door now. The chat workspace has been the
@@ -553,12 +552,32 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
   // conversational text pretending things are confirmed when they
   // aren't.
 
+  // Layout: the itinerary is the main column; the booking-status panel
+  // sits beside it (right) on desktop and stacks below on mobile. The
+  // panel is the customer's reassurance ledger — what's actually locked
+  // in, live. It hides itself when there's no itinerary yet.
+  const hasStatusPanel = Boolean(
+    snapshot.itinerary &&
+      snapshot.itinerary.items.some((i) => i.type !== "FREE_TIME"),
+  );
+
   return (
     <>
       <PushPrompt vapidKey={vapidPublicKey ?? null} />
 
       <div className="container py-5">
-        <div className="mx-auto max-w-3xl h-[calc(100dvh-7rem)]">{preview}</div>
+        {hasStatusPanel ? (
+          <div className="mx-auto max-w-6xl lg:h-[calc(100dvh-7rem)] lg:grid lg:grid-cols-12 lg:gap-5">
+            <div className="lg:col-span-8 h-[calc(100dvh-7rem)] lg:h-full">
+              {preview}
+            </div>
+            <div className="lg:col-span-4 mt-5 lg:mt-0 h-[60vh] lg:h-full">
+              {bookingStatus}
+            </div>
+          </div>
+        ) : (
+          <div className="mx-auto max-w-3xl h-[calc(100dvh-7rem)]">{preview}</div>
+        )}
       </div>
     </>
   );
