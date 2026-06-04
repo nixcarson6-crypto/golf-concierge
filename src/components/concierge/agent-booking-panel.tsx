@@ -102,10 +102,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
               Queueing…
             </>
           ) : (
-            <>
-              <Sparkles className="size-4 mr-2" />
-              Book it for me
-            </>
+            <>Book it for me</>
           )}
         </Button>
         <p className="text-[10px] text-muted-foreground text-center">

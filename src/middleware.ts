@@ -7,6 +7,11 @@ const isPublicRoute = createRouteMatcher([
   "/invite/(.*)",
   "/api/webhooks/(.*)",
   "/api/inngest(.*)",
+  // Internal server-to-server bridge for the browser-agent's live
+  // progress nudges. Auth is via x-internal-secret header (see
+  // /api/internal/nudge/route.ts) — Clerk auth can't be used because
+  // the agent runs server-side with no user session.
+  "/api/internal/(.*)",
   "/checkout/(.*)",
 ]);
 
