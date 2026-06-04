@@ -23,7 +23,6 @@ import * as React from "react";
 import { toast } from "sonner";
 import {
   Loader2,
-  Sparkles,
   ShieldCheck,
   AlertTriangle,
   X,
@@ -77,8 +76,6 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         return;
       }
       toast.success("Pyltrix is on it — watch this card for live updates.");
-      // The SSE bridge will refetch as agent progress lands, but trigger one
-      // optimistic refetch so the spinner shows up immediately.
       void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
     } catch {
       toast.error("Network error — try again.");
@@ -87,6 +84,24 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
     }
   }
 
+  // Poll for status updates whenever a booking is mid-flight. The SSE
+  // nudge bridge SHOULD push updates the moment the agent's progress
+  // changes — but it requires INTERNAL_NUDGE_SECRET to be set AND the
+  // /api/internal/nudge route to be reachable. If either's off, the
+  // booking row keeps moving on the server but the panel sits there
+  // forever showing 'Pyltrix is booking this…'. A 3s polling refetch
+  // makes the panel honest even when the nudge bridge isn't wired,
+  // and is cheap (workspace endpoint is one query).
+  const isInFlight =
+    booking != null && IN_PROGRESS_STATUSES.includes(booking.status);
+  React.useEffect(() => {
+    if (!isInFlight) return;
+    const id = setInterval(() => {
+      void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    }, 3000);
+    return () => clearInterval(id);
+  }, [isInFlight, qc, tripId]);
+
   // --- State: no booking yet → primary CTA ---------------------------------
   if (!booking) {
     return (
@@ -94,7 +109,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         <Button
           onClick={startBooking}
           disabled={submitting}
-          className="w-full h-12 rounded-2xl bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90 text-base font-semibold"
+          className="w-full h-12 rounded-2xl bg-foreground text-background hover:bg-foreground/90 text-base font-semibold"
         >
           {submitting ? (
             <>
@@ -118,10 +133,10 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
     const progress =
       booking.agentProgress ?? defaultProgressLabel(booking.status);
     return (
-      <div className="rounded-2xl border border-[hsl(var(--copper))]/30 bg-[hsl(var(--copper))]/8 px-4 py-3 flex items-center gap-3">
-        <Loader2 className="size-5 text-[hsl(var(--copper))] animate-spin shrink-0" />
+      <div className="rounded-2xl border border-foreground/30 bg-foreground/5 px-4 py-3 flex items-center gap-3">
+        <Loader2 className="size-5 text-foreground animate-spin shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-[hsl(var(--copper))]">
+          <p className="text-sm font-semibold text-foreground">
             Pyltrix is booking this…
           </p>
           <p className="text-xs text-foreground/70 truncate">{progress}</p>
@@ -133,10 +148,10 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
   // --- State: NEEDS_REVIEW -------------------------------------------------
   if (booking.status === "NEEDS_REVIEW") {
     return (
-      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/8 px-4 py-3 space-y-1">
+      <div className="rounded-2xl border border-foreground/30 bg-foreground/5 px-4 py-3 space-y-1">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="size-4 text-amber-600" />
-          <p className="text-sm font-semibold text-amber-700">
+          <ShieldCheck className="size-4 text-foreground" />
+          <p className="text-sm font-semibold text-foreground">
             Pyltrix concierge reviewing
           </p>
         </div>
@@ -157,13 +172,13 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         : null;
     return (
       <>
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/8 p-4 space-y-3">
+        <div className="rounded-2xl border border-foreground/30 bg-foreground/5 p-4 space-y-3">
           <div className="flex items-start gap-3">
-            <div className="size-9 rounded-xl bg-emerald-500/20 grid place-items-center text-emerald-700 shrink-0">
+            <div className="size-9 rounded-xl bg-foreground/10 grid place-items-center text-foreground shrink-0">
               <ShieldCheck className="size-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-emerald-700">
+              <p className="text-sm font-semibold text-foreground">
                 Booked ✓
               </p>
               <p className="text-xs text-foreground/80 mt-0.5">
@@ -182,7 +197,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
             <button
               type="button"
               onClick={() => setScreenshotOpen(true)}
-              className="w-full rounded-xl overflow-hidden border border-emerald-500/30 hover:border-emerald-500/60 transition relative group"
+              className="w-full rounded-xl overflow-hidden border border-foreground/30 hover:border-foreground/60 transition relative group"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -234,11 +249,11 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
     booking.fallbackContact?.phone ?? fallback?.phone ?? null;
 
   return (
-    <div className="rounded-2xl border border-red-500/30 bg-red-500/8 p-4 space-y-3">
+    <div className="rounded-2xl border border-foreground/30 bg-foreground/5 p-4 space-y-3">
       <div className="flex items-start gap-3">
-        <AlertTriangle className="size-5 text-red-600 shrink-0 mt-0.5" />
+        <AlertTriangle className="size-5 text-foreground shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-red-700">
+          <p className="text-sm font-semibold text-foreground">
             We couldn&apos;t auto-book this one
           </p>
           <p className="text-xs text-foreground/80 mt-0.5">
@@ -253,7 +268,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
             href={fallbackWebsite}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-xl bg-[hsl(var(--navy))] text-white text-xs font-semibold px-3 py-2 hover:bg-[hsl(var(--navy))]/90"
+            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-xl bg-foreground text-background text-xs font-semibold px-3 py-2 hover:bg-foreground/90"
           >
             Visit website
           </a>
@@ -261,7 +276,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         {fallbackPhone && (
           <a
             href={`tel:${fallbackPhone.replace(/[^+\d]/g, "")}`}
-            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-xl border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/8 text-[hsl(var(--copper))] text-xs font-semibold px-3 py-2 hover:bg-[hsl(var(--copper))]/15"
+            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-xl border border-foreground/40 bg-foreground/5 text-foreground text-xs font-semibold px-3 py-2 hover:bg-foreground/10"
           >
             Call {fallbackPhone}
           </a>
