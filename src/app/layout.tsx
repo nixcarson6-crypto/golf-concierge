@@ -17,25 +17,25 @@ const fraunces = Fraunces({
 
 export const metadata: Metadata = {
   title: {
-    default: "Golf Concierge — premium golf trips, planned by AI",
-    template: "%s · Golf Concierge",
+    default: "Pyltrix — luxury golf trips, planned and booked by AI",
+    template: "%s · Pyltrix",
   },
   description:
-    "Describe the trip. Your AI concierge handles destinations, courses, lodging, dining, group payments, and bookings end-to-end.",
+    "Answer a few questions. Pyltrix's AI builds a complete bookable golf trip — flights, lodging, tee times, dining, transport — and books it end-to-end.",
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
   ),
   manifest: "/manifest.webmanifest",
   openGraph: {
     type: "website",
-    title: "Golf Concierge",
+    title: "Pyltrix",
     description:
-      "AI-native luxury golf travel. Premium trips planned, optimised, and booked end-to-end.",
+      "AI-native luxury golf travel. Complete trips planned and booked end-to-end.",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0c",
+  themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
 };

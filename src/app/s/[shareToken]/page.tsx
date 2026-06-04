@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Sparkles, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import { db } from "@/lib/db";
 import { ItineraryItemCard } from "@/components/itinerary/itinerary-item-card";
 import { formatCurrency, formatDateRange } from "@/lib/utils";
@@ -56,8 +56,7 @@ export default async function SharedSummaryPage({
       <div className="max-w-3xl mx-auto px-6 py-10 print:py-8">
         <header className="flex items-center justify-between gap-2 text-sm text-muted-foreground print:text-neutral-600">
           <span className="flex items-center gap-2">
-            <Sparkles className="size-3.5 text-[hsl(var(--navy))] print:text-amber-700" />
-            Golf Concierge · Trip dossier
+            Pyltrix · Trip dossier
           </span>
           <PrintButton />
         </header>

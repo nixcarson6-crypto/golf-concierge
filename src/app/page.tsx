@@ -1,32 +1,28 @@
 import Link from "next/link";
-import { ArrowRight, Sparkles, Compass, Users, CreditCard, MapPin, Wand2 } from "lucide-react";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 export default async function LandingPage() {
   const { userId } = await auth();
-  // "Start a trip" jumps straight to a fresh quiz when the user is
-  // signed in. The /trips/new route seeds a DRAFT trip then redirects
-  // to /build/[id] where the questions start. For signed-out users,
-  // /sign-up bounces back here after auth.
+  // "Start a trip" jumps straight to a fresh quiz when signed in
+  // (/trips/new seeds a DRAFT then redirects into the questions). Signed
+  // out → /sign-up, which bounces back here after auth.
   const primaryHref = userId ? "/trips/new" : "/sign-up";
 
   return (
-    <main className="relative min-h-dvh">
-      <div className="pointer-events-none absolute inset-0 bg-concierge-radial" aria-hidden />
-
-      <header className="relative z-10">
-        <nav className="container flex items-center justify-between py-6">
+    <main className="relative min-h-dvh bg-background text-foreground">
+      {/* ---------------------------------------------------------------- nav */}
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl">
+        <nav className="container flex items-center justify-between py-4">
           <Link href="/" className="flex items-center gap-2.5">
-            <Logo />
-            <span className="text-display text-lg">Golf Concierge</span>
+            <Wordmark />
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {userId ? (
-              <Button asChild variant="navy" size="sm">
+              <Button asChild size="sm">
                 <Link href="/dashboard">
-                  Dashboard <ArrowRight className="ml-1" />
+                  Dashboard <ArrowRight className="ml-1 size-4" />
                 </Link>
               </Button>
             ) : (
@@ -34,7 +30,7 @@ export default async function LandingPage() {
                 <Button asChild variant="ghost" size="sm">
                   <Link href="/sign-in">Sign in</Link>
                 </Button>
-                <Button asChild variant="navy" size="sm">
+                <Button asChild size="sm">
                   <Link href="/sign-up">Get started</Link>
                 </Button>
               </>
@@ -43,35 +39,43 @@ export default async function LandingPage() {
         </nav>
       </header>
 
-      <section className="container relative z-10 pt-16 pb-24 sm:pt-24">
-        <Badge variant="navy" className="mb-6">
-          <Sparkles className="size-3" /> AI concierge · invite-only beta
-        </Badge>
-        <h1 className="text-display text-5xl sm:text-7xl leading-[1.02] tracking-[-0.025em] max-w-4xl">
-          The trip you'd ask a private concierge to plan.<br />
-          <span className="text-muted-foreground">Now in plain English.</span>
+      {/* -------------------------------------------------------------- hero */}
+      <section className="container pt-20 pb-24 sm:pt-28 sm:pb-32">
+        <p className="inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+          <span className="size-1.5 rounded-full bg-foreground" />
+          AI luxury golf-travel concierge
+        </p>
+        <h1 className="mt-7 text-display text-[2.75rem] leading-[1.04] tracking-[-0.03em] sm:text-7xl max-w-4xl">
+          The trip you&apos;d ask a private concierge to plan —
+          <span className="text-muted-foreground"> booked end to end.</span>
         </h1>
-        <p className="mt-7 max-w-2xl text-lg text-muted-foreground leading-relaxed">
-          Describe the golf trip you want. A team of agents handles
-          destinations, courses, lodging, flights, dining, group payments,
-          and bookings — and quietly re-plans the moment anything changes.
+        <p className="mt-7 max-w-xl text-base sm:text-lg text-muted-foreground leading-relaxed">
+          Answer a few questions. Our AI builds a complete, bookable golf
+          trip — flights, lodging, tee times, dining, and transport — then
+          books the whole thing for you. You just show up.
         </p>
         <div className="mt-10 flex flex-wrap items-center gap-3">
-          <Button asChild variant="navy" size="lg">
+          <Button asChild size="lg" className="h-12 px-6">
             <Link href={primaryHref}>
-              Start a trip <ArrowRight />
+              Plan my trip <ArrowRight className="ml-1 size-4" />
             </Link>
           </Button>
-          <Button asChild variant="outline" size="lg">
-            <Link href="#how">See how it works</Link>
+          <Button asChild variant="outline" size="lg" className="h-12 px-6">
+            <Link href="#how">How it works</Link>
           </Button>
         </div>
 
-        <div className="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-4 max-w-3xl">
+        {/* Stat strip — hairline-separated, monochrome */}
+        <div className="mt-20 grid grid-cols-2 sm:grid-cols-4 border-t border-border">
           {STATS.map((s) => (
-            <div key={s.label} className="glass rounded-2xl p-5">
-              <p className="text-display text-2xl num-tabular">{s.value}</p>
-              <p className="mt-1 text-xs text-muted-foreground uppercase tracking-wide">
+            <div
+              key={s.label}
+              className="py-6 sm:py-7 pr-6 border-b border-border sm:border-b-0 sm:border-r last:border-r-0"
+            >
+              <p className="text-display text-3xl sm:text-4xl tracking-tight tabular-nums">
+                {s.value}
+              </p>
+              <p className="mt-2 text-[11px] uppercase tracking-widest text-muted-foreground">
                 {s.label}
               </p>
             </div>
@@ -79,24 +83,55 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      <section id="how" className="container relative z-10 pb-24">
-        <div className="mb-10 max-w-2xl">
-          <h2 className="text-display text-3xl sm:text-4xl tracking-tight">
-            Hands-free, end-to-end.
-          </h2>
-          <p className="mt-3 text-muted-foreground">
-            No forms. No tabs. No spreadsheet payment trackers. Just a
-            conversation and a live itinerary that updates beside it.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="glass rounded-2xl p-6">
-              <div className="size-10 rounded-xl border border-[hsl(var(--navy)/0.3)] bg-[hsl(var(--navy)/0.08)] flex items-center justify-center text-[hsl(var(--navy))]">
-                {f.icon}
+      {/* ----------------------------------------------------- how it works */}
+      <section id="how" className="border-t border-border bg-surface-sunken/40">
+        <div className="container py-24">
+          <div className="max-w-2xl">
+            <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+              How it works
+            </p>
+            <h2 className="mt-4 text-display text-3xl sm:text-5xl tracking-tight">
+              Three steps. Zero spreadsheets.
+            </h2>
+          </div>
+          <div className="mt-14 grid gap-px sm:grid-cols-3 bg-border border border-border rounded-2xl overflow-hidden">
+            {STEPS.map((step, i) => (
+              <div key={step.title} className="bg-background p-8 sm:p-10">
+                <p className="text-display text-2xl text-muted-foreground tabular-nums">
+                  0{i + 1}
+                </p>
+                <h3 className="mt-6 text-lg font-medium tracking-tight">
+                  {step.title}
+                </h3>
+                <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+                  {step.body}
+                </p>
               </div>
-              <h3 className="mt-5 text-base font-medium">{f.title}</h3>
-              <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------- feature grid */}
+      <section className="container py-24">
+        <div className="max-w-2xl">
+          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+            What you get
+          </p>
+          <h2 className="mt-4 text-display text-3xl sm:text-5xl tracking-tight">
+            A real trip, not a list of links.
+          </h2>
+        </div>
+        <div className="mt-14 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border border border-border rounded-2xl overflow-hidden">
+          {FEATURES.map((f) => (
+            <div key={f.title} className="bg-background p-8 group">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-medium tracking-tight">
+                  {f.title}
+                </h3>
+                <ArrowUpRight className="size-4 text-muted-foreground/40 group-hover:text-foreground transition" />
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
                 {f.body}
               </p>
             </div>
@@ -104,62 +139,108 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      <footer className="container relative z-10 pb-10 text-sm text-muted-foreground flex items-center justify-between">
-        <span>© {new Date().getFullYear()} Golf Concierge</span>
-        <Link href={primaryHref} className="hover:text-foreground transition">
-          Plan a trip →
-        </Link>
+      {/* -------------------------------------------------------- closing CTA */}
+      <section className="container pb-24">
+        <div className="rounded-3xl bg-foreground text-background px-8 py-16 sm:px-16 sm:py-24 text-center">
+          <h2 className="text-display text-3xl sm:text-5xl tracking-tight max-w-3xl mx-auto leading-[1.08]">
+            Tell us where you want to play. We&apos;ll handle the rest.
+          </h2>
+          <div className="mt-10">
+            <Button
+              asChild
+              size="lg"
+              className="h-12 px-7 bg-background text-foreground hover:bg-background/90"
+            >
+              <Link href={primaryHref}>
+                Plan my trip <ArrowRight className="ml-1 size-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------- footer */}
+      <footer className="border-t border-border">
+        <div className="container py-8 flex items-center justify-between text-sm text-muted-foreground">
+          <Wordmark small />
+          <span>© {new Date().getFullYear()} Pyltrix</span>
+        </div>
       </footer>
     </main>
   );
 }
 
 const STATS = [
-  { value: "5+", label: "Premium markets" },
-  { value: "9", label: "Specialist AI agents" },
-  { value: "End→end", label: "Booked & paid" },
+  { value: "1 pass", label: "Whole trip built" },
+  { value: "End→end", label: "Booked for you" },
+  { value: "5★", label: "Luxury markets" },
   { value: "0", label: "Spreadsheets" },
+];
+
+const STEPS = [
+  {
+    title: "Answer the quiz",
+    body: "A few quick questions — where, when, who, the vibe, the budget. No forms, no back-and-forth.",
+  },
+  {
+    title: "AI builds the trip",
+    body: "Flights, lodging, tee times, dining, and ground transport — a complete day-by-day itinerary with real, current prices.",
+  },
+  {
+    title: "We book it all",
+    body: "One tap. Our concierge agent reserves everything on your behalf and hands you the confirmations. You just show up.",
+  },
 ];
 
 const FEATURES = [
   {
-    icon: <Wand2 className="size-5" />,
-    title: "Conversational planning",
-    body: "Describe the trip you want. The concierge asks only what it needs and refines as you go.",
+    title: "Real prices, never guessed",
+    body: "Live flight fares, published hotel and green-fee rates, and ride costs from actual driving distance. If we can't confirm it, we don't show it.",
   },
   {
-    icon: <Compass className="size-5" />,
-    title: "Destination intelligence",
-    body: "Course quality, weather, logistics, nightlife — scored honestly for your group, not flattened to 90s.",
+    title: "Fastest routes, automatically",
+    body: "Flights ranked by speed and stops, not just price — the nonstop a private concierge would put you on.",
   },
   {
-    icon: <MapPin className="size-5" />,
-    title: "Live itinerary",
-    body: "A day-by-day plan rebuilds in real time as you refine. See every cost, every rationale.",
+    title: "Books the long tail",
+    body: "Independent courses, beach clubs, spas, boat tours — anything with a booking page, our agent reserves directly on the venue's own site.",
   },
   {
-    icon: <Users className="size-5" />,
-    title: "Group, handled",
-    body: "Invites, approvals, preferences, split payments — coordinated without a single group chat.",
+    title: "Marquee dining, handled",
+    body: "The restaurants you actually want, reserved or one tap away — no phone tag, no guesswork.",
   },
   {
-    icon: <CreditCard className="size-5" />,
-    title: "Stripe-native checkout",
-    body: "Per-person links, deposit or full balance, real-time payment tracking. PCI scope handled.",
+    title: "Proof you can see",
+    body: "Every booking comes back with a real confirmation number and the venue's own confirmation page. Zero-click peace of mind.",
   },
   {
-    icon: <Sparkles className="size-5" />,
-    title: "Re-optimization, quietly",
-    body: "Tee time taken? Weather turned? Plans rebuild without a single email thread.",
+    title: "Swap anything, instantly",
+    body: "Don't love a pick? Tap for an alternative. The plan and the totals rebuild on the spot.",
   },
 ];
 
-function Logo() {
+function Wordmark({ small = false }: { small?: boolean }) {
   return (
-    <span className="size-8 rounded-xl bg-gradient-to-br from-[hsl(var(--navy))] to-[hsl(var(--navy-muted))] grid place-items-center">
-      <svg viewBox="0 0 24 24" className="size-4 text-[hsl(var(--primary-foreground))]" fill="currentColor">
-        <path d="M12 2c1.5 4 4 6.5 8 8-4 1.5-6.5 4-8 8-1.5-4-4-6.5-8-8 4-1.5 6.5-4 8-8Z" />
-      </svg>
+    <span className="flex items-center gap-2">
+      <span className="grid size-7 place-items-center rounded-lg bg-foreground">
+        <svg
+          viewBox="0 0 24 24"
+          className="size-4 text-background"
+          fill="currentColor"
+          aria-hidden
+        >
+          <path d="M12 2c1.5 4 4 6.5 8 8-4 1.5-6.5 4-8 8-1.5-4-4-6.5-8-8 4-1.5 6.5-4 8-8Z" />
+        </svg>
+      </span>
+      <span
+        className={
+          small
+            ? "text-display text-base tracking-tight"
+            : "text-display text-lg tracking-tight"
+        }
+      >
+        Pyltrix
+      </span>
     </span>
   );
 }

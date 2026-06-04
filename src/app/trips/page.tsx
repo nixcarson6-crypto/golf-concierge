@@ -31,8 +31,8 @@ export default async function TripsListPage() {
   return (
     <div className="relative min-h-dvh bg-concierge-radial">
       <header className="container py-6 flex items-center justify-between">
-        <Link href="/" className="text-display text-xl">
-          Golf Concierge
+        <Link href="/" className="text-display text-xl tracking-tight">
+          Pyltrix
         </Link>
         <UserButton afterSignOutUrl="/" />
       </header>
