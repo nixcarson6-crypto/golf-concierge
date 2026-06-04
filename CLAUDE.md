@@ -464,9 +464,49 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
       on that same form. Stub already wired in
       `src/lib/bookings/providers/blacklane.ts`.
 - [ ] **Resy** — covers Carbone, Don Angie, etc. that OpenTable misses.
-      `resy.com/about/business`.
+      `resy.com/about/business`. **PRIORITY** — most premium-restaurant
+      reservations on real itineraries route through Resy/OpenTable, so
+      sanctioned access flips dining from "clickout" to fully
+      auto-booked. Apply BOTH doors: (a) affiliate program (sanctioned
+      deep links + commission, realistic pre-launch) and (b) the
+      reservation/partnerships API (the bigger prize). Resy is
+      Amex-owned, API is locked down — lead with affiliate, open the
+      partnership convo. Draft copy below.
+- [ ] **OpenTable — affiliate + API follow-up** — already emailed once
+      (see in-flight list). **PRIORITY.** Follow up on that thread AND
+      apply to the OpenTable affiliate program (Impact/their network →
+      sanctioned referral deep links + commission, near-term yes). The
+      full reservation API is partner-only; keep that as the parallel
+      ask. The clickout feature already shipped — affiliate just makes
+      each clickout earn + ToS-blessed. Draft copy below.
 - [ ] **Tock** — Eleven Madison Park, Atomix, French Laundry tier.
       `exploretock.com/sales`.
+
+#### Draft application copy — Resy (resy.com/about/business)
+
+> Pyltrix is an AI luxury golf-travel concierge (pyltrix.com). Customers
+> answer a short quiz and our AI builds a complete, bookable trip —
+> flights, lodging, tee times, dining, transport — then books it
+> end-to-end. Dining is core to these trips and the marquee restaurants
+> our customers want (Carbone, Don Angie tier) are Resy-exclusive. We'd
+> like to integrate Resy so we can place real reservations for our
+> travelers — open to starting with your affiliate/referral program and
+> growing into deeper API access. Pre-launch; first bookings Q3 2026,
+> conservatively 30-75 covers/month at launch, scaling with trip volume.
+> Payment processor: Stripe. Entity: LLC in formation.
+
+#### Draft application copy — OpenTable (follow-up email + affiliate)
+
+> Following up on my note from [date] re: partnership/API access.
+> Pyltrix (pyltrix.com) is an AI luxury golf-travel concierge — customers
+> take a quiz, our AI builds a full bookable trip (flights, lodging, tee
+> times, dining, transport) and books it end-to-end. Restaurant
+> reservations are central, and most of the venues on our itineraries
+> are OpenTable. We'd love to (1) join the OpenTable affiliate program
+> for sanctioned referral links now, and (2) explore reservation-API
+> access as we scale. Pre-launch; first bookings Q3 2026, ~50-100
+> covers/month at launch growing with volume. Stripe for payments,
+> LLC in formation. Happy to hop on a call.
 - [ ] **Trawick** — travel insurance forms already in progress, finish.
 
 **Already-applied / in-flight (do NOT re-apply — wait their 2-3 week
