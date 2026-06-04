@@ -133,12 +133,33 @@ export async function searchFlights(
   }
 
   const cap = input.maxOffers ?? 5;
-  const offers = (json.data.offers ?? [])
-    .slice()
-    .sort((a, b) => Number(a.total_amount) - Number(b.total_amount))
-    .slice(0, cap)
+  // Carson's rule: 'find the fastest and most efficient routes — I
+  // don't want to have to go on whatever flight I pick.' So we rank
+  // by route quality, NOT cheapest-first. Score formula:
+  //   - Stops: each stop adds 240 'penalty minutes' (every connection
+  //     burns ~3-4 hours in real elapsed travel, so nonstop dominates).
+  //   - Duration: total travel minutes across all slices.
+  //   - Price: a soft tiebreaker — every $1000 USD adds 30 penalty
+  //     minutes, so we still avoid pathological premium options for a
+  //     5-minute time-saving, but we never trade comfort/speed for a
+  //     small discount.
+  // The 'Cheaper' refinement chip is how the customer opts in to
+  // price-first; the default they see is fast-first.
+  const summarized = (json.data.offers ?? [])
     .map(summarizeOffer)
     .filter((o): o is FlightOfferSummary => o !== null);
+  const scored = summarized.map((o) => {
+    const totalStops = o.slices.reduce((sum, s) => sum + s.stops, 0);
+    const totalMinutes = o.slices.reduce(
+      (sum, s) => sum + s.durationMinutes,
+      0,
+    );
+    const pricePenalty = (o.totalAmount / 1000) * 30;
+    const score = totalStops * 240 + totalMinutes + pricePenalty;
+    return { offer: o, score };
+  });
+  scored.sort((a, b) => a.score - b.score);
+  const offers = scored.slice(0, cap).map((x) => x.offer);
 
   return { ok: true, offerRequestId: json.data.id, offers };
 }

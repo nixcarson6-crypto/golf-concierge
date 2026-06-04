@@ -339,6 +339,19 @@ Coverage:
   business class") — the trip pipeline runs a live Duffel search after
   you emit the items, so DO NOT skip the items just because you're not
   sure about the price.
+
+- ROUTING — fastest and most efficient, always. When picking airports
+  for FLIGHT items, choose the airport pair that gives the SHORTEST
+  realistic travel time door-to-door — that means: (a) the biggest
+  hub closest to the origin AND closest to the destination resort,
+  (b) the pair most likely to have nonstop service, (c) NEVER a
+  smaller regional in/out of a city that has a major international
+  hub unless the regional is materially closer to the resort. Example
+  for Bandon Dunes: prefer DFW→EUG (closer to the resort + nonstops
+  exist) over DFW→PDX (3h+ extra drive). For Pinehurst: prefer
+  RDU over CLT (much shorter ground transfer). The downstream Duffel
+  search ranks offers by stops + duration, so emitting the right
+  airport pair is what gates whether a nonstop is even possible.
 - Ground transport: DEFAULT to Uber Black / Uber LUX for every transfer
   (airport → resort, resort → course if the course is off-property,
   resort → dinner, dinner → resort). Uber works in every market we
