@@ -38,15 +38,19 @@ const CONCURRENCY = 4;
 
 const priceExtractSchema = z.object({
   /** The unit price in whole USD, or null if the search didn't surface a
-   *  clear, current published rate for THIS specific venue. */
+   *  clear current rate for THIS specific venue. */
   priceUsd: z.number().nullable(),
   /** What the price is per — informs how we multiply. */
   unit: z.enum(["per_night", "per_round_per_player", "unknown"]),
-  /** HIGH only when the number is clearly THIS venue's current published
-   *  rate from a credible source. Anything fuzzy → LOW → we don't use it. */
-  confidence: z.enum(["high", "low"]),
-  /** The source URL the number came from. Required for a high-confidence
-   *  result; we refuse to set a price without one. */
+  /** Three tiers, all usable:
+   *   high   = clearly this venue's own current rate, exact figure.
+   *   medium = published "from $X" floor, or a credible third-party rate
+   *            (Booking.com, Tripadvisor) for this exact venue — usable
+   *            as a conservative estimate.
+   *   low    = unclear / different property / no source → not usable. */
+  confidence: z.enum(["high", "medium", "low"]),
+  /** The source URL the number came from. Required for any usable
+   *  result (high or medium). */
   sourceUrl: z.string().nullable(),
 });
 
@@ -171,24 +175,55 @@ async function priceLodging(
   if (!hotelName) return null;
   const nights = nightsFor(item);
   if (nights <= 0) return null;
-
   const where = destination ?? item.location ?? "";
-  const query = `${hotelName} ${where} current nightly room rate per night USD`;
-  const extracted = await searchAndExtract(query, hotelName);
-  if (
-    !extracted ||
-    extracted.confidence !== "high" ||
-    !extracted.priceUsd ||
-    !extracted.sourceUrl ||
-    extracted.unit === "per_round_per_player"
-  ) {
-    return null;
+
+  // Try TWO queries — a specific "nightly rate" query first; if the
+  // extractor can't find a confident rate, fall back to a broader query
+  // ('hotel rooms price') that catches Booking.com / Tripadvisor /
+  // hotel-aggregator pages where the rate is often clearer.
+  const queries = [
+    `${hotelName} ${where} nightly room rate per night USD`,
+    `${hotelName} ${where} rooms price booking`,
+  ];
+  for (const q of queries) {
+    const extracted = await searchAndExtract(q, hotelName);
+    if (
+      extracted &&
+      extracted.confidence !== "low" &&
+      extracted.priceUsd &&
+      extracted.sourceUrl &&
+      extracted.unit !== "per_round_per_player"
+    ) {
+      const cents = Math.round(extracted.priceUsd * nights * 100);
+      await stampSource(
+        item.id,
+        extracted.sourceUrl,
+        `${fmt(extracted.priceUsd)}/night × ${nights} nights${extracted.confidence === "medium" ? " · est." : ""}`,
+      );
+      console.log(
+        `[price-enrichment] ✓ ${hotelName}: $${extracted.priceUsd}/night × ${nights} = $${Math.round(extracted.priceUsd * nights)} (${extracted.confidence})`,
+      );
+      return cents;
+    }
   }
-  // Published nightly rate × nights, one room (matches how the itinerary
-  // describes a suite for the group).
-  const cents = Math.round(extracted.priceUsd * nights * 100);
-  await stampSource(item.id, extracted.sourceUrl, `${fmt(extracted.priceUsd)}/night × ${nights} nights`);
-  return cents;
+  // Last resort: extract a rate the AI itinerary agent wrote into the
+  // description text itself ("~$525/night for a suite × 10 nights").
+  // These are KB-informed estimates, not invented numbers.
+  const fromDesc = extractRateFromDescription(item.description, "per_night");
+  if (fromDesc) {
+    const cents = Math.round(fromDesc * nights * 100);
+    await stampSource(
+      item.id,
+      null,
+      `~${fmt(fromDesc)}/night × ${nights} nights · est.`,
+    );
+    console.log(
+      `[price-enrichment] ~ ${hotelName}: $${fromDesc}/night × ${nights} = $${Math.round(fromDesc * nights)} (description-est)`,
+    );
+    return cents;
+  }
+  console.log(`[price-enrichment] ✗ ${hotelName}: no usable price found`);
+  return null;
 }
 
 /* --------------------------------------------------------------- tee time */
@@ -200,26 +235,57 @@ async function priceTeeTime(
 ): Promise<number | null> {
   const courseName = stripParenTail(item.title).split(/\s+[—–-]\s+/)[0].trim();
   if (!courseName) return null;
-
   const where = destination ?? item.location ?? "";
-  const query = `${courseName} ${where} golf green fee rate per player USD`;
-  const extracted = await searchAndExtract(query, courseName);
-  if (
-    !extracted ||
-    extracted.confidence !== "high" ||
-    !extracted.priceUsd ||
-    !extracted.sourceUrl ||
-    extracted.unit === "per_night"
-  ) {
-    return null;
+
+  // Try the specific "green fee" query first; fall back to a broader
+  // "rates" query that catches Tee-time aggregators and the course's
+  // own rates page.
+  const queries = [
+    `${courseName} ${where} golf green fee per player USD`,
+    `${courseName} ${where} golf course rates`,
+  ];
+  for (const q of queries) {
+    const extracted = await searchAndExtract(q, courseName);
+    if (
+      extracted &&
+      extracted.confidence !== "low" &&
+      extracted.priceUsd &&
+      extracted.sourceUrl &&
+      extracted.unit !== "per_night"
+    ) {
+      const cents = Math.round(extracted.priceUsd * players * 100);
+      await stampSource(
+        item.id,
+        extracted.sourceUrl,
+        `${fmt(extracted.priceUsd)}/player × ${players}${extracted.confidence === "medium" ? " · est." : ""}`,
+      );
+      console.log(
+        `[price-enrichment] ✓ ${courseName}: $${extracted.priceUsd}/player × ${players} = $${Math.round(extracted.priceUsd * players)} (${extracted.confidence})`,
+      );
+      return cents;
+    }
   }
-  const cents = Math.round(extracted.priceUsd * players * 100);
-  await stampSource(
-    item.id,
-    extracted.sourceUrl,
-    `${fmt(extracted.priceUsd)}/player × ${players}`,
+  // Description fallback — the AI itinerary agent often writes a real
+  // KB-informed green-fee range into the description ("Green fee ~$450
+  // /player").
+  const fromDesc = extractRateFromDescription(
+    item.description,
+    "per_round_per_player",
   );
-  return cents;
+  if (fromDesc) {
+    const cents = Math.round(fromDesc * players * 100);
+    await stampSource(
+      item.id,
+      null,
+      `~${fmt(fromDesc)}/player × ${players} · est.`,
+    );
+    console.log(
+      `[price-enrichment] ~ ${courseName}: $${fromDesc}/player × ${players} = $${Math.round(fromDesc * players)} (description-est)`,
+    );
+    return cents;
+  }
+  console.log(`[price-enrichment] ✗ ${courseName}: no usable price found`);
+  return null;
 }
 
 /* -------------------------------------------------------------- transport */
@@ -355,24 +421,28 @@ async function searchAndExtract(
   return extraction;
 }
 
-const PRICE_EXTRACT_SYSTEM = `You extract a single confirmed PRICE from web-search results for a
-specific named venue (a hotel or a golf course). You are deliberately
-skeptical — a wrong number is worse than no number.
+const PRICE_EXTRACT_SYSTEM = `You extract a single PRICE from web-search results for a specific
+named venue (a hotel or a golf course). Three confidence tiers, ALL
+usable — but distinguished honestly so the app can label estimates:
 
-Rules:
-- Return priceUsd ONLY when the search results clearly state THIS exact
-  venue's own CURRENT published rate (nightly room rate for a hotel,
-  green fee per player for a golf course).
-- The number MUST come from one of the result snippets, and you MUST
+- confidence="high" — the result clearly states THIS exact venue's own
+  CURRENT specific nightly rate or green fee, from the venue's own
+  site or a credible reservation page. Exact figure.
+- confidence="medium" — a published "from $X" floor, an aggregator
+  (Booking.com / Tripadvisor / GolfNow) showing this exact venue's
+  current rate, or a price clearly tied to THIS venue but with some
+  fuzz (range, "starting at", older snapshot). USABLE as a conservative
+  estimate — emit it.
+- confidence="low" — wrong property, no source URL, generic average
+  with no venue tie, or you'd be guessing. Emit priceUsd=null.
+
+Hard rules:
+- The number MUST come from one of the result snippets and you MUST
   return that result's url in sourceUrl. No source → priceUsd=null.
-- confidence="high" ONLY when you're certain it's this venue's current
-  own rate. If it's a third-party estimate, an old date, a different
-  property, a "from $X" teaser with no real figure, or you're matching
-  loosely — confidence="low" and priceUsd=null.
 - unit: "per_night" for hotels, "per_round_per_player" for golf.
-- Whole USD. Strip currency symbols. If a range, take the LOW end of the
-  current rate (conservative).
-- NEVER invent, average, or infer a price from "comparable" venues.`;
+- Whole USD. Strip currency symbols. If a range, take the LOW end
+  (conservative).
+- NEVER invent, average, or infer from "comparable" venues.`;
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -382,6 +452,45 @@ function stripParenTail(title: string): string {
     .replace(/\s*\([^)]*\)\s*/g, " ")
     .replace(/\s+[—–-]\s+.*$/, "")
     .trim();
+}
+
+/**
+ * Last-resort fallback: extract a price the AI itinerary agent wrote
+ * into the item's description text. The itinerary agent draws on the
+ * curated destination KB (real green-fee and nightly-rate data Carson
+ * hand-built), so these aren't invented numbers — they're KB-informed
+ * estimates. Marked as "est." in the UI so the customer knows.
+ *
+ * Matches common phrasings the AI produces:
+ *   "Green fee ~$450/player"
+ *   "$120/player as a guest"
+ *   "~$525/night for a suite × 10 nights"
+ *   "Suite ~$650 per night"
+ * Takes the LOW end of any range and ignores numbers that look like
+ * totals rather than unit rates (anything > 5000 — protects against
+ * extracting "× 10 nights = $5,250" as a per-night).
+ */
+function extractRateFromDescription(
+  description: string | null,
+  unit: "per_night" | "per_round_per_player",
+): number | null {
+  if (!description) return null;
+  const text = description.toLowerCase();
+  // Only pull a number that's anchored to a unit-rate phrase, so we
+  // don't accidentally grab the trip total.
+  const unitWords =
+    unit === "per_night"
+      ? /(per\s*night|\/\s*night|\bnight\b|nightly)/
+      : /(per\s*player|\/\s*player|\bplayer\b|green\s*fee)/;
+  if (!unitWords.test(text)) return null;
+  // Find every $-prefixed number; pick the first one that's a plausible
+  // per-unit rate (50 ≤ x ≤ 5000).
+  const matches = text.matchAll(/\$\s*([0-9]{2,5})(?:[.,]\d{1,2})?/g);
+  for (const m of matches) {
+    const n = parseInt(m[1].replace(/,/g, ""), 10);
+    if (n >= 50 && n <= 5000) return n;
+  }
+  return null;
 }
 
 /** Nights for a lodging item — from the title "(N nights)" or the date span. */

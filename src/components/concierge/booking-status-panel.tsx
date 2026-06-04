@@ -164,6 +164,49 @@ export function BookingStatusPanel({
 }) {
   const qc = useQueryClient();
   const [bookingId, setBookingId] = React.useState<string | null>(null);
+  const [bookingAll, setBookingAll] = React.useState(false);
+
+  const bookAll = React.useCallback(async () => {
+    if (bookingAll || bookingId) return;
+    setBookingAll(true);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/book-all`, {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        needsProfile?: boolean;
+        error?: string;
+        outcomes?: Array<{ status: string }>;
+      } | null;
+      if (!res.ok || !data?.ok) {
+        toast.error(
+          data?.error ?? "Couldn't book the trip — try again.",
+        );
+        return;
+      }
+      const booked =
+        data.outcomes?.filter((o) => o.status === "booked").length ?? 0;
+      const pencilled =
+        data.outcomes?.filter((o) => o.status === "pencilled").length ?? 0;
+      const failed =
+        data.outcomes?.filter((o) => o.status === "failed").length ?? 0;
+      if (failed > 0) {
+        toast.error(
+          `Booked ${booked}, pencilled ${pencilled}, ${failed} failed — check the panel.`,
+        );
+      } else {
+        toast.success(
+          `Trip locked in: ${booked} confirmed${pencilled > 0 ? `, ${pencilled} pencilled` : ""}.`,
+        );
+      }
+      void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setBookingAll(false);
+    }
+  }, [bookingAll, bookingId, qc, tripId]);
 
   // Tap a not-yet-booked row to have the agent book just that one.
   const bookItem = React.useCallback(
@@ -206,10 +249,16 @@ export function BookingStatusPanel({
   const pct = total > 0 ? Math.round((confirmed / total) * 100) : 0;
   const allDone = confirmed === total;
 
+  // Anything left to book? Hides the primary CTA once the trip is fully
+  // confirmed (the trophy footer takes over).
+  const hasUnbooked = rows.some(
+    (r) => r.kind === "pending" || r.kind === "failed",
+  );
+
   return (
     <div className="h-full flex flex-col rounded-3xl glass overflow-hidden">
-      {/* Header */}
-      <header className="px-5 py-4 border-b border-border/60">
+      {/* Header — title + counter + progress + primary "Book all" CTA */}
+      <header className="px-5 py-4 border-b border-border/60 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
             Booking status
@@ -218,20 +267,42 @@ export function BookingStatusPanel({
             {confirmed} of {total} confirmed
           </p>
         </div>
-        {/* Progress hairline */}
-        <div className="mt-3 h-px w-full bg-border overflow-hidden">
+        <div className="h-px w-full bg-border overflow-hidden">
           <div
             className="h-full bg-foreground transition-all duration-500 ease-out"
             style={{ width: `${pct}%` }}
           />
         </div>
-        <p className="mt-2.5 text-xs text-muted-foreground leading-snug">
+        <p className="text-xs text-muted-foreground leading-snug">
           {allDone
             ? "Everything's locked in. You're all set."
             : inFlight > 0
               ? "Pyltrix is booking your trip — watch each line confirm."
-              : "Tap “Book all” or “Book it for me” and items confirm here."}
+              : hasUnbooked
+                ? "Hit Book all, or tap any single row to book just that one."
+                : "Items will confirm here as the agent works."}
         </p>
+        {hasUnbooked && (
+          <button
+            type="button"
+            onClick={() => void bookAll()}
+            disabled={bookingAll || bookingId !== null}
+            className={cn(
+              "w-full h-11 rounded-xl bg-foreground text-background text-sm font-semibold",
+              "hover:bg-foreground/90 transition disabled:opacity-60 disabled:cursor-not-allowed",
+              "inline-flex items-center justify-center gap-2",
+            )}
+          >
+            {bookingAll ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Booking your trip…
+              </>
+            ) : (
+              <>Book all</>
+            )}
+          </button>
+        )}
       </header>
 
       {/* Rows — visible scrollbar so it's obvious the list scrolls. */}

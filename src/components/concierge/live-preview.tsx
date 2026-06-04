@@ -41,7 +41,6 @@ import { BookingDetailsDialog } from "./booking-details-dialog";
 import { SuggestedFlightDialog } from "./suggested-flight-dialog";
 import { FlightBookingModal } from "./flight-booking-modal";
 import { TravelerProfileModal } from "./traveler-profile-modal";
-import { AgentBookingPanel } from "./agent-booking-panel";
 import { SetOriginBanner } from "./set-origin-banner";
 import { tripDisplayLabel } from "@/lib/trip-display";
 import { buildUberDeepLink } from "@/lib/uber-deep-link";
@@ -252,12 +251,9 @@ export function LivePreview({
           </div>
         )}
       </ScrollArea>
-      <BookAllPanel
-        tripId={tripId}
-        bookings={bookings}
-        itinerary={itinerary}
-        suggestedFlights={trip.suggestedFlights}
-      />
+      {/* "Book all" CTA moved to the side BookingStatusPanel — all
+          booking control now lives there per Carson's restructure.
+          The itinerary stays focused on browsing + customizing. */}
       <CartFooter tripId={tripId} bookings={bookings} />
       <TravelerProfileModal
         open={profileModalOpen}
@@ -2050,14 +2046,12 @@ function ItineraryItemDialog({
               </a>
             );
           })()}
-          {/* Pyltrix agent booking — primary CTA + live status + booked
-              reassurance card + honest failure fallback. Renders nothing
-              for non-bookable item types (FLIGHT/FREE_TIME/TRANSPORT). */}
-          <AgentBookingPanel
-            tripId={tripId}
-            item={item}
-            fallback={{ website: venueWebsite, phone: venuePhone }}
-          />
+          {/* Per-item booking CTA removed from the dialog per Carson's
+              direction. All booking control now lives in the side
+              "Booking status" panel: tap a row to book that one, or use
+              the panel's primary "Book all" button. The dialog stays
+              focused on browsing + customizing (Find alternative,
+              Remove, photos, rationale). */}
           {/* Manual fallback for un-bookable types (FREE_TIME / TRANSPORT
               backup) — only show when the panel didn't render. */}
           {(venueWebsite || venuePhone) &&
