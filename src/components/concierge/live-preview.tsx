@@ -1235,12 +1235,19 @@ function FlightRefineChips({ tripId }: { tripId: string }) {
         | null;
       if (!res.ok || data?.error) {
         toast.error(data?.error ?? "Couldn't refine the flight options.");
-      } else {
-        const label = REFINE_CHIPS.find((c) => c.id === modifier)?.label ?? "";
-        toast.success(`Flights updated — ${label.toLowerCase()}.`);
-        await qc.invalidateQueries({ queryKey: ["workspace", tripId] });
-        router.refresh();
+        return;
       }
+      const label = REFINE_CHIPS.find((c) => c.id === modifier)?.label ?? "";
+      toast.success(`Flights updated — ${label.toLowerCase()}.`);
+      // Force-refetch the workspace data so the flight cards reflect
+      // the new ranking. We do BOTH the React-Query invalidate AND a
+      // refetchQueries — invalidate alone respects staleTime, refetch
+      // is unconditional. Without this the cards can look the same
+      // for up to the staleTime window which feels like 'nothing
+      // happened' even though the server updated.
+      await qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+      await qc.refetchQueries({ queryKey: ["workspace", tripId] });
+      router.refresh();
     } catch {
       toast.error("Network error — try again.");
     } finally {
@@ -1252,22 +1259,29 @@ function FlightRefineChips({ tripId }: { tripId: string }) {
     <div className="flex flex-wrap gap-1.5 px-1 pb-1">
       {REFINE_CHIPS.map((chip) => {
         const isRefining = refining === chip.id;
-        const disabled = refining !== null;
+        const otherRefining = refining !== null && !isRefining;
         return (
           <button
             key={chip.id}
             type="button"
-            disabled={disabled}
+            disabled={refining !== null}
             onClick={() => refine(chip.id)}
             className={cn(
               "text-[11px] rounded-full px-2.5 py-1 border transition whitespace-nowrap",
+              // Selected/loading chip flips to black-on-white. The label
+              // STAYS visible during loading — Carson explicitly didn't
+              // want the UI to morph mid-click. A tiny inline dot before
+              // the label signals 'working' without changing the text.
               isRefining
-                ? "border-[hsl(var(--copper))]/60 bg-[hsl(var(--copper))]/10 text-[hsl(var(--copper))]"
-                : "border-border/60 bg-surface-raised/60 text-muted-foreground hover:border-[hsl(var(--copper))]/40 hover:text-foreground",
-              disabled && !isRefining && "opacity-50 cursor-not-allowed",
+                ? "border-foreground bg-foreground text-background"
+                : "border-border bg-background text-foreground hover:border-foreground",
+              otherRefining && "opacity-40 cursor-not-allowed",
             )}
           >
-            {isRefining ? "…" : chip.label}
+            {isRefining && (
+              <span className="inline-block size-1.5 rounded-full bg-background mr-1.5 animate-pulse" />
+            )}
+            {chip.label}
           </button>
         );
       })}
