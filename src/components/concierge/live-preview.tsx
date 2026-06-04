@@ -1224,6 +1224,10 @@ function FlightRefineChips({ tripId }: { tripId: string }) {
   const refine = async (modifier: FlightRefineModifier) => {
     if (refining) return;
     setRefining(modifier);
+    // Browser-side diagnostic — open DevTools → Console to see exactly
+    // what the chip clicked sent + received. Helps catch the silent
+    // 'tapped it and nothing happened' loop.
+    console.log(`[flight-chips] tapping ${modifier} for trip ${tripId}`);
     try {
       const res = await fetch(`/api/trips/${tripId}/refine-flights`, {
         method: "POST",
@@ -1233,6 +1237,10 @@ function FlightRefineChips({ tripId }: { tripId: string }) {
       const data = (await res.json().catch(() => null)) as
         | { ok?: boolean; error?: string; count?: number }
         | null;
+      console.log(
+        `[flight-chips] ${modifier} → status ${res.status}`,
+        data,
+      );
       if (!res.ok || data?.error) {
         toast.error(data?.error ?? "Couldn't refine the flight options.");
         return;
@@ -1780,7 +1788,14 @@ function ItineraryItemDialog({
     // match a random pool-supply lab or grocery store near the destination —
     // a wrong photo is far worse than no photo (we show the clean icon
     // instead). Only search when the title names a real, specific venue.
-    const skipTypes = new Set(["TRANSPORT", "CAR", "FREE_TIME"]);
+    // Skip photo lookup for item types where a Google Places text search
+    // can't return anything meaningful: FLIGHT + TRANSPORT + CAR are
+    // movement, not venues — Carson explicitly didn't want airport
+    // check-in / car-interior stock photos on flight + ride cards.
+    // FREE_TIME is also generic ('pool / downtime' → random pool supply
+    // lab). Photos only render for HOTEL / GOLF / DINING / ACTIVITY /
+    // NIGHTLIFE / SPA — venues with a real address and real photos.
+    const skipTypes = new Set(["FLIGHT", "TRANSPORT", "CAR", "FREE_TIME"]);
     if (skipTypes.has(item.type)) {
       setPhotoFailed(true);
       return;

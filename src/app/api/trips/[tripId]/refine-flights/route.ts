@@ -49,7 +49,12 @@ export async function POST(
 
   const trip = await db.trip.findFirst({
     where: { id: tripId, ownerId: user.id },
-    select: { constraints: true, startDate: true, endDate: true },
+    select: {
+      constraints: true,
+      startDate: true,
+      endDate: true,
+      groupSize: true,
+    },
   });
   if (!trip) return new Response("not found", { status: 404 });
 
@@ -58,10 +63,56 @@ export async function POST(
   const modifier = parsed.data.modifier;
 
   const constraints = (trip.constraints ?? {}) as Record<string, unknown>;
-  const prior = constraints.suggestedFlights as SuggestedFlightsBlock | undefined;
+  let prior = constraints.suggestedFlights as SuggestedFlightsBlock | undefined;
+
+  // Fallback: if the trip never persisted a suggestedFlights block
+  // (older trips, or builds where Duffel was skipped), reconstruct the
+  // search params from the actual FLIGHT itinerary items. As long as
+  // there's an outbound + return on the trip, the chips work. Without
+  // this fallback the chips just 400 silently on most trips.
+  if (!prior) {
+    const itinerary = await db.itinerary.findFirst({
+      where: { tripId, status: "CURRENT" },
+      orderBy: { version: "desc" },
+      select: { id: true },
+    });
+    if (itinerary) {
+      const flightItems = await db.itineraryItem.findMany({
+        where: { itineraryId: itinerary.id, type: "FLIGHT" },
+        orderBy: { orderIndex: "asc" },
+      });
+      const outbound = flightItems[0];
+      const inboundMeta =
+        (flightItems[flightItems.length - 1]?.metadata as
+          | { from?: string; to?: string }
+          | null) ?? {};
+      const outboundMeta =
+        (outbound?.metadata as { from?: string; to?: string } | null) ?? {};
+      if (
+        outbound &&
+        outboundMeta.from &&
+        outboundMeta.to &&
+        inboundMeta.from &&
+        inboundMeta.to
+      ) {
+        prior = {
+          fetchedAt: new Date().toISOString(),
+          origin: outboundMeta.from.toUpperCase(),
+          destination: outboundMeta.to.toUpperCase(),
+          cabin: "business",
+          passengers: trip.groupSize ?? 2,
+          offers: [],
+        };
+      }
+    }
+  }
+
   if (!prior) {
     return new Response(
-      JSON.stringify({ error: "No flight search exists for this trip yet." }),
+      JSON.stringify({
+        error:
+          "No flight search exists for this trip yet — set your home airport above and try again.",
+      }),
       { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
