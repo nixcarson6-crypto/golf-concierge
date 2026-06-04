@@ -163,6 +163,11 @@ export type WorkspaceItineraryItem = {
   confirmationState: ConfirmationState;
   aiRationale: string | null;
   locked: boolean;
+  /** Where a real (non-flight) price came from — source URL + a short
+   *  basis label ("$525/night × 10 nights"). Null when the price wasn't
+   *  confirmed or isn't applicable. */
+  priceSource?: string | null;
+  priceBasis?: string | null;
   booking?: WorkspaceItemBooking | null;
 };
 

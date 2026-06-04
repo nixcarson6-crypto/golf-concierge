@@ -1064,9 +1064,10 @@ function TotalsBanner({
         </div>
       </div>
       <p className="mt-2 text-[10px] text-muted-foreground leading-snug">
-        Flight fares are live; hotel, golf, and transport prices lock in
-        when you book each one. We don&apos;t show prices we&apos;d have to
-        guess at.
+        Real prices only — live flight fares, published hotel + green-fee
+        rates, and Uber fares from actual driving distance. Anything we
+        can&apos;t confirm shows no price rather than a guess. Final
+        amounts lock in when you book each item.
       </p>
     </div>
   );
@@ -2081,6 +2082,28 @@ function ItineraryItemDialog({
                   ${Math.round(item.cost / 100).toLocaleString()}
                 </span>
               </div>
+              {/* Show WHERE the price came from so the customer can verify
+                  it's a real published rate, not a guess. priceBasis is the
+                  short math ("$525/night × 10"); priceSource links the
+                  source page (hotel / course site). */}
+              {(item.priceBasis || item.priceSource) && (
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  {item.priceBasis}
+                  {item.priceSource && (
+                    <>
+                      {item.priceBasis ? " · " : ""}
+                      <a
+                        href={item.priceSource}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        verify rate
+                      </a>
+                    </>
+                  )}
+                </p>
+              )}
               {/* Inline rate-adjustment chips — single tap returns one
                   cheaper or one nicer option (versus the full 3-up
                   alternatives drawer). The result lands in the same

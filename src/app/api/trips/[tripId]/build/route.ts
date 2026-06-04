@@ -679,6 +679,25 @@ export async function POST(
     );
   }
 
+  // Real-price enrichment: look up actual published hotel + green-fee
+  // rates (web search, source-gated) and compute real Uber fares from
+  // Google driving distance. Anything we can't confirm stays null.
+  // Non-fatal — a full itinerary with flight prices is already useful;
+  // the rest of the prices pop in when this finishes + nudges.
+  try {
+    const { enrichItineraryPrices } = await import(
+      "@/lib/ai/agents/price-enrichment"
+    );
+    const { enriched } = await enrichItineraryPrices(tripId, {
+      groupSize: constraints.groupSize ?? 2,
+      destination: chosenDestination,
+    });
+    console.log(`[build] price-enrichment confirmed ${enriched} real prices.`);
+    if (enriched > 0) nudge(tripId);
+  } catch (err) {
+    console.error("[build] price-enrichment threw (non-fatal):", err);
+  }
+
   return new Response(
     JSON.stringify({
       ok: true,

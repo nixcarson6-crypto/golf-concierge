@@ -201,6 +201,15 @@ export async function GET(
               locked: Boolean(
                 (i.metadata as { locked?: boolean } | null)?.locked,
               ),
+              // Real-price provenance from the enrichment pass — lets the
+              // dialog show "published rate · <source>" so the customer
+              // can verify the number is real, not a guess.
+              priceSource:
+                (i.metadata as { priceSource?: string | null } | null)
+                  ?.priceSource ?? null,
+              priceBasis:
+                (i.metadata as { priceBasis?: string | null } | null)
+                  ?.priceBasis ?? null,
               booking: b
                 ? {
                     id: b.id,
