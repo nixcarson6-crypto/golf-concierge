@@ -385,7 +385,15 @@ async function persistItineraryOnce(tripId: string, ai: ItineraryAI) {
     // (room rate × nights), tee times (green fee × players), and
     // ground transport (rental day rate). Saves customers from
     // sticker-shock numbers we have no way to actually quote.
-    const PRICEABLE = new Set(["FLIGHT", "LODGING", "TEE_TIME", "TRANSPORT"]);
+    // Only FLIGHT prices are real (live from Duffel). LODGING /
+    // TEE_TIME / TRANSPORT used to be 'priceable' but the AI was just
+    // guessing from training-data hotel rates / green fees / Uber
+    // surge — Carson's explicit call: don't show guessed prices on the
+    // itinerary. The cost field on those types gets nulled before
+    // persistence; the UI hides the dollar line and the trip total
+    // only sums what we ACTUALLY know. Once Hotelbeds / GolfNow /
+    // Uber-Guest-Rides land, add their types back to PRICEABLE.
+    const PRICEABLE = new Set(["FLIGHT"]);
     // Drop noise line items the AI sometimes invents even when the
     // prompt forbids them. "Fuel / gas / mileage / incidental driving
     // budget / parking / tolls" make Pyltrix look like a budget app —

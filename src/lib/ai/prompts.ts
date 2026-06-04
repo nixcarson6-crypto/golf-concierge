@@ -302,15 +302,17 @@ restaurants feels ROBBED, not saved money — they wanted the best, and you
 gave them economy.
 
 Rules:
-- Aim the priced items (lodging + tee times + transport) to land the trip
-  total NEAR the budget — roughly 85-100% of budgetTotal, never wildly
-  under. If you come in at half the budget, you picked the wrong tier —
-  go back and choose UP.
+- The budget drives TIER, not cost-fitting math. Don't try to make
+  cost line items sum to the budget — costs are mostly null now per
+  the pricing rules below. Use the budget to PICK THE TIER of every
+  recommendation.
 - LODGING: pick the TOP lodging tier the budget supports — the marquee
-  resort / suite, not the entry room. Anchor cost to that real nightly
-  rate. A luxury golf resort suite is $800-2500+/night; do not lowball it.
+  resort / suite, not the entry room. A luxury golf resort suite is
+  $800-2500+/night; never recommend the budget property. Cost stays
+  null; the description can name a tier ('Suite, ocean view').
 - GOLF: the marquee courses, premium tee times, caddies/forecaddies where
-  offered. Real green fees at a top resort are $300-900/round.
+  offered. Real green fees at a top resort are $300-900/round — that
+  signals the right pick, not the cost field.
 - DINING/ACTIVITIES: recommend the BEST options in the brief — the
   Michelin/chef's-table/iconic picks, not the cheap casual spots. (Cost
   stays null for these per the pricing rules, but the RECOMMENDATION
@@ -449,20 +451,23 @@ Output rules:
 - Respect LOCKED items: any item passed in priorItinerary with
   metadata.locked === true must appear UNCHANGED in your output.
 
-PRICING RULES — strict:
-- Only set 'cost' for items with a real, lookup-able rate up-front:
-  FLIGHT (Duffel-quoted total), LODGING (room rate × nights × rooms),
-  TEE_TIME (green fee × players), TRANSPORT (rental car day rate ×
-  days, or a known driver/transfer quote).
-- For DINING, SPA, ACTIVITY, NIGHTLIFE, FREE_TIME: ALWAYS set cost to
-  null. We don't know what dinner will cost (depends on what they
-  order). We don't know what spa upcharges apply. Quoting fake numbers
-  for these breaks customer trust the moment they see the actual bill.
-  These items still appear in the itinerary and on the day-by-day plan
-  — they just don't carry a price.
-- Recalculate 'totalCost' and 'perPersonCost' from ONLY the priced
-  items above. The customer should see the sum of what we can actually
-  commit to, not a mix of real quotes and AI guesses.
+PRICING RULES — strict, honesty-first:
+- Only set 'cost' for items whose price is LIVE-LOOKED-UP, not estimated:
+  FLIGHT — quoted from Duffel after you emit the item (the pipeline
+  injects the real fare; you may set cost=null and the pipeline fills it).
+- For EVERYTHING ELSE — LODGING, TEE_TIME, TRANSPORT, DINING, SPA,
+  ACTIVITY, NIGHTLIFE, FREE_TIME — ALWAYS set cost to null. Carson's
+  call: we will NOT show guessed prices to the customer. A made-up
+  $525/night room rate or $450 green-fee guess that's off by 30% is
+  worse than no number at all — the customer's first reaction at
+  check-in is 'you lied to me.'
+- Put the price-band in the description if it's useful context
+  ('Suite tier, expect ~$500-700/night when we lock the rate'), but
+  the cost field stays null. The description is clearly a band; the
+  cost field reads as a commitment.
+- Recalculate 'totalCost' and 'perPersonCost' from the priced items
+  only (essentially flights for now). The total is what the customer
+  is COMMITTED to today, not a fictional all-in number.
 `.trim();
 
 export const SUMMARY_SYSTEM = `

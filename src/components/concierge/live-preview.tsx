@@ -1044,11 +1044,11 @@ function TotalsBanner({
   if (grandTotal === 0 && bookedTotal === 0) return null;
 
   return (
-    <div className="mx-4 mt-4 mb-2 rounded-2xl border border-[hsl(var(--copper))]/30 bg-[hsl(var(--copper))]/5 p-4">
+    <div className="mx-4 mt-4 mb-2 rounded-2xl border border-border bg-background p-4">
       <div className="flex items-baseline justify-between gap-3">
         <div>
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none">
-            Trip total estimate
+            Real prices so far
           </p>
           <p className="mt-1.5 text-2xl font-semibold tabular-nums text-foreground">
             ${Math.round(grandTotal / 100).toLocaleString()}
@@ -1058,14 +1058,15 @@ function TotalsBanner({
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none">
             Booked so far
           </p>
-          <p className="mt-1.5 text-sm font-medium tabular-nums text-[hsl(var(--emerald))]">
+          <p className="mt-1.5 text-sm font-medium tabular-nums text-foreground">
             ${Math.round(bookedTotal / 100).toLocaleString()}
           </p>
         </div>
       </div>
       <p className="mt-2 text-[10px] text-muted-foreground leading-snug">
-        Estimate updates as you delete items or lock in real bookings. Flights
-        show the cheapest option until you confirm one.
+        Flight fares are live; hotel, golf, and transport prices lock in
+        when you book each one. We don&apos;t show prices we&apos;d have to
+        guess at.
       </p>
     </div>
   );
