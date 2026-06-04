@@ -31,6 +31,8 @@ const OPTIONAL = [
   "RESEND_API_KEY",
   "BROWSERBASE_API_KEY",
   "BROWSERBASE_PROJECT_ID",
+  "BROWSERBASE_SOLVE_CAPTCHAS",
+  "INTERNAL_NUDGE_SECRET",
 ];
 
 function checkEnv(name: string): Check {
