@@ -242,6 +242,30 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
     );
   }
 
+  // --- State: OpenTable / Resy clickout ------------------------------------
+  // Not a failure — it's the intended path for these venues. One-tap link
+  // to the reservation page (pre-filled where the platform supports it).
+  if (booking.clickout?.url) {
+    const label = booking.clickout.label ?? "the reservation site";
+    return (
+      <div className="space-y-1">
+        <a
+          href={booking.clickout.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full h-12 rounded-2xl bg-foreground text-background hover:bg-foreground/90 text-base font-semibold inline-flex items-center justify-center"
+        >
+          Reserve on {label}
+        </a>
+        <p className="text-[10px] text-muted-foreground text-center">
+          {label} handles this venue&apos;s reservations — one tap, your
+          details carry over. Everything else on the trip, Pyltrix books for
+          you.
+        </p>
+      </div>
+    );
+  }
+
   // --- State: FAILED (or CANCELLED) → honest fallback ----------------------
   const fallbackWebsite =
     booking.fallbackContact?.website ?? fallback?.website ?? booking.vendorUrl;

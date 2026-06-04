@@ -146,6 +146,9 @@ export type WorkspaceItemBooking = {
   failureReason: string | null;
   fallbackContact: { website?: string | null; phone?: string | null } | null;
   amountChargedCents: number | null;
+  /** Set when the venue books through OpenTable/Resy — the panel shows a
+   *  "Reserve on <platform>" one-tap link instead of auto-booking. */
+  clickout: { platform?: string; label?: string; url?: string } | null;
   agentProgress: string | null;
   agentStatus: string | null;
 };
