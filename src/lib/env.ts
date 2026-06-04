@@ -79,6 +79,8 @@ const definitions = {
   // "true" to enable paid Browserbase features (advancedStealth + proxies +
   // captcha solving). Default off so the agent runs on the free tier.
   BROWSERBASE_PREMIUM: { required: false },
+  BROWSERBASE_SOLVE_CAPTCHAS: { required: false },
+  BROWSERBASE_ADVANCED_STEALTH: { required: false },
   // Model used by the booking agent's computer-use loop. MUST be a model
   // that supports the computer_20250124 tool — that's a Sonnet-line
   // capability; Opus 4.x doesn't carry it. Sonnet 4.5 is the stable default.

@@ -93,21 +93,39 @@ export async function openSession(): Promise<AgentSession> {
   let sessionId: string;
   let connectUrl: string;
   try {
-    // Stealth / residential proxies / CAPTCHA-solving are PAID Browserbase
-    // features (advancedStealth is Enterprise-only). Default to the bare
-    // free-tier config (viewport only) so the agent runs on any plan; flip
-    // BROWSERBASE_PREMIUM=true once on a paid plan to harden against
-    // bot-walls. Free tier still works for most independent venue sites —
-    // they're not the ones running aggressive bot detection.
+    // Browserbase anti-bot features split by plan tier — keep them on
+    // SEPARATE flags so you can enable the cheap ones without tripping
+    // the Enterprise-only one:
+    //
+    //   solveCaptchas — auto-solves reCAPTCHA v2 / hCaptcha / Cloudflare
+    //     Turnstile ("verify you are human" walls). ~88-95% success.
+    //     Available on the $20/mo Developer plan and up. THIS is the one
+    //     that clicks through the "Am I human?" checks on OpenTable/Resy.
+    //   proxies — residential IPs so the venue doesn't see a datacenter
+    //     IP. Billed per-GB. Developer plan and up.
+    //   advancedStealth — custom Chromium with real fingerprints, the
+    //     strongest bot evasion. SCALE / ENTERPRISE ONLY (custom pricing).
+    //     Setting it on a lower plan errors, so it has its own flag.
+    //
+    // Free tier (no flags) still works for independent venue sites that
+    // don't run aggressive detection. Set BROWSERBASE_SOLVE_CAPTCHAS=true
+    // on the $20 plan to handle the captcha-walled venues; add
+    // BROWSERBASE_ADVANCED_STEALTH=true only if you're on Scale/Enterprise.
+    // BROWSERBASE_PREMIUM=true is a back-compat alias that turns on both.
     const premium = optionalEnv("BROWSERBASE_PREMIUM") === "true";
+    const solveCaptchas =
+      premium || optionalEnv("BROWSERBASE_SOLVE_CAPTCHAS") === "true";
+    const advancedStealth =
+      premium || optionalEnv("BROWSERBASE_ADVANCED_STEALTH") === "true";
     const session = await bb.sessions.create({
       projectId,
       region,
       browserSettings: {
         viewport: { width: AGENT_VIEWPORT.width, height: AGENT_VIEWPORT.height },
-        ...(premium ? { advancedStealth: true, solveCaptchas: true } : {}),
+        ...(solveCaptchas ? { solveCaptchas: true } : {}),
+        ...(advancedStealth ? { advancedStealth: true } : {}),
       },
-      ...(premium ? { proxies: true } : {}),
+      ...(solveCaptchas ? { proxies: true } : {}),
     });
     sessionId = session.id;
     connectUrl = session.connectUrl;
