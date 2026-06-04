@@ -30,7 +30,12 @@ import { withSession, navigate } from "./runtime";
 import { runAgent } from "./agent";
 import { buildGoal } from "./goal";
 import { buildBookingTask } from "./types";
-import { verifyOutcome, toBookingStatus, toConfirmationState } from "./outcome";
+import {
+  verifyOutcome,
+  toBookingStatus,
+  toConfirmationState,
+  type RawBookingOutcome,
+} from "./outcome";
 import { buildCardProviderForBooking } from "./card-provider";
 import type { BookingRequest } from "../types";
 
@@ -190,34 +195,82 @@ export async function runBrowserBooking(args: {
         }
       };
 
-      let outcome;
+      // Seed with a failed default so TS knows `outcome` is always set
+      // even before the first attempt runs; the loop overwrites it.
+      let outcome: RawBookingOutcome = {
+        status: "failed",
+        failureReason: "ambiguous",
+        message: "Agent did not run.",
+      };
       let finalScreenshot: string | null = null;
 
-      try {
-        const result = await withSession(async (session) => {
-          await bridgeNudge(`Opening ${shortHost(startUrl)}…`);
-          await navigate(session.page, startUrl);
-          await sleep(2500);
-          return await runAgent({
-            page: session.page,
-            system: goal.system,
-            firstUserMessage: goal.firstUserMessage,
-            cardProvider,
-            onStep: async ({ label }) => {
-              await bridgeNudge(label);
-            },
+      // One agent attempt against a FRESH Browserbase session. A fresh
+      // session means a fresh residential IP + clean fingerprint, which
+      // is exactly what flips a captcha/bot-wall failure into a success
+      // on the next try.
+      const attemptOnce = async () => {
+        try {
+          const result = await withSession(async (session) => {
+            await bridgeNudge(`Opening ${shortHost(startUrl)}…`);
+            await navigate(session.page, startUrl);
+            await sleep(2500);
+            return await runAgent({
+              page: session.page,
+              system: goal.system,
+              firstUserMessage: goal.firstUserMessage,
+              cardProvider,
+              onStep: async ({ label }) => {
+                await bridgeNudge(label);
+              },
+            });
           });
-        });
-        outcome = result.outcome;
-        finalScreenshot = result.finalScreenshot;
-      } catch (err) {
-        // A runtime crash (Browserbase 403, navigation timeout, wall-clock
-        // exceeded) is a FAILED — never re-thrown into Inngest's retry path.
-        outcome = {
-          status: "failed" as const,
-          failureReason: "ambiguous" as const,
-          message: err instanceof Error ? err.message : String(err),
-        };
+          return {
+            outcome: result.outcome,
+            finalScreenshot: result.finalScreenshot,
+          };
+        } catch (err) {
+          return {
+            outcome: {
+              status: "failed" as const,
+              failureReason: "ambiguous" as const,
+              message: err instanceof Error ? err.message : String(err),
+            },
+            finalScreenshot: null as string | null,
+          };
+        }
+      };
+
+      // Retry ONLY the failures a fresh session can fix — captcha walls,
+      // bot-detection, timeouts, ambiguous runtime crashes. Captcha
+      // solving is ~88-95% per attempt, so 2-3 tries compounds to ~99%.
+      // NEVER retry: a real card decline, genuine no-availability,
+      // over-budget, or a login wall — those won't change on a retry,
+      // and a CONFIRMED result obviously stops immediately. The single-
+      // use virtual card + the 2s auth webhook guarantee at most one
+      // charge even if a retry somehow re-reached checkout, so retrying
+      // is safe.
+      const RETRYABLE = new Set(["captcha_blocked", "timeout", "ambiguous"]);
+      const MAX_ATTEMPTS = Number(optionalEnv("BROWSER_AGENT_MAX_ATTEMPTS")) || 3;
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        if (attempt > 1) {
+          await bridgeNudge(
+            `Hit a verification wall — trying again (${attempt}/${MAX_ATTEMPTS})…`,
+          );
+          await sleep(1500);
+        }
+        const r = await attemptOnce();
+        outcome = r.outcome;
+        finalScreenshot = r.finalScreenshot;
+        const reason =
+          outcome.status === "failed"
+            ? (outcome as { failureReason?: string }).failureReason
+            : undefined;
+        const shouldRetry =
+          outcome.status === "failed" &&
+          reason != null &&
+          RETRYABLE.has(reason) &&
+          attempt < MAX_ATTEMPTS;
+        if (!shouldRetry) break;
       }
 
 
