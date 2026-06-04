@@ -495,18 +495,49 @@ checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
 > conservatively 30-75 covers/month at launch, scaling with trip volume.
 > Payment processor: Stripe. Entity: LLC in formation.
 
-#### Draft application copy — OpenTable (follow-up email + affiliate)
+#### Draft application copy — OpenTable RESERVATION API (Carson's ask:
+the real API key, NOT affiliate deep links)
 
-> Following up on my note from [date] re: partnership/API access.
-> Pyltrix (pyltrix.com) is an AI luxury golf-travel concierge — customers
-> take a quiz, our AI builds a full bookable trip (flights, lodging, tee
-> times, dining, transport) and books it end-to-end. Restaurant
-> reservations are central, and most of the venues on our itineraries
-> are OpenTable. We'd love to (1) join the OpenTable affiliate program
-> for sanctioned referral links now, and (2) explore reservation-API
-> access as we scale. Pre-launch; first bookings Q3 2026, ~50-100
-> covers/month at launch growing with volume. Stripe for payments,
-> LLC in formation. Happy to hop on a call.
+> Subject: Reservation API access — Pyltrix (AI luxury golf-travel concierge)
+>
+> Hi [name] — following up on my earlier note. I want to be direct about
+> what we're after: programmatic reservation-API access (OpenTable
+> Connect / booking API), not affiliate links.
+>
+> Pyltrix (pyltrix.com) is an AI luxury golf-travel concierge. A customer
+> answers a short quiz; our AI builds a complete, high-end trip — flights,
+> lodging, tee times, dining, transport — and books the whole thing
+> end-to-end so the customer does nothing. Dining is central, and on
+> nearly every itinerary the restaurants our customers want are on
+> OpenTable. Right now that's the one piece we hand back to the customer;
+> with API access it becomes seamless.
+>
+> Why this is good for OpenTable and your restaurants, specifically:
+> - We're a NET-NEW demand channel, not a competitor — we send you
+>   high-intent, high-spend covers (luxury golf travelers), often
+>   prime-time and party-of-2-to-8, that wouldn't otherwise reach your
+>   network.
+> - Low no-show risk: we capture the traveler's card via Stripe and the
+>   reservation is part of a paid trip, so these are committed diners.
+> - Every booking carries full, accurate guest detail (name, party,
+>   contact) straight from the API — clean covers, no phone tag.
+>
+> We'll do whatever your process requires — sandbox, certification,
+> volume minimums, revenue share. Pre-launch; first real bookings
+> Q3 2026, conservatively 50-100 covers/month at launch and scaling
+> directly with trip volume. Stripe for payments, LLC in formation.
+>
+> Could we get 20 minutes with whoever owns API partnerships? I'll work
+> around your calendar.
+
+**Note on reality (don't lose this):** OpenTable's booking API is
+partner-gated and historically hard pre-launch — they favor partners
+with traffic. The email above leads with the API ask per Carson's
+explicit wish ("I want an API key, not deep links"). If they say "not
+yet, here's the affiliate program" — take it as the interim (it powers
+the same clickout + earns commission) and keep the API as the standing
+ask. Do NOT let the affiliate offer kill the API conversation; treat it
+as step one of the partnership, not the endpoint.
 - [ ] **Trawick** — travel insurance forms already in progress, finish.
 
 **Already-applied / in-flight (do NOT re-apply — wait their 2-3 week
