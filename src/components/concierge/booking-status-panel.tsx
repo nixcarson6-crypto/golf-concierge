@@ -33,6 +33,7 @@ import {
   Flower2,
   Sparkles,
   PartyPopper,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
@@ -155,6 +156,62 @@ function statusLabel(kind: RowStatus): string {
   }
 }
 
+// Group items into a few high-level buckets so a 40-line wall of rows
+// reads as 5 sections of 5-10 things each. Order is the customer's
+// reading order — what to fly into first, where to sleep, what to
+// play, what to eat, what to do, then plumbing (transport).
+type CategoryKey =
+  | "FLIGHTS"
+  | "HOTELS"
+  | "GOLF"
+  | "DINING"
+  | "ACTIVITIES"
+  | "TRANSPORT";
+
+const CATEGORY_ORDER: CategoryKey[] = [
+  "FLIGHTS",
+  "HOTELS",
+  "GOLF",
+  "DINING",
+  "ACTIVITIES",
+  "TRANSPORT",
+];
+
+const CATEGORY_META: Record<
+  CategoryKey,
+  { label: string; icon: React.ReactNode }
+> = {
+  FLIGHTS: { label: "Flights", icon: <Plane className="size-3.5" /> },
+  HOTELS: { label: "Hotels", icon: <BedDouble className="size-3.5" /> },
+  GOLF: { label: "Golf", icon: <Flag className="size-3.5" /> },
+  DINING: { label: "Dining", icon: <UtensilsCrossed className="size-3.5" /> },
+  ACTIVITIES: {
+    label: "Activities",
+    icon: <Sparkles className="size-3.5" />,
+  },
+  TRANSPORT: { label: "Transport", icon: <Car className="size-3.5" /> },
+};
+
+function categoryFor(type: WorkspaceItineraryItem["type"]): CategoryKey {
+  switch (type) {
+    case "FLIGHT":
+      return "FLIGHTS";
+    case "LODGING":
+      return "HOTELS";
+    case "TEE_TIME":
+      return "GOLF";
+    case "DINING":
+      return "DINING";
+    case "TRANSPORT":
+      return "TRANSPORT";
+    case "NIGHTLIFE":
+    case "SPA":
+    case "ACTIVITY":
+    default:
+      return "ACTIVITIES";
+  }
+}
+
 export function BookingStatusPanel({
   tripId,
   itinerary,
@@ -248,12 +305,19 @@ export function BookingStatusPanel({
   const inFlight = rows.filter((r) => r.kind === "booking").length;
   const pct = total > 0 ? Math.round((confirmed / total) * 100) : 0;
   const allDone = confirmed === total;
-
-  // Anything left to book? Hides the primary CTA once the trip is fully
-  // confirmed (the trophy footer takes over).
   const hasUnbooked = rows.some(
     (r) => r.kind === "pending" || r.kind === "failed",
   );
+
+  // Bucket rows into ordered categories.
+  const grouped = React.useMemo(() => {
+    const buckets = new Map<CategoryKey, typeof rows>();
+    for (const k of CATEGORY_ORDER) buckets.set(k, []);
+    for (const r of rows) buckets.get(categoryFor(r.item.type))!.push(r);
+    return CATEGORY_ORDER.filter(
+      (k) => (buckets.get(k) ?? []).length > 0,
+    ).map((k) => ({ key: k, items: buckets.get(k)! }));
+  }, [rows]);
 
   return (
     <div className="h-full flex flex-col rounded-3xl glass overflow-hidden">
@@ -305,67 +369,88 @@ export function BookingStatusPanel({
         )}
       </header>
 
-      {/* Rows — visible scrollbar so it's obvious the list scrolls. */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2">
-        {rows.map(({ item, kind, code, amountCents }) => {
-          // A row is tap-to-book when the agent can book it and it isn't
-          // already booked / in flight / under review.
-          const canBook =
-            AGENT_BOOKABLE.has(item.type) &&
-            (kind === "pending" || kind === "failed");
-          const isThisBooking = bookingId === item.id;
-          const rowInner = (
-            <>
-              <StatusBadge kind={isThisBooking ? "booking" : kind} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <TypeIcon type={item.type} />
-                  <p
-                    className={cn(
-                      "text-[13px] leading-snug truncate",
-                      kind === "confirmed"
-                        ? "font-medium text-foreground"
-                        : "text-foreground/80",
-                    )}
+      {/* Grouped rows — collapsible categories so a 40-item trip reads
+          as 5 sections of 5-10 things each instead of one overwhelming
+          wall. Visible scrollbar on the outer scroll. */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2 space-y-1">
+        {grouped.map(({ key, items: groupItems }) => {
+          const groupConfirmed = groupItems.filter(
+            (r) => r.kind === "confirmed",
+          ).length;
+          const meta = CATEGORY_META[key];
+          // Default-collapse categories that are fully booked OR are
+          // TRANSPORT (the plumbing); expand the rest so the customer
+          // sees what still needs doing.
+          const defaultOpen =
+            !(groupConfirmed === groupItems.length) && key !== "TRANSPORT";
+          return (
+            <CategorySection
+              key={key}
+              label={meta.label}
+              icon={meta.icon}
+              total={groupItems.length}
+              confirmed={groupConfirmed}
+              defaultOpen={defaultOpen}
+            >
+              {groupItems.map(({ item, kind, code, amountCents }) => {
+                const canBook =
+                  AGENT_BOOKABLE.has(item.type) &&
+                  (kind === "pending" || kind === "failed");
+                const isThisBooking = bookingId === item.id;
+                const rowInner = (
+                  <>
+                    <StatusBadge kind={isThisBooking ? "booking" : kind} />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={cn(
+                          "text-[13px] leading-snug truncate",
+                          kind === "confirmed"
+                            ? "font-medium text-foreground"
+                            : "text-foreground/85",
+                        )}
+                      >
+                        {item.title}
+                      </p>
+                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span>
+                          {isThisBooking
+                            ? "Starting…"
+                            : canBook
+                              ? "Tap to book"
+                              : statusLabel(kind)}
+                        </span>
+                        {code && (
+                          <span className="tabular-nums">· #{code}</span>
+                        )}
+                        {amountCents != null && amountCents > 0 && (
+                          <span className="tabular-nums">
+                            · ${Math.round(amountCents / 100).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                );
+                return canBook ? (
+                  <button
+                    key={item.id}
+                    type="button"
+                    disabled={bookingId !== null}
+                    onClick={() => void bookItem(item)}
+                    className="w-full flex items-start gap-2.5 text-left rounded-lg px-2.5 py-2 hover:bg-surface-raised transition disabled:opacity-60"
                   >
-                    {item.title}
-                  </p>
-                </div>
-                <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <span>
-                    {isThisBooking
-                      ? "Starting…"
-                      : canBook
-                        ? "Tap to book"
-                        : statusLabel(kind)}
-                  </span>
-                  {code && <span className="tabular-nums">· #{code}</span>}
-                  {amountCents != null && amountCents > 0 && (
-                    <span className="tabular-nums">
-                      · ${Math.round(amountCents / 100).toLocaleString()}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </>
-          );
-          return canBook ? (
-            <button
-              key={item.id}
-              type="button"
-              disabled={bookingId !== null}
-              onClick={() => void bookItem(item)}
-              className="w-full flex items-start gap-2.5 text-left rounded-xl px-2.5 py-2.5 hover:bg-surface-raised transition disabled:opacity-60"
-            >
-              {rowInner}
-            </button>
-          ) : (
-            <div
-              key={item.id}
-              className="flex items-start gap-2.5 rounded-xl px-2.5 py-2.5"
-            >
-              {rowInner}
-            </div>
+                    {rowInner}
+                  </button>
+                ) : (
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-2.5 rounded-lg px-2.5 py-2"
+                  >
+                    {rowInner}
+                  </div>
+                );
+              })}
+            </CategorySection>
           );
         })}
       </div>
@@ -383,6 +468,58 @@ export function BookingStatusPanel({
             </p>
           </div>
         </footer>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Collapsible category section. Header shows icon + label + "X of Y"
+ * counter + a chevron that rotates when open. Click anywhere on the
+ * header to toggle. Booked-out / TRANSPORT default to closed so the
+ * panel reads tight; in-progress + pending categories default to open.
+ */
+function CategorySection({
+  label,
+  icon,
+  total,
+  confirmed,
+  defaultOpen,
+  children,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  total: number;
+  confirmed: number;
+  defaultOpen: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = React.useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-border/40 bg-background/40">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-raised/60 rounded-xl transition"
+      >
+        <span className="grid size-5 place-items-center text-foreground/70 shrink-0">
+          {icon}
+        </span>
+        <p className="text-[12px] font-semibold tracking-tight flex-1 truncate">
+          {label}
+        </p>
+        <p className="text-[11px] tabular-nums text-muted-foreground">
+          {confirmed}/{total}
+        </p>
+        <ChevronDown
+          className={cn(
+            "size-3.5 text-muted-foreground shrink-0 transition-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        <div className="px-1 pb-1.5 pt-0.5 space-y-0.5">{children}</div>
       )}
     </div>
   );

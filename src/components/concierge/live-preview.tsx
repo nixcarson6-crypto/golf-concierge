@@ -205,24 +205,22 @@ export function LivePreview({
             </div>
           </div>
         )}
-        <TotalsBanner
-          itinerary={itinerary}
-          bookings={bookings}
-          suggestedFlights={trip.suggestedFlights}
-        />
-        {/* Flights live in the categorized itinerary's Flights section
-            below — two real cards (outbound + return) with airline, times,
-            and price already wired in from the Duffel offer. Booking
-            happens via the global "Book all" CTA, so there is no separate
-            "Pick your flight" section here. The only thing we still need
-            to surface is the SetOriginBanner when the build couldn't run
-            Duffel (no origin captured) — without that, the flight cards
-            stay as placeholders. */}
+        {/* Set-origin banner FIRST — when Duffel didn't run because we
+            don't have an airport for this customer, this is the single
+            most important action and it needs to be unmissable. Putting
+            it above the totals (which read $0 in this state anyway)
+            forces the eye onto the fix instead of letting the customer
+            scroll past it confused. */}
         {!(trip.suggestedFlights && trip.suggestedFlights.offers.length > 0) &&
           itinerary &&
           itinerary.items.some((i) => i.type === "FLIGHT") && (
             <SetOriginBanner tripId={tripId} />
           )}
+        <TotalsBanner
+          itinerary={itinerary}
+          bookings={bookings}
+          suggestedFlights={trip.suggestedFlights}
+        />
         {itinerary && itinerary.items.length > 0 && (
           <ItineraryCategoriesSection
             tripId={tripId}
