@@ -82,6 +82,11 @@ const definitions = {
   BROWSERBASE_SOLVE_CAPTCHAS: { required: false },
   BROWSERBASE_ADVANCED_STEALTH: { required: false },
   BROWSER_AGENT_MAX_ATTEMPTS: { required: false },
+  // Booking engine: "stagehand" (DOM-driven, fast — default) or
+  // "computer-use" (legacy vision loop, fallback).
+  BOOKING_ENGINE: { required: false },
+  STAGEHAND_MODEL: { required: false },
+  STAGEHAND_MAX_STEPS: { required: false },
   // Model used by the booking agent's computer-use loop. MUST be a model
   // that supports the computer_20250124 tool — that's a Sonnet-line
   // capability; Opus 4.x doesn't carry it. Sonnet 4.5 is the stable default.

@@ -204,12 +204,45 @@ export async function runBrowserBooking(args: {
       };
       let finalScreenshot: string | null = null;
 
+      // Engine selection. Stagehand (DOM-driven) is ~2x faster + ~11pts
+      // more reliable than the legacy vision loop per 2026 benchmarks,
+      // and is wired up + ready (stagehand-runner.ts). It's gated OFF by
+      // default for now because Stagehand v3 needs zod v4, and our
+      // orchestrator's hand-rolled zodToJsonSchema reads zod-v3 internals
+      // — so the zod migration has to land (and be tested) before we
+      // flip the default. Opt in per-deploy with BOOKING_ENGINE=stagehand
+      // once zod is upgraded.
+      const engine =
+        (optionalEnv("BOOKING_ENGINE") ?? "computer-use").toLowerCase();
+      const useStagehand = engine === "stagehand";
+      const captchaOn =
+        optionalEnv("BROWSERBASE_PREMIUM") === "true" ||
+        optionalEnv("BROWSERBASE_SOLVE_CAPTCHAS") === "true";
+      const stealthOn =
+        optionalEnv("BROWSERBASE_PREMIUM") === "true" ||
+        optionalEnv("BROWSERBASE_ADVANCED_STEALTH") === "true";
+
       // One agent attempt against a FRESH Browserbase session. A fresh
       // session means a fresh residential IP + clean fingerprint, which
       // is exactly what flips a captcha/bot-wall failure into a success
       // on the next try.
       const attemptOnce = async () => {
         try {
+          if (useStagehand) {
+            const { runStagehandBooking } = await import("./stagehand-runner");
+            const result = await runStagehandBooking({
+              startUrl,
+              system: goal.system,
+              task: goal.firstUserMessage,
+              solveCaptchas: captchaOn,
+              advancedStealth: stealthOn,
+              timeoutMs: 600_000,
+              onStep: async (label) => {
+                await bridgeNudge(label);
+              },
+            });
+            return { outcome: result.outcome, finalScreenshot: null };
+          }
           const result = await withSession(async (session) => {
             await bridgeNudge(`Opening ${shortHost(startUrl)}…`);
             await navigate(session.page, startUrl);
