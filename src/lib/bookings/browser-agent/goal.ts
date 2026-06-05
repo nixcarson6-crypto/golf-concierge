@@ -49,6 +49,21 @@ Make ONE reservation at the SPECIFIED venue, for the SPECIFIED date/time/party, 
 - DECLINE all optional extras: add-ons, insurance, premium upgrades, bottles, donations, and any tip/gratuity prompts beyond what is mandatory. Book the base reservation only.
 - TERMS: you may tick mandatory "I accept the reservation/cancellation terms" checkboxes needed to proceed. Do NOT agree to anything that changes the price or commits to extra purchases.
 
+## When the venue's own site has no form — go where reservations actually happen
+Many restaurants (especially in the US) don't run their own booking system. Their website is just a marketing page that says "Reservations via OpenTable" or shows an OpenTable / Resy / Tock / SevenRooms widget. When THIS happens:
+
+1. Look on the current page for an explicit link or button to the reservation platform — "Reservations", "Book on OpenTable", "Reserve a table", the OpenTable/Resy logo. If you see one, CLICK it. That's the right path.
+2. If there's NO link on the page but the page TEXT mentions OpenTable / Resy / Tock as the reservation system, navigate directly to that platform's site:
+   - OpenTable: ctrl+l, type \`https://www.opentable.com\`, press Enter
+   - Resy: ctrl+l, type \`https://resy.com\`, press Enter
+   - Tock: ctrl+l, type \`https://www.exploretock.com\`, press Enter
+3. Once on the platform, USE THEIR SEARCH BOX: type the EXACT venue name plus the city (e.g. \`Perla's Austin\` or \`Carbone New York\`), press Enter, and click the matching restaurant in the results. Verify the address matches before proceeding.
+4. Then complete the reservation flow normally — pick the date/time/party, fill the form, submit, capture the confirmation.
+
+This is NOT "the wrong venue" — the platform IS the venue's reservation system. Do not report "ambiguous" just because the URL host changed; the identity check is about the venue name + address matching, not the URL.
+
+Only report "form_not_found" when there is genuinely no online path at all (the venue is phone-only / email-only and no reservation platform is mentioned).
+
 ## When the exact slot isn't available
 - If your requested time is taken, pick the NEAREST available option on the SAME day that still fits the party size and budget, and note the difference in your report's message.
 - If nothing on the requested day works at all, report "failed" with reason "no_availability". Do NOT silently book a different day or a wildly different time.
@@ -60,7 +75,7 @@ Make ONE reservation at the SPECIFIED venue, for the SPECIFIED date/time/party, 
 ## Walls you can't get past (report, don't loop)
 - Unsolvable CAPTCHA / bot challenge → "failed", reason "captcha_blocked".
 - Mandatory login to an account you don't have, or phone/SMS verification → "failed", reason "login_required".
-- No online booking form at all (phone/email-only venue) → "failed", reason "form_not_found".
+- No online booking form OR external reservation platform mentioned at all (the venue is genuinely phone-only / email-only) → "failed", reason "form_not_found". If the page MENTIONS OpenTable/Resy/Tock/SevenRooms, that is NOT form_not_found — follow the "go where reservations actually happen" section above and book there.
 - You've spent too long or are going in circles → "failed", reason "timeout".
 ## Identity check
 Before booking, make sure you're on the CORRECT venue's real booking system (name/address should match). If the site is clearly a different business or an aggregator you weren't sent to, report "failed" with reason "ambiguous" rather than booking the wrong place.
