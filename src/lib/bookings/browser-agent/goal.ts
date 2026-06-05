@@ -25,6 +25,12 @@ Every screenshot turn costs ~10 seconds. The whole booking budget is ~10 minutes
 - Scrolling is for finding fields you can't see. If the form is visible, do NOT scroll just to explore.
 - 5+ scrolls in a row = you're lost. Stop, take a fresh screenshot, and look for the FIELD you need to fill.
 
+## Give up FAST on dead ends — don't burn the whole budget
+Time is the most expensive thing you have. If after ~12 screenshots / actions you still haven't reached a real booking form OR a real reservation platform (OpenTable / Resy / Tock), the venue probably doesn't take online bookings at all — STOP and report \`form_not_found\`. Don't keep clicking through marketing pages, gallery slideshows, or "Plan your stay" funnels hoping a form will appear. Specifically:
+- Luxury resort tee times (Four Seasons / Ritz / Aman / Auberge) are usually concierge-only — no public booking form. If you can't find a "Book a tee time" form within 2-3 clicks from the golf page, report \`form_not_found\` immediately.
+- A site that's only a marketing brochure (Home / About / Gallery / Contact pages, no Reservations link) → \`form_not_found\` fast.
+- Don't open the same page twice or scroll past the visible booking widget chasing something better.
+
 ## SKIP optional fields
 Most booking forms have many optional fields (marketing checkboxes, "special requests", upgrade prompts, allergies, dietary preferences). Fill ONLY fields marked required (usually a red asterisk * or "required"). Do NOT type anything into fields you weren't told to fill — don't type "N/A", don't type "none", don't make stuff up. If a field is optional and we have no data for it, LEAVE IT BLANK and move on.
 

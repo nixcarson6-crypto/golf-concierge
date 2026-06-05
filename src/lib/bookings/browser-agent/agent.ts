@@ -52,7 +52,12 @@ const COMPUTER_TOOL_TYPE = "computer_20250124" as const;
  *  Itinerary/destination/etc. agents elsewhere in the codebase still use Opus —
  *  only this booking agent specifically needs the computer_20250124 tool. */
 const DEFAULT_MODEL = "claude-sonnet-4-5";
-const DEFAULT_MAX_ITERATIONS = 120;
+// 60-iter cap (was 120). A normal booking finishes in 15-25 turns; a
+// hard wall like a captcha or login surfaces by ~30. At 60 the agent
+// is almost certainly going in circles — the wall-clock will fire
+// before this hits anyway. Keeping the ceiling lower means less
+// wasted spend on runaway loops.
+const DEFAULT_MAX_ITERATIONS = 60;
 const DEFAULT_MAX_TOKENS_PER_TURN = 1536;
 /** Approximate ceiling on total INPUT tokens consumed by the loop. */
 const DEFAULT_INPUT_TOKEN_BUDGET = 200_000;

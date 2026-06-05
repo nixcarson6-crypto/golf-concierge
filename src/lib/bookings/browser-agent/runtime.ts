@@ -120,6 +120,13 @@ export async function openSession(): Promise<AgentSession> {
     const session = await bb.sessions.create({
       projectId,
       region,
+      // Browserbase's DEFAULT session timeout is 300s (5 min). Without
+      // setting this, every booking dies at exactly 5:00 — we saw it.
+      // Our own agent wall-clock is SESSION_TIMEOUT_MS (10 min). Give
+      // the platform a little more so our wall-clock fires first with
+      // its honest 'timeout' outcome instead of the platform killing
+      // the session out from under us.
+      timeout: Math.ceil(SESSION_TIMEOUT_MS / 1000) + 60,
       browserSettings: {
         viewport: { width: AGENT_VIEWPORT.width, height: AGENT_VIEWPORT.height },
         ...(solveCaptchas ? { solveCaptchas: true } : {}),
