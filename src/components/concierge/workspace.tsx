@@ -169,6 +169,12 @@ export type WorkspaceItineraryItem = {
    *  confirmed or isn't applicable. */
   priceSource?: string | null;
   priceBasis?: string | null;
+  /** Set by the build's walk-in detection pass for DINING + ACTIVITY:
+   *   "required" — venue takes/needs a reservation (book it)
+   *   "walk_in"  — Google says no reservation needed (show "walk in")
+   *   "unknown"  — Google didn't say (treat as required by default)
+   *   null       — type doesn't apply (LODGING/TEE_TIME/SPA etc.) */
+  reservationNeed?: "required" | "walk_in" | "unknown" | null;
   booking?: WorkspaceItemBooking | null;
 };
 

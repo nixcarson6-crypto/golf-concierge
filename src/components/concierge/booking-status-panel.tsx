@@ -300,12 +300,16 @@ export function BookingStatusPanel({
   if (!itinerary || items.length === 0) return null;
 
   const rows = items.map((item) => ({ item, ...statusFor(item) }));
-  const total = rows.length;
-  const confirmed = rows.filter((r) => r.kind === "confirmed").length;
-  const inFlight = rows.filter((r) => r.kind === "booking").length;
+  // Walk-in rows are shown in the list but EXCLUDED from the counter +
+  // progress bar — they don't need booking, so counting them as "not
+  // confirmed" would make a 9-of-10 trip read as 7-of-10 forever.
+  const bookable = rows.filter((r) => r.item.reservationNeed !== "walk_in");
+  const total = bookable.length;
+  const confirmed = bookable.filter((r) => r.kind === "confirmed").length;
+  const inFlight = bookable.filter((r) => r.kind === "booking").length;
   const pct = total > 0 ? Math.round((confirmed / total) * 100) : 0;
   const allDone = confirmed === total;
-  const hasUnbooked = rows.some(
+  const hasUnbooked = bookable.some(
     (r) => r.kind === "pending" || r.kind === "failed",
   );
 
@@ -393,8 +397,14 @@ export function BookingStatusPanel({
               defaultOpen={defaultOpen}
             >
               {groupItems.map(({ item, kind, code, amountCents }) => {
+                // Walk-in venues (casual restaurants/activities Google
+                // says don't take reservations) get a distinct label
+                // and are NOT tappable — running the agent on them
+                // just wastes Browserbase time.
+                const isWalkIn = item.reservationNeed === "walk_in";
                 const canBook =
                   AGENT_BOOKABLE.has(item.type) &&
+                  !isWalkIn &&
                   (kind === "pending" || kind === "failed");
                 const isThisBooking = bookingId === item.id;
                 const rowInner = (
@@ -415,9 +425,11 @@ export function BookingStatusPanel({
                         <span>
                           {isThisBooking
                             ? "Starting…"
-                            : canBook
-                              ? "Tap to book"
-                              : statusLabel(kind)}
+                            : isWalkIn
+                              ? "Walk-in · no booking needed"
+                              : canBook
+                                ? "Tap to book"
+                                : statusLabel(kind)}
                         </span>
                         {code && (
                           <span className="tabular-nums">· #{code}</span>

@@ -198,6 +198,9 @@ export async function POST(
   for (const item of items) {
     const meta = (item.metadata ?? {}) as Record<string, unknown>;
     if (meta.bookedAt) continue; // already locked in earlier
+    // Walk-in venues don't take reservations — silently skip so they
+    // don't show as failed in the Book All summary.
+    if (meta.reservationNeed === "walk_in") continue;
 
     // Map the Prisma ItineraryItemType enum onto our public Outcome
     // category for the client. The Booking row keeps the original

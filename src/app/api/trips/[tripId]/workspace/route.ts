@@ -210,6 +210,14 @@ export async function GET(
               priceBasis:
                 (i.metadata as { priceBasis?: string | null } | null)
                   ?.priceBasis ?? null,
+              // "required" / "walk_in" / "unknown" — set by the
+              // classify-reservations build pass for DINING + ACTIVITY
+              // items. Drives the UI walk-in label and skips the agent
+              // for venues that don't take reservations.
+              reservationNeed:
+                ((i.metadata as { reservationNeed?: string } | null)
+                  ?.reservationNeed as "required" | "walk_in" | "unknown" | undefined) ??
+                null,
               booking: b
                 ? {
                     id: b.id,

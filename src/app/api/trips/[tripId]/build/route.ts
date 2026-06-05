@@ -698,6 +698,25 @@ export async function POST(
     console.error("[build] price-enrichment threw (non-fatal):", err);
   }
 
+  // Walk-in classification: tag DINING / ACTIVITY items as
+  // 'required' / 'walk_in' / 'unknown' using Google's `reservable`
+  // attribute. Lets the UI label casual venues as "walk-in" and stops
+  // the agent from wasting time trying to book them.
+  try {
+    const { classifyTripReservations } = await import(
+      "@/lib/ai/agents/classify-reservations"
+    );
+    const { classified, walkIns } = await classifyTripReservations(tripId);
+    if (classified > 0) {
+      console.log(
+        `[build] classify-reservations: ${walkIns} walk-in of ${classified} classified.`,
+      );
+      nudge(tripId);
+    }
+  } catch (err) {
+    console.error("[build] classify-reservations threw (non-fatal):", err);
+  }
+
   return new Response(
     JSON.stringify({
       ok: true,

@@ -41,6 +41,20 @@ export async function POST(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  // Walk-in venues don't take reservations — running the agent on them
+  // just wastes time. Surface a clear message instead.
+  const reservationNeed = (item.metadata as { reservationNeed?: string } | null)
+    ?.reservationNeed;
+  if (reservationNeed === "walk_in") {
+    return NextResponse.json(
+      {
+        error:
+          "This venue is walk-in — Google doesn't show a reservation system, so no booking is needed.",
+      },
+      { status: 400 },
+    );
+  }
+
   // Idempotency — never re-queue a booking that's already in flight or done.
   if (item.booking) {
     const status = item.booking.status;
