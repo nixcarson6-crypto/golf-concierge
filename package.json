@@ -94,7 +94,9 @@
       "prisma",
       "protobufjs",
       "sharp",
-      "unrs-resolver"
+      "unrs-resolver",
+      "@google/genai",
+      "bufferutil"
     ]
   }
 }
