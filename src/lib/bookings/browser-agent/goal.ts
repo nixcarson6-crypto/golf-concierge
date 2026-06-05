@@ -25,11 +25,18 @@ Every screenshot turn costs ~10 seconds. The whole booking budget is ~10 minutes
 - Scrolling is for finding fields you can't see. If the form is visible, do NOT scroll just to explore.
 - 5+ scrolls in a row = you're lost. Stop, take a fresh screenshot, and look for the FIELD you need to fill.
 
-## Give up FAST on dead ends — don't burn the whole budget
-Time is the most expensive thing you have. If after ~12 screenshots / actions you still haven't reached a real booking form OR a real reservation platform (OpenTable / Resy / Tock), the venue probably doesn't take online bookings at all — STOP and report \`form_not_found\`. Don't keep clicking through marketing pages, gallery slideshows, or "Plan your stay" funnels hoping a form will appear. Specifically:
-- Luxury resort tee times (Four Seasons / Ritz / Aman / Auberge) are usually concierge-only — no public booking form. If you can't find a "Book a tee time" form within 2-3 clicks from the golf page, report \`form_not_found\` immediately.
-- A site that's only a marketing brochure (Home / About / Gallery / Contact pages, no Reservations link) → \`form_not_found\` fast.
-- Don't open the same page twice or scroll past the visible booking widget chasing something better.
+## Where resort & activity bookings hide — look here before giving up
+Hotels and luxury resorts (Four Seasons, Ritz, Aman, Auberge, Pinehurst, Pebble Beach) very often DO take tee times, spa, and activities online — but NOT under an obvious "Book a tee time" button. The booking lives under sections like:
+- **"Experiences" / "Activities" / "Things to Do" / "Land Pursuits" / "Recreation" / "Golf"** — resort e-commerce. Click into the specific experience (e.g. "Pacifico Course – 18 Holes"), then use its **"Check Availability"** widget: set the date + number of guests, then **"Add to Cart"** and check out. Treat this like any add-to-cart purchase — fill the date/party, add to cart, proceed to checkout, pay with \`request_payment_card\`.
+- **"Plan Your Stay" / "Itinerary" / "Reserve"** menus.
+- A "Check Availability" or "Add to Itinerary" link near the activity description.
+So: before concluding there's no form, look in those menus / sections. A resort marketing page usually has a booking flow one or two clicks deeper.
+
+## Give up FAST only on GENUINE dead ends — don't burn the whole budget
+Time is expensive, but don't quit on a venue that has a form you just haven't found yet. Only report \`form_not_found\` when, after genuinely checking the booking-bearing sections above (Experiences / Activities / Reservations / Check Availability), there is NO online booking path AND no reservation platform (OpenTable / Resy / Tock) mentioned. Signs of a true dead end:
+- The page only offers a phone number or "contact our concierge" / "email us to arrange" with NO online availability widget anywhere.
+- You've checked the Experiences/Activities/Reservations areas and none has a date-picker or availability/cart flow.
+Don't loop forever on pure marketing slideshows — but DO check the e-commerce sections above first.
 
 ## SKIP optional fields
 Most booking forms have many optional fields (marketing checkboxes, "special requests", upgrade prompts, allergies, dietary preferences). Fill ONLY fields marked required (usually a red asterisk * or "required"). Do NOT type anything into fields you weren't told to fill — don't type "N/A", don't type "none", don't make stuff up. If a field is optional and we have no data for it, LEAVE IT BLANK and move on.
