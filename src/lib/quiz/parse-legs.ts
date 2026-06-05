@@ -36,27 +36,34 @@ export function parseLegs(input: string): ParsedLeg[] | null {
   const s = input.trim();
   if (!s) return null;
 
-  // Split on every common multi-destination connector. Order matters —
-  // longer phrases first so "and then" doesn't get eaten by " and ".
-  // We also split on commas (`"Capri, Lake Como, Portofino"`) and on plain
-  // " and " (`"Capri and Sorrento and Positano"`). parseLeg + cleanDestination
-  // reject garbage parts, so over-aggressive splitting safely falls back to
-  // a single-leg result when the parts don't validate as real destinations.
-  const SPLIT_RE =
-    /\s*(?:,\s*(?:and\s+)?|\s+(?:and\s+then|after\s+that|followed\s+by|then|plus|and)\s+)\s*/i;
-  const parts = s.split(SPLIT_RE);
+  // Pick the right separator based on what the user actually wrote.
+  // When EXPLICIT leg markers exist ("then", "and then", "plus",
+  // "followed by", "after that"), split on ONLY those — they're
+  // unambiguous leg boundaries. Commas in a long sentence are clause
+  // breaks, not leg breaks ("Pebble Beach for 3 nights, August 8 2026,
+  // group of 4..."), and splitting on them shreds the input into a
+  // wall of garbage "legs" (dates, course names, dinner clauses).
+  //
+  // Only fall back to comma/bare-and splitting when there's no THEN
+  // marker — that preserves the "Capri, Lake Como, Portofino" case
+  // (three explicit places, no other connectives).
+  const THEN_RE =
+    /\s+(?:and\s+then|after\s+that|followed\s+by|then|plus)\s+/i;
+  const hasThen = THEN_RE.test(s);
+  const splitRe = hasThen
+    ? THEN_RE
+    : /\s*(?:,\s*(?:and\s+)?|\s+and\s+)\s*/i;
+  const parts = s.split(splitRe);
   if (parts.length < 2) return null; // single-leg, caller handles
 
   // For each part, try to extract a destination + optional night count.
   // KEEP only parts that look like real places — drop conversational
   // fragments ("play golf", "stay at the nicest hotels", "i want")
   // that survived the split. If ≥2 real-looking legs survive, this is
-  // a multi-leg trip ("Lake Como and Dolomites and play golf" →
-  // [Lake Como, Dolomites]). If FEWER than 2 survive — or if MORE
-  // than half the parts were garbage — the whole input was probably
-  // conversational, so return null and let the caller fall back to
-  // single-leg + destination-agent mode rather than persisting a
-  // half-broken leg list.
+  // a multi-leg trip. If FEWER than 2 survive — or if more parts were
+  // rejected than kept (the input was mostly conversational) — return
+  // null and let the caller fall back to single-leg + destination-
+  // agent mode rather than persisting a half-broken leg list.
   const legs: ParsedLeg[] = [];
   let rejected = 0;
   for (const raw of parts) {
@@ -65,8 +72,6 @@ export function parseLegs(input: string): ParsedLeg[] | null {
     else rejected += 1;
   }
   if (legs.length < 2) return null;
-  // If more parts were rejected than kept, the input was mostly
-  // conversational — be safe and bail.
   if (rejected > legs.length) return null;
   return legs;
 }
@@ -74,7 +79,14 @@ export function parseLegs(input: string): ParsedLeg[] | null {
 function parseLeg(raw: string): ParsedLeg | null {
   let s = raw.trim();
   if (!s) return null;
-  // Extract a "for N days/nights" suffix if present.
+  // Step 1: trim trailing junk at the FIRST comma/semicolon. A part
+  // like "Pebble Beach for 3 nights, August 8 2026, group of 4 from
+  // DFW" becomes "Pebble Beach for 3 nights" before we even look for
+  // a duration. Without this, anything past the first comma pollutes
+  // the destination name.
+  s = s.split(/[,;]/)[0].trim();
+  if (!s) return null;
+  // Step 2: extract a "for N days/nights" suffix if present.
   let nights: number | undefined;
   const durMatch = s.match(/\s+for\s+(\d+)\s+(day|night|week)s?\s*$/i);
   if (durMatch) {
