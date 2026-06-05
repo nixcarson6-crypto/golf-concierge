@@ -204,17 +204,15 @@ export async function runBrowserBooking(args: {
       };
       let finalScreenshot: string | null = null;
 
-      // Engine selection. Stagehand (DOM-driven) is ~2x faster + ~11pts
-      // more reliable than the legacy vision loop per 2026 benchmarks,
-      // and is wired up + ready (stagehand-runner.ts). It's gated OFF by
-      // default for now because Stagehand v3 needs zod v4, and our
-      // orchestrator's hand-rolled zodToJsonSchema reads zod-v3 internals
-      // — so the zod migration has to land (and be tested) before we
-      // flip the default. Opt in per-deploy with BOOKING_ENGINE=stagehand
-      // once zod is upgraded.
+      // Engine selection. DEFAULT is Stagehand (DOM-driven) — ~2x faster
+      // and ~11pts more reliable than the legacy vision loop per 2026
+      // benchmarks. The zod-v4 migration that Stagehand needs has landed
+      // (orchestrator now uses z.toJSONSchema; all 49 brain tests + full
+      // typecheck pass on v4). Set BOOKING_ENGINE=computer-use to fall
+      // back to the old screenshot agent if ever needed.
       const engine =
-        (optionalEnv("BOOKING_ENGINE") ?? "computer-use").toLowerCase();
-      const useStagehand = engine === "stagehand";
+        (optionalEnv("BOOKING_ENGINE") ?? "stagehand").toLowerCase();
+      const useStagehand = engine !== "computer-use";
       const captchaOn =
         optionalEnv("BROWSERBASE_PREMIUM") === "true" ||
         optionalEnv("BROWSERBASE_SOLVE_CAPTCHAS") === "true";

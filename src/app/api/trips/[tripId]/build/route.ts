@@ -30,7 +30,7 @@ import { rewriteFlightItemsFromOffer } from "@/lib/flights/rewrite-items";
 import { stripLocationSuffix } from "@/lib/trip-display";
 
 const bodySchema = z.object({
-  answers: z.record(z.unknown()),
+  answers: z.record(z.string(), z.unknown()),
 });
 
 // Build can legitimately take 1-3 minutes on a complex multi-leg trip

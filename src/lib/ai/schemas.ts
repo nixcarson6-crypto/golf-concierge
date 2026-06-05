@@ -87,7 +87,7 @@ export const itineraryItemSchema = z.object({
   endTime: z.string().nullable().optional().describe("ISO datetime"),
   cost: z.number().int().min(0).nullable().optional().describe("USD whole dollars; per-trip cost for this item (sum if multi-person)"),
   aiRationale: z.string().nullable().optional(),
-  metadata: z.record(z.any()).nullable().optional(),
+  metadata: z.record(z.string(), z.any()).nullable().optional(),
 });
 
 export const itinerarySchema = z.object({

@@ -223,109 +223,27 @@ export async function withAgentRun<TOutput>(args: {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Tiny Zod → JSON-Schema converter                                            */
+/* Zod → JSON-Schema (zod v4 native)                                           */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Anthropic accepts a JSON Schema (draft-07-ish) for tool inputs. We do this
- * by hand for the subset we actually use — keeps us off another dependency.
+ * Anthropic accepts a JSON Schema for tool inputs. zod v4 ships a native
+ * converter (`z.toJSONSchema`) that produces exactly the shape we need —
+ * type/properties/required/additionalProperties:false — so we no longer
+ * hand-roll it. `io: "input"` describes the data the model must PRODUCE
+ * (pre-parse), which is the correct side for a tool's input_schema.
  */
 function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
-  return convert(schema);
-}
-
-function convert(schema: z.ZodTypeAny): Record<string, unknown> {
-  // Unwrap modifiers
-  if (schema instanceof z.ZodOptional) {
-    return convert(schema.unwrap());
-  }
-  if (schema instanceof z.ZodNullable) {
-    const inner = convert(schema.unwrap());
-    const type = inner.type;
-    if (Array.isArray(type)) return inner;
-    if (typeof type === "string") {
-      return { ...inner, type: [type, "null"] };
-    }
-    return inner;
-  }
-  if (schema instanceof z.ZodDefault) {
-    const inner = convert(schema.removeDefault());
-    return { ...inner, default: schema._def.defaultValue() };
-  }
-  if (schema instanceof z.ZodEffects) {
-    return convert(schema.innerType());
-  }
-
-  if (schema instanceof z.ZodString) {
-    const out: Record<string, unknown> = { type: "string" };
-    const desc = schema.description;
-    if (desc) out.description = desc;
-    return out;
-  }
-  if (schema instanceof z.ZodNumber) {
-    const out: Record<string, unknown> = { type: "number" };
-    if (schema._def.checks.some((c) => c.kind === "int")) out.type = "integer";
-    for (const check of schema._def.checks) {
-      if (check.kind === "min") out.minimum = check.value;
-      if (check.kind === "max") out.maximum = check.value;
-    }
-    if (schema.description) out.description = schema.description;
-    return out;
-  }
-  if (schema instanceof z.ZodBoolean) {
-    return { type: "boolean" };
-  }
-  if (schema instanceof z.ZodEnum) {
-    return { type: "string", enum: schema.options };
-  }
-  if (schema instanceof z.ZodNativeEnum) {
-    return { type: "string", enum: Object.values(schema.enum as Record<string, string>) };
-  }
-  if (schema instanceof z.ZodArray) {
-    const out: Record<string, unknown> = {
-      type: "array",
-      items: convert(schema.element),
-    };
-    if (schema._def.minLength) out.minItems = schema._def.minLength.value;
-    if (schema._def.maxLength) out.maxItems = schema._def.maxLength.value;
-    if (schema.description) out.description = schema.description;
-    return out;
-  }
-  if (schema instanceof z.ZodObject) {
-    const shape = schema.shape as Record<string, z.ZodTypeAny>;
-    const properties: Record<string, unknown> = {};
-    const required: string[] = [];
-    for (const [key, value] of Object.entries(shape)) {
-      properties[key] = convert(value);
-      // Treat as required unless explicitly optional or has a default
-      const isOptional =
-        value instanceof z.ZodOptional ||
-        value instanceof z.ZodDefault ||
-        (value instanceof z.ZodNullable && false); // nullable ≠ optional
-      if (!isOptional) required.push(key);
-    }
-    const out: Record<string, unknown> = {
-      type: "object",
-      properties,
-      additionalProperties: false,
-    };
-    if (required.length) out.required = required;
-    if (schema.description) out.description = schema.description;
-    return out;
-  }
-  if (schema instanceof z.ZodRecord) {
-    return { type: "object", additionalProperties: convert(schema.valueSchema) };
-  }
-  if (schema instanceof z.ZodAny || schema instanceof z.ZodUnknown) {
-    return {};
-  }
-  if (schema instanceof z.ZodUnion) {
-    return { anyOf: schema.options.map((o: z.ZodTypeAny) => convert(o)) };
-  }
-  if (schema instanceof z.ZodLiteral) {
-    const v = schema.value;
-    return { type: typeof v, enum: [v] };
-  }
-  // Fallback: permissive
-  return {};
+  const json = z.toJSONSchema(schema, {
+    io: "input",
+    // Don't fail the whole conversion on an exotic node — emit a
+    // permissive {} for anything zod can't represent (matches the old
+    // hand-rolled fallback behaviour).
+    unrepresentable: "any",
+  }) as Record<string, unknown>;
+  // Drop the top-level "$schema" meta key — Anthropic's tool input_schema
+  // wants the bare schema object, and the old hand-rolled converter never
+  // emitted it.
+  delete json.$schema;
+  return json;
 }
