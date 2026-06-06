@@ -235,6 +235,7 @@ export async function GET(
                       (bMeta?.fallbackContact as {
                         website?: string | null;
                         phone?: string | null;
+                        email?: string | null;
                       } | null) ?? null,
                     amountChargedCents:
                       typeof bMeta?.amountChargedCents === "number"

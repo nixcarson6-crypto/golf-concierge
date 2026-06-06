@@ -36,11 +36,14 @@ import {
   ChevronDown,
   Phone,
   Globe,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
   WorkspaceItinerary,
   WorkspaceItineraryItem,
+  WorkspaceTrip,
+  WorkspaceMe,
 } from "./workspace";
 
 // Item types the browser agent can book directly (matches
@@ -67,12 +70,15 @@ function statusFor(item: WorkspaceItineraryItem): {
   phone: string | null;
   /** Venue website fallback. */
   website: string | null;
+  /** Venue reservation email (for email-only venues — agent-captured). */
+  email: string | null;
   /** Why the booking failed — drives the "Call to book" vs "Needs you" copy. */
   failureReason: string | null;
 } {
   const b = item.booking ?? null;
   const phone = b?.fallbackContact?.phone ?? null;
   const website = b?.fallbackContact?.website ?? null;
+  const email = b?.fallbackContact?.email ?? null;
   if (!b)
     return {
       kind: "pending",
@@ -80,9 +86,10 @@ function statusFor(item: WorkspaceItineraryItem): {
       amountCents: null,
       phone: null,
       website: null,
+      email: null,
       failureReason: null,
     };
-  const base = { phone, website, failureReason: b.failureReason ?? null };
+  const base = { phone, website, email, failureReason: b.failureReason ?? null };
   switch (b.status) {
     case "CONFIRMED":
       return {
@@ -233,12 +240,81 @@ function categoryFor(type: WorkspaceItineraryItem["type"]): CategoryKey {
   }
 }
 
+/**
+ * Build a pre-drafted reservation-request email for a venue with no
+ * online booking form (phone/email-only). Returns a `mailto:` URL that
+ * opens the customer's own mail client with the venue address, a subject,
+ * and a complete body pre-filled — they review and hit send. Works whether
+ * or not we captured the venue's email (an empty `to` just lets them paste
+ * it). Deterministic, no AI call.
+ */
+function buildReservationMailto(args: {
+  item: WorkspaceItineraryItem;
+  venueEmail: string | null;
+  travelerName: string | null;
+  travelerPhone: string | null;
+  partySize: number | null;
+}): string {
+  const { item, venueEmail, travelerName, travelerPhone, partySize } = args;
+  const venue = item.title.replace(
+    /^(dinner|lunch|breakfast|brunch|drinks|cocktails|round|tee\s*time|spa|massage)\s*(—|–|-|:|at)\s*/i,
+    "",
+  );
+  const when = item.startTime ? new Date(item.startTime) : null;
+  const dateStr = when
+    ? when.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        timeZone: "UTC",
+      })
+    : null;
+  const timeStr =
+    when && !(when.getUTCHours() === 0 && when.getUTCMinutes() === 0)
+      ? when.toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+          timeZone: "UTC",
+        })
+      : null;
+
+  const lines: string[] = [
+    `Hello ${venue},`,
+    "",
+    "I'd like to request a reservation:",
+    "",
+  ];
+  if (dateStr) lines.push(`• Date: ${dateStr}`);
+  if (timeStr) lines.push(`• Time: ${timeStr}`);
+  if (partySize && partySize > 0) lines.push(`• Party size: ${partySize}`);
+  if (travelerName) lines.push(`• Name: ${travelerName}`);
+  lines.push(
+    "",
+    "Could you please confirm availability? Thank you very much.",
+    "",
+    travelerName ?? "",
+  );
+  if (travelerPhone) lines.push(travelerPhone);
+
+  const subject = `Reservation request — ${venue}${dateStr ? `, ${dateStr}` : ""}`;
+  const body = lines.join("\n");
+  const to = venueEmail ?? "";
+  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(
+    subject,
+  )}&body=${encodeURIComponent(body)}`;
+}
+
 export function BookingStatusPanel({
   tripId,
   itinerary,
+  trip,
+  me,
 }: {
   tripId: string;
   itinerary: WorkspaceItinerary | null;
+  trip?: WorkspaceTrip | null;
+  me?: WorkspaceMe | null;
 }) {
   const qc = useQueryClient();
   const [bookingId, setBookingId] = React.useState<string | null>(null);
@@ -418,17 +494,27 @@ export function BookingStatusPanel({
               defaultOpen={defaultOpen}
             >
               {groupItems.map(
-                ({ item, kind, code, amountCents, phone, website, failureReason }) => {
+                ({
+                  item,
+                  kind,
+                  code,
+                  amountCents,
+                  phone,
+                  website,
+                  email,
+                  failureReason,
+                }) => {
                   // Walk-in venues (casual restaurants/activities Google
                   // says don't take reservations) get a distinct label
                   // and are NOT tappable — running the agent on them
                   // just wastes Browserbase time.
                   const isWalkIn = item.reservationNeed === "walk_in";
-                  // Phone-only venue (e.g. a small Portofino trattoria that
-                  // takes reservations only by phone). The agent reported
-                  // form_not_found — re-running it is futile, so we DON'T
-                  // make the row a re-book button; instead we surface the
-                  // venue's phone number so the customer can call in one tap.
+                  // Phone/email-only venue (e.g. a small Portofino trattoria
+                  // that takes reservations only by phone or email). The
+                  // agent reported form_not_found — re-running it is futile,
+                  // so we DON'T make the row a re-book button; instead we
+                  // surface the venue's phone (one-tap call) and a
+                  // pre-drafted reservation email the customer just sends.
                   const isPhoneOnly =
                     kind === "failed" && failureReason === "form_not_found";
                   const canBook =
@@ -437,16 +523,25 @@ export function BookingStatusPanel({
                     !isPhoneOnly &&
                     (kind === "pending" || kind === "failed");
                   // Any failed booking offers a manual fallback (call /
-                  // visit site) so the customer is never at a dead end.
+                  // email / visit site) so the customer is never at a dead
+                  // end. We always offer "Draft email" on a phone/email-only
+                  // venue even if we didn't capture the address — the mailto
+                  // body is still pre-filled; they just add the recipient.
+                  const showEmailDraft = isPhoneOnly || Boolean(email);
                   const showFallback =
-                    kind === "failed" && Boolean(phone || website);
+                    kind === "failed" &&
+                    Boolean(phone || website || showEmailDraft);
                   const isThisBooking = bookingId === item.id;
                   const statusText = isThisBooking
                     ? "Starting…"
                     : isWalkIn
                       ? "Walk-in · no booking needed"
                       : isPhoneOnly
-                        ? "Reservations by phone"
+                        ? phone && email
+                          ? "Reservations by phone or email"
+                          : email
+                            ? "Reservations by email"
+                            : "Reservations by phone"
                         : canBook
                           ? "Tap to book"
                           : statusLabel(kind);
@@ -499,14 +594,43 @@ export function BookingStatusPanel({
                     <div key={item.id}>
                       {mainRow}
                       {showFallback && (
-                        <div className="flex items-center gap-2 pl-9 pr-2.5 pb-1.5">
+                        <div className="flex flex-wrap items-center gap-2 pl-9 pr-2.5 pb-1.5">
+                          {showEmailDraft && (
+                            <a
+                              href={buildReservationMailto({
+                                item,
+                                venueEmail: email,
+                                travelerName:
+                                  [
+                                    me?.profile.legalGivenName,
+                                    me?.profile.legalFamilyName,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" ")
+                                    .trim() ||
+                                  me?.name ||
+                                  null,
+                                travelerPhone: me?.profile.phone ?? null,
+                                partySize: trip?.groupSize ?? null,
+                              })}
+                              className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-[11px] font-medium text-background hover:bg-foreground/90 transition"
+                            >
+                              <Mail className="size-3" />
+                              Draft email
+                            </a>
+                          )}
                           {phone && (
                             <a
                               href={`tel:${phone.replace(/[^\d+]/g, "")}`}
-                              className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-[11px] font-medium text-background hover:bg-foreground/90 transition"
+                              className={cn(
+                                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition",
+                                showEmailDraft
+                                  ? "border border-border text-foreground/80 hover:bg-surface-raised"
+                                  : "bg-foreground text-background hover:bg-foreground/90",
+                              )}
                             >
                               <Phone className="size-3" />
-                              Call to book{" "}
+                              Call{" "}
                               <span className="tabular-nums opacity-80">
                                 {phone}
                               </span>

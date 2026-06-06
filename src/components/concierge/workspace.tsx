@@ -145,7 +145,11 @@ export type WorkspaceItemBooking = {
   vendorUrl: string | null;
   agentRunId: string | null;
   failureReason: string | null;
-  fallbackContact: { website?: string | null; phone?: string | null } | null;
+  fallbackContact: {
+    website?: string | null;
+    phone?: string | null;
+    email?: string | null;
+  } | null;
   amountChargedCents: number | null;
   agentProgress: string | null;
   agentStatus: string | null;
@@ -547,7 +551,12 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     />
   );
   const bookingStatus = (
-    <BookingStatusPanel tripId={tripId} itinerary={snapshot.itinerary} />
+    <BookingStatusPanel
+      tripId={tripId}
+      itinerary={snapshot.itinerary}
+      trip={snapshot.trip}
+      me={snapshot.me}
+    />
   );
 
   // The quiz is the front door now. The chat workspace has been the

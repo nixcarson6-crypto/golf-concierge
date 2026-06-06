@@ -322,13 +322,20 @@ export async function runBrowserBooking(args: {
 
       const existingMeta =
         (booking.metadata as Record<string, unknown> | null) ?? {};
+      // For phone/email-only venues the agent writes the venue's contact
+      // details into its message (per the prompt). Google Places gives us
+      // a phone but never an email, so we mine the agent's message for the
+      // email (and a phone as a backstop). The customer then gets a
+      // one-tap Call button AND a pre-drafted reservation email.
+      const mined = extractContacts(outcome.message ?? "");
       const nextMeta: Record<string, unknown> = {
         ...existingMeta,
         vendorConfirmation: verified.evidence ?? null,
         failureReason: verified.failureCode ?? null,
         fallbackContact: {
           website: places.website ?? startUrl,
-          phone: places.phone ?? null,
+          phone: places.phone ?? mined.phone ?? null,
+          email: mined.email ?? null,
         },
         amountChargedCents: verified.amountChargedCents ?? null,
         agentMessage: outcome.message ?? null,
@@ -499,6 +506,38 @@ async function markBookingFailed(args: {
   } catch {}
 }
 
+
+/**
+ * Mine an email + phone out of the agent's free-text outcome message.
+ * Used for phone/email-only venues where the agent reports the venue's
+ * contact details verbatim (it's told to). Best-effort: returns nulls
+ * when nothing matches. The email match deliberately ignores the
+ * traveller's own address by skipping anything we'd never expect a
+ * venue to print — but in practice the agent only writes the VENUE's
+ * details here, so a plain match is safe.
+ */
+function extractContacts(message: string): {
+  email: string | null;
+  phone: string | null;
+} {
+  const emailMatch = message.match(
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i,
+  );
+  // A phone: optional +, then 7-20 chars of digits / spaces / dashes /
+  // parens. Trim trailing punctuation. Require at least 7 digits so we
+  // don't grab a date or party size.
+  const phoneMatch = message.match(
+    /\+?\d[\d\s().-]{6,18}\d/,
+  );
+  const phone =
+    phoneMatch && (phoneMatch[0].match(/\d/g)?.length ?? 0) >= 7
+      ? phoneMatch[0].trim()
+      : null;
+  return {
+    email: emailMatch ? emailMatch[0] : null,
+    phone,
+  };
+}
 
 function shortHost(url: string): string {
   try {
