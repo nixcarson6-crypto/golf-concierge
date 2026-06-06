@@ -475,7 +475,13 @@ function extractRateFromDescription(
   unit: "per_night" | "per_round_per_player",
 ): number | null {
   if (!description) return null;
-  const text = description.toLowerCase();
+  // Strip thousands-separator commas BEFORE the regex runs so
+  // "$1,400" becomes "$1400" and the {2,5}-digit capture matches.
+  // Without this fix, every price >= $1,000 silently fell through
+  // (Carson caught it on Four Seasons Jackson Hole: description said
+  // "~$1,400-1,900/night" and the row showed $0, hiding ~$12k from
+  // the headline trip total).
+  const text = description.toLowerCase().replace(/(\d),(\d{3})/g, "$1$2");
   // Only pull a number that's anchored to a unit-rate phrase, so we
   // don't accidentally grab the trip total.
   const unitWords =
