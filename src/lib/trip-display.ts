@@ -69,7 +69,14 @@ export function stripLocationSuffix(s: string): string {
 function looksLikeSentence(s: string): boolean {
   if (!s) return false;
   if (s.length > 70) return true;
-  if (/\.\s+\S/.test(s)) return true;
+  // Strip common place-name abbreviation periods first so "St. Moritz"
+  // / "Mt. Whitney" / "Ste. Genevieve" / "Ft. Lauderdale" don't get
+  // mistaken for sentence boundaries by the period-space check.
+  const stripped = s.replace(
+    /\b(st|mt|ste|sta|ft|fort|mont|pt|sr|jr)\.\s+/gi,
+    "$1 ",
+  );
+  if (/\.\s+\S/.test(stripped)) return true;
   if (/\b(if|but|only|unless|would|could|should|might|maybe|preferably|ideally)\b/i.test(s)) return true;
   if (/^the\s+(top[\s-]?rated|best|cheapest|nicest|finest|greatest|fanciest|highest[\s-]?rated)\b/i.test(s)) return true;
   if (/^(i|we|you|they|us)\s+(want|need|wanna|would|gonna|going|should|might|could|hope|love|like|plan|think)\b/i.test(s)) return true;

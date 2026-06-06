@@ -651,7 +651,15 @@ export function cleanDestination(raw: string | null | undefined): string | null 
   //     any real venue name ("if", "but", "only", "unless", "would",
   //     "could", "should", "might", "maybe"). Real names like
   //     "The Inn at Spanish Bay" survive (no conditional tokens).
-  if (/\.\s+\S/.test(s)) return null;
+  // Sentence-shape check, but FIRST strip the periods on common
+  // place-name abbreviations so they don't get mistaken for sentence
+  // boundaries. "St. Moritz", "Mt. Whitney", "Ste. Genevieve",
+  // "Ft. Lauderdale" are real place names, not multi-sentence input.
+  const stripped = s.replace(
+    /\b(st|mt|ste|sta|ft|fort|mont|pt|sr|jr)\.\s+/gi,
+    "$1 ",
+  );
+  if (/\.\s+\S/.test(stripped)) return null;
   if (/\b(if|but|only|unless|would|could|should|might|maybe|preferably|ideally|honestly|basically|otherwise)\b/i.test(s)) return null;
   return s.length > 0 ? titleCaseDestination(s) : null;
 }
