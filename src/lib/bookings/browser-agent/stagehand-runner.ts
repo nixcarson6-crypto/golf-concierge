@@ -29,9 +29,14 @@ import { env, optionalEnv } from "@/lib/env";
 import { AGENT_VIEWPORT } from "./runtime";
 import type { RawBookingOutcome } from "./outcome";
 
-/** Stagehand model id — DOM agent driven by Claude. */
+/** Stagehand model id — DOM agent driven by Claude.
+ *  MUST be a CURRENTLY-AVAILABLE model. claude-sonnet-4-5-20250929 was
+ *  retired and calling it made the agent throw instantly (the 27s
+ *  black-screen "Completed" Carson saw). claude-sonnet-4-6 is current,
+ *  fast, and the right tier for form-filling. Override per-deploy with
+ *  STAGEHAND_MODEL if Anthropic ships a newer one. */
 const STAGEHAND_MODEL =
-  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-sonnet-4-5-20250929";
+  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-sonnet-4-6";
 const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 40;
 
 /** Schema the agent extracts from the final page — maps 1:1 to our
@@ -146,18 +151,30 @@ export async function runStagehandBooking(
   // Hard wall-clock — abort the agent if it runs long.
   const controller = new AbortController();
   const wallClock = setTimeout(() => controller.abort(), opts.timeoutMs);
+  const t0 = Date.now();
+  const elapsed = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
 
   try {
+    console.log(
+      `[stagehand] init… model=${STAGEHAND_MODEL} captcha=${opts.solveCaptchas} stealth=${opts.advancedStealth}`,
+    );
     await stagehand.init();
     const sessionUrl = stagehand.browserbaseSessionURL ?? null;
+    console.log(`[stagehand] ✓ session ready (${elapsed()}) ${sessionUrl ?? ""}`);
 
     // Navigate to the venue first so the agent starts on the right page.
     const page = stagehand.context.pages()[0];
+    if (!page) {
+      throw new Error(
+        "Stagehand init returned no page — the Browserbase session never opened a tab.",
+      );
+    }
     await opts.onStep?.(`Opening ${shortHost(opts.startUrl)}…`);
     await page.goto(opts.startUrl, {
       waitUntil: "domcontentloaded",
       timeoutMs: 30_000,
     });
+    console.log(`[stagehand] ✓ navigated to ${opts.startUrl} (${elapsed()})`);
 
     // DOM-mode agent: act / fillForm / extract / goto via the page's
     // accessibility tree — no screenshots, no coordinate guessing.
@@ -167,18 +184,23 @@ export async function runStagehandBooking(
       systemPrompt: system,
     });
 
+    console.log(`[stagehand] agent.execute starting (maxSteps=${MAX_STEPS})…`);
     let stepCount = 0;
-    await agent.execute({
+    const result = await agent.execute({
       instruction: opts.task,
       maxSteps: MAX_STEPS,
       signal: controller.signal,
       callbacks: {
         onStepFinish: async () => {
           stepCount += 1;
+          console.log(`[stagehand]   step ${stepCount} done (${elapsed()})`);
           await opts.onStep?.(progressLabel(stepCount));
         },
       },
     });
+    console.log(
+      `[stagehand] ✓ agent finished (${elapsed()}) success=${result.success} completed=${result.completed} steps=${result.actions?.length ?? stepCount}\n  agent message: ${result.message?.slice(0, 300)}`,
+    );
 
     // Pull the structured outcome from the FINAL page. This is the proof
     // gate — the agent's own claim of success is not trusted; we read the
@@ -190,7 +212,10 @@ export async function runStagehandBooking(
         "Extract the booking outcome from the current page. Look for a confirmation/reservation number, an explicit confirmation message, and any amount charged. If the page is not a confirmation page, status is needs_review.",
         stagehandOutcomeSchema,
       );
-    } catch {
+    } catch (exErr) {
+      console.warn(
+        `[stagehand] extract() failed (${elapsed()}): ${exErr instanceof Error ? exErr.message : exErr}`,
+      );
       extracted = {
         status: "needs_review",
         confirmationCode: null,
@@ -200,6 +225,19 @@ export async function runStagehandBooking(
         message: "Couldn't read a confirmation from the final page.",
       };
     }
+    console.log(
+      `[stagehand] outcome: status=${extracted.status} code=${extracted.confirmationCode ?? "—"} reason=${extracted.failureReason ?? "—"} :: ${extracted.message}`,
+    );
+
+    // If the agent itself said it did NOT complete and the page shows no
+    // confirmation, prefer the agent's own explanation in the message —
+    // it usually says exactly what blocked it.
+    const message =
+      extracted.status !== "confirmed" &&
+      result.completed === false &&
+      result.message
+        ? result.message.slice(0, 240)
+        : extracted.message;
 
     return {
       outcome: {
@@ -208,19 +246,23 @@ export async function runStagehandBooking(
         confirmationEvidence: extracted.confirmationEvidence,
         amountChargedCents: extracted.amountChargedCents,
         failureReason: extracted.failureReason ?? undefined,
-        message: extracted.message,
+        message,
       },
       sessionUrl,
     };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     const aborted =
       err instanceof Error &&
-      (err.name === "AbortError" || /abort/i.test(err.message));
+      (err.name === "AbortError" || /abort/i.test(msg));
+    // Loud, tagged, one-line root cause — so the dev terminal shows
+    // exactly why the agent stopped instead of a silent black screen.
+    console.error(`[stagehand] ✗ FAILED (${elapsed()}) — ${msg}`);
     return {
       outcome: {
         status: "failed",
         failureReason: aborted ? "timeout" : "ambiguous",
-        message: err instanceof Error ? err.message : String(err),
+        message: msg,
       },
       sessionUrl: null,
     };
