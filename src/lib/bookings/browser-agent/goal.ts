@@ -90,6 +90,14 @@ Only report "form_not_found" when there is genuinely no online path at all (the 
 - Mandatory login to an account you don't have, or phone/SMS verification → "failed", reason "login_required".
 - No online booking form OR external reservation platform mentioned at all (the venue is genuinely phone-only / email-only) → "failed", reason "form_not_found". If the page MENTIONS OpenTable/Resy/Tock/SevenRooms, that is NOT form_not_found — follow the "go where reservations actually happen" section above and book there.
 - You've spent too long or are going in circles → "failed", reason "timeout".
+## Chain / multi-location venues — pick the right city FIRST
+Many restaurants and resorts have multiple locations and a landing page that's nothing but a CITY PICKER (two or three city names side-by-side: "Aspen | Boulder", "New York | Las Vegas | London", etc.). If the page shows little more than location names and almost no other content, that IS the booking flow — you just haven't entered it yet. **Click the city that matches the destination given in your task** (city extracted from the address). DO NOT report form_not_found and DO NOT call done — the booking form is one click away, behind the right city.
+
+How to spot it: the page is sparse, the venue's logo plus 2-3 large city/location labels, no menu/about/contact yet. That's a location picker. Click the city in your task. The full booking flow loads after.
+
+## Don't end the task prematurely
+"Done" / report_outcome means a real CONFIRMATION (or a real, classified failure). It does NOT mean "I navigated successfully" or "I see a page." If you've only landed on the venue's homepage / a location picker / a marketing page and not interacted with a booking form yet, KEEP GOING. The task is to MAKE A RESERVATION, not to load the site.
+
 ## Identity check
 Before booking, make sure you're on the CORRECT venue's real booking system (name/address should match). If the site is clearly a different business or an aggregator you weren't sent to, report "failed" with reason "ambiguous" rather than booking the wrong place.
 
@@ -142,7 +150,20 @@ export function buildGoal(
   lines.push(`# Booking task`);
   lines.push(``);
   lines.push(`**Venue:** ${v.name}`);
-  if (v.address) lines.push(`**Address (for identity check):** ${v.address}`);
+  if (v.address) {
+    lines.push(`**Address (for identity check):** ${v.address}`);
+    // Pull the city out of the address and call it out separately —
+    // chain venues with multi-location landing pages (e.g. Steakhouse
+    // No. 316: "Aspen | Boulder") need this as a single unambiguous
+    // signal so the agent knows which city link to click before it
+    // can even see the booking form.
+    const city = extractCity(v.address);
+    if (city) {
+      lines.push(
+        `**Destination city (CRITICAL — pick this on any location-picker page):** ${city}`,
+      );
+    }
+  }
   lines.push(`**Start here:** ${v.startUrl}`);
   if (v.phone) lines.push(`**Venue phone (context / fallback only):** ${v.phone}`);
   lines.push(``);
@@ -167,6 +188,51 @@ export function buildGoal(
   );
 
   return { system: POLICY, firstUserMessage: lines.join("\n") };
+}
+
+/**
+ * Pull the city out of a Google-Places-formatted address. Examples it
+ * needs to handle:
+ *   "1009 E Hopkins Ave, Aspen, CO 81611, USA"         → "Aspen"
+ *   "55 N Cache St, Jackson, WY 83001, United States"  → "Jackson"
+ *   "84 E Broadway, Jackson, WY 83001"                 → "Jackson"
+ *   "Piazza San Marco, 30124 Venezia VE, Italy"        → "Venezia"
+ * Strategy: split on commas, drop the last token if it looks like a
+ * country, then the new last token usually starts with a state/postal
+ * fragment — the token BEFORE it is the city.
+ */
+function extractCity(address: string): string | null {
+  const parts = address
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  if (parts.length < 2) return null;
+  const COUNTRIES = new Set([
+    "usa",
+    "united states",
+    "united states of america",
+    "canada",
+    "mexico",
+    "uk",
+    "united kingdom",
+    "ireland",
+    "scotland",
+    "england",
+    "italy",
+    "france",
+    "spain",
+    "portugal",
+    "germany",
+    "switzerland",
+  ]);
+  let working = [...parts];
+  if (COUNTRIES.has(working[working.length - 1].toLowerCase())) {
+    working = working.slice(0, -1);
+  }
+  if (working.length < 2) return null;
+  // The penultimate token is usually the city; the final token is the
+  // state/postal like "CO 81611" or "WY 83001".
+  return working[working.length - 2] || null;
 }
 
 /**
