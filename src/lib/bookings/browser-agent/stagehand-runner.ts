@@ -35,11 +35,17 @@ import type { RawBookingOutcome } from "./outcome";
  *  black-screen "Completed" Carson saw). claude-sonnet-4-6 is current,
  *  fast, and the right tier for form-filling. Override per-deploy with
  *  STAGEHAND_MODEL if Anthropic ships a newer one. */
+/** Stagehand model id — DOM agent driven by Claude.
+ *  HAIKU by default. The DOM booking agent is doing 'click the button
+ *  labelled Reserve, type the date, pick the time slot' — instruction-
+ *  following, not deep reasoning. Haiku is ~3x faster and ~3x cheaper
+ *  than Sonnet for exactly this kind of task. Override with
+ *  STAGEHAND_MODEL if a venue needs heavier reasoning. */
 const STAGEHAND_MODEL =
-  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-sonnet-4-6";
-// 25-step cap (was 40). The lean prompt targets 8-15 steps for a normal
+  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-haiku-4-5";
+// 25-step cap. The lean prompt + Haiku target 8-15 steps for a normal
 // booking; 25 leaves headroom for a complex multi-page flow without
-// letting a confused agent burn 40 LLM calls (and Carson's credits).
+// letting a confused agent burn through credits on runaway loops.
 const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 25;
 
 /** Schema the agent extracts from the final page — maps 1:1 to our
@@ -118,14 +124,16 @@ export type RunStagehandResult = {
  * counts (Carson's 28-step, 6-minute, credit-draining runs). This is
  * the same rules, tight — only what the DOM agent needs.
  */
-const STAGEHAND_SYSTEM = `You are Pyltrix's booking agent. Make ONE real reservation at the venue described in the task — for the EXACT date(s)/time/party given — then stop. Work the page with clicks, typing, and form-filling. Be FAST and decisive: a normal booking is 8-15 steps. Don't re-read pages you've already seen.
+const STAGEHAND_SYSTEM = `You are Pyltrix's booking agent. You have FULL AUTHORITY to complete this reservation on the customer's behalf — clicking buttons, typing details, picking time slots, and submitting the form ARE your job. The customer already authorized this. Do not stop "to let the customer review" — they are not watching, and there is no review step. Either finish the booking or report exactly why you can't.
+
+Make ONE real reservation at the venue described in the task — for the EXACT date(s)/time/party given — then stop. Be FAST and decisive: a normal booking is 6-12 steps. Don't re-read pages you've already seen.
 
 RULES
-1. ONE booking only. Never submit twice. If you submit and aren't certain it went through, report needs_review — never resubmit (a double-booking is worse than a missed one).
-2. NEVER claim success without proof. "confirmed" requires a real confirmation/reservation/order number OR an explicit "your reservation is confirmed" message visible on the page — read it and quote it. If you don't see that, it's needs_review or failed, never confirmed.
-3. NEVER invent data. Use only the traveler details in the task. If a REQUIRED field needs something you weren't given, report needs_review.
-4. DATES: use the EXACT check-in/check-out (for hotels) or date/time (for everything else) from the task. For a hotel, set BOTH the arrival AND departure dates so the full night count matches — do not book a single night unless the task says one night.
-5. BUDGET: if the total looks far above normal for this booking, or over a stated ceiling, stop and report failed / budget_exceeded.
+1. **FINISH THE BOOKING.** The task is to make a real reservation, not to navigate to the booking page. Reaching a time-slot picker / a form / a checkout button is HALFWAY DONE, not done. You MUST click the time slot, fill the form, and click the final submit/confirm button. Stopping at "the page shows available times" is a FAILURE, not a success. The only valid stopping points are: (a) a real confirmation page is visible, (b) one of the explicit failure conditions below.
+2. ONE submission only. Never click the final submit button twice. If you submit and the page changes but you can't see a clear confirmation, report needs_review with what you observed — never resubmit (a double-booking is worse than a missed one).
+3. CONFIRMED requires PROOF. "confirmed" means the page shows a real confirmation/reservation/order number OR an explicit "your reservation is confirmed" message — quote it. If you submitted but can't see confirmation language, it's needs_review.
+4. NEVER invent data. Use only the traveler details in the task. If a REQUIRED field needs something you weren't given, report needs_review.
+5. DATES: use the EXACT date(s) from the task. For a hotel, set BOTH the arrival AND departure dates so the night count matches — do not book a single night unless the task says one night.
 6. PAYMENT: do NOT enter any card or make one up. Most reservations (tee times, tables, spa) confirm WITHOUT payment — finish those normally. If a card/deposit is required to complete, STOP at the card step and report needs_review.
 
 FINDING THE BOOKING
@@ -133,11 +141,12 @@ FINDING THE BOOKING
 - Resort tee times / spa / activities usually live under "Experiences", "Activities", "Things to Do", "Recreation", or "Golf" — open the specific one, then use its Check Availability / Add to Cart flow.
 - Multi-location chains show a city picker (e.g. "Aspen | Boulder"). Click the DESTINATION CITY named in the task.
 - If the venue's own site has no form but mentions OpenTable / Resy / Tock, go to that platform (opentable.com / resy.com / exploretock.com), search the venue name + city, click the matching result (verify the address), and book there. The platform IS the venue's real reservation system — that's not the wrong venue.
+- On a TIME-SLOT PICKER (Resy/OpenTable showing times like "7:00 PM / 7:15 PM / 7:30 PM"): pick the slot at or closest to the requested time, click it, then complete the form that follows. Do NOT stop on the picker page — clicking a slot opens the actual reservation form.
 - Dismiss cookie banners and popups. Use guest checkout. Decline add-ons, upgrades, marketing.
 
 WHEN TO STOP (report the outcome honestly)
 - Real confirmation visible → confirmed, with the number quoted.
-- No availability for the requested dates → failed / no_availability. (First double-check you entered the dates correctly — a single-night search on a multi-night stay often shows "no rooms".)
+- No availability for the requested date/time → failed / no_availability. (First double-check the date is correct — many sites default to "today" and show no times.)
 - Genuinely no online booking AND no platform mentioned (phone/email only) → failed / form_not_found.
 - A captcha you can't pass → failed / captcha_blocked. A mandatory account login you don't have → failed / login_required.
 - A card is required to finish → needs_review.`;
@@ -167,6 +176,9 @@ export async function runStagehandBooking(
     // Block the agent's actions until Browserbase finishes solving any
     // captcha — so the agent doesn't try to click through a challenge.
     waitForCaptchaSolves: opts.solveCaptchas,
+    // Shorter DOM-settle (default ~3s) shaves 1-2s off every step where
+    // the page is already stable.
+    domSettleTimeout: 1500,
     // We pass agent callbacks (onStepFinish → live progress) and an abort
     // signal (our wall-clock timeout) to agent.execute(). Stagehand
     // requires experimental: true + disableAPI: true to use those — the
@@ -287,25 +299,47 @@ export async function runStagehandBooking(
     // Pull the structured outcome from the FINAL page. This is the proof
     // gate — the agent's own claim of success is not trusted; we read the
     // confirmation off the page ourselves.
-    await opts.onStep?.("Verifying the confirmation…");
+    //
+    // FAST PATH: when the agent has already CLAIMED a failure or NEEDS_REVIEW
+    // in its own message, skip the extract() — saves ~10s + a Haiku call.
+    // The agent's natural-language message is honest about its own state; we
+    // only need to RE-VERIFY when it claims success (the skeptical gate).
+    const agentClaimsConfirmed = /confirm(ed|ation)|reservation (#|number|id)/i.test(
+      agentMsg,
+    );
     let extracted: z.infer<typeof stagehandOutcomeSchema>;
-    try {
-      extracted = await stagehand.extract(
-        "Extract the booking outcome from the current page. Look for a confirmation/reservation number, an explicit confirmation message, and any amount charged. If the page is not a confirmation page, status is needs_review.",
-        stagehandOutcomeSchema,
-      );
-    } catch (exErr) {
-      console.warn(
-        `[stagehand] extract() failed (${elapsed()}): ${exErr instanceof Error ? exErr.message : exErr}`,
+    if (result.success === false && !agentClaimsConfirmed) {
+      console.log(
+        "[stagehand] skipping extract() — agent already reported non-success, trusting its message.",
       );
       extracted = {
-        status: "needs_review",
+        status: classifyFromAgentMessage(agentMsg),
         confirmationCode: null,
         confirmationEvidence: null,
         amountChargedCents: null,
-        failureReason: null,
-        message: "Couldn't read a confirmation from the final page.",
+        failureReason: reasonFromAgentMessage(agentMsg) ?? null,
+        message: agentMsg.slice(0, 240) || "Booking did not complete.",
       };
+    } else {
+      await opts.onStep?.("Verifying the confirmation…");
+      try {
+        extracted = await stagehand.extract(
+          "Extract the booking outcome from the current page. Look for a confirmation/reservation number, an explicit confirmation message, and any amount charged. If the page is not a confirmation page, status is needs_review.",
+          stagehandOutcomeSchema,
+        );
+      } catch (exErr) {
+        console.warn(
+          `[stagehand] extract() failed (${elapsed()}): ${exErr instanceof Error ? exErr.message : exErr}`,
+        );
+        extracted = {
+          status: "needs_review",
+          confirmationCode: null,
+          confirmationEvidence: null,
+          amountChargedCents: null,
+          failureReason: null,
+          message: "Couldn't read a confirmation from the final page.",
+        };
+      }
     }
     console.log(
       `[stagehand] outcome: status=${extracted.status} code=${extracted.confirmationCode ?? "—"} reason=${extracted.failureReason ?? "—"} :: ${extracted.message}`,
@@ -367,4 +401,44 @@ function shortHost(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** Map the agent's free-text "what happened" message to our schema's
+ *  status enum. Used on the fast path when we skip the extract() call. */
+function classifyFromAgentMessage(
+  msg: string,
+): "confirmed" | "failed" | "needs_review" {
+  const m = (msg ?? "").toLowerCase();
+  if (/no (rooms?|availability|times?|slots?)|sold out|fully booked|unavailable/i.test(m))
+    return "failed";
+  if (/captcha|are you (a )?human|bot detection|cloudflare/i.test(m))
+    return "failed";
+  if (/must (sign in|log in)|account required|login required/i.test(m))
+    return "failed";
+  if (/card (required|needed)|deposit|prepay|payment required/i.test(m))
+    return "needs_review";
+  if (/no (online booking|reservation system|booking form)|phone[- ]?only/i.test(m))
+    return "failed";
+  return "needs_review";
+}
+
+function reasonFromAgentMessage(
+  msg: string,
+):
+  | "no_availability"
+  | "captcha_blocked"
+  | "login_required"
+  | "form_not_found"
+  | "ambiguous"
+  | undefined {
+  const m = (msg ?? "").toLowerCase();
+  if (/no (rooms?|availability|times?|slots?)|sold out|fully booked|unavailable/i.test(m))
+    return "no_availability";
+  if (/captcha|are you (a )?human|bot detection|cloudflare/i.test(m))
+    return "captcha_blocked";
+  if (/must (sign in|log in)|account required|login required/i.test(m))
+    return "login_required";
+  if (/no (online booking|reservation system|booking form)|phone[- ]?only/i.test(m))
+    return "form_not_found";
+  return "ambiguous";
 }
