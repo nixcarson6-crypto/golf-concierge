@@ -126,6 +126,8 @@ const STAGEHAND_SYSTEM = `You are Pyltrix's booking agent. You have FULL AUTHORI
 
 Make ONE real reservation at the venue described in the task — for the EXACT date(s)/time/party given — then stop. Be FAST and decisive: a normal booking is 6-12 steps. Don't re-read pages you've already seen.
 
+STEP 0 — CLEAR THE PAGE FIRST (do this before ANYTHING else, on EVERY new page): if a cookie / consent / privacy / "this website uses cookies" / GDPR banner or modal is showing, DISMISS IT IMMEDIATELY by clicking the most permissive accept button — "Accept", "Accept all", "Accept All Cookies", "I agree", "OK", "Got it", "Allow all", "Consent", or in other languages "Aceptar"/"Accetta"/"Accetta tutti"/"Zustimmen"/"Tout accepter". These overlays sit ON TOP of the page and intercept every click — if you don't clear it, NOTHING else you click will work and you'll stall. Never sit looking at a cookie banner: clicking accept is always safe. Also close any newsletter/popup/chat-widget overlays the same way (X / Close / No thanks). Only AFTER the page is clear do you start the booking.
+
 RULES
 1. **FINISH THE BOOKING.** The task is to make a real reservation, not to navigate to the booking page. Reaching a time-slot picker / a form / a checkout button is HALFWAY DONE, not done. You MUST click the time slot, fill the form, and click the final submit/confirm button. Stopping at "the page shows available times" is a FAILURE, not a success. The only valid stopping points are: (a) a real confirmation page is visible, (b) one of the explicit failure conditions below.
 2. ONE submission only. Never click the final submit button twice. If you submit and the page changes but you can't see a clear confirmation, report needs_review with what you observed — never resubmit (a double-booking is worse than a missed one).
@@ -140,7 +142,7 @@ FINDING THE BOOKING
 - Multi-location chains show a city picker (e.g. "Aspen | Boulder"). Click the DESTINATION CITY named in the task.
 - If the venue's own site has no form but mentions OpenTable / Resy / Tock, go to that platform (opentable.com / resy.com / exploretock.com), search the venue name + city, click the matching result (verify the address), and book there. The platform IS the venue's real reservation system — that's not the wrong venue.
 - On a TIME-SLOT PICKER (Resy/OpenTable showing times like "7:00 PM / 7:15 PM / 7:30 PM"): pick the slot at or closest to the requested time, click it, then complete the form that follows. Do NOT stop on the picker page — clicking a slot opens the actual reservation form.
-- Dismiss cookie banners and popups. Use guest checkout. Decline add-ons, upgrades, marketing.
+- A cookie/consent banner is blocking you? See STEP 0 — click Accept/Accept all FIRST, then continue. This is the #1 reason a run stalls. Use guest checkout. Decline add-ons, upgrades, marketing.
 
 WHEN TO STOP (report the outcome honestly)
 - Real confirmation visible → confirmed, with the number quoted.
@@ -229,6 +231,25 @@ export async function runStagehandBooking(
       timeoutMs: 30_000,
     });
     console.log(`[stagehand] ✓ navigated to ${opts.startUrl} (${elapsed()})`);
+
+    // Pre-clear cookie / consent overlays BEFORE handing off to the agent.
+    // These banners sit on top of the page and intercept every click — the
+    // #1 cause of a run stalling (Carson watched the agent sit on Finca
+    // Cortesin's "This website uses cookies" modal the whole run). One
+    // cheap up-front act() dismisses it deterministically so the agent
+    // starts on a clear page. Best-effort: no banner ⇒ fast no-op; any
+    // error is swallowed (STEP 0 in the system prompt is the backstop).
+    try {
+      await opts.onStep?.("Clearing cookie banner…");
+      await stagehand.act(
+        "If a cookie consent, privacy, or GDPR banner/modal is visible, click the button that accepts all cookies (labelled Accept, Accept all, I agree, OK, Allow all, or the equivalent in another language like Accetta tutti / Aceptar / Tout accepter / Zustimmen) to dismiss it. Also close any newsletter or promo popup. If nothing like that is visible, do nothing.",
+      );
+      console.log(`[stagehand] ✓ consent pre-clear done (${elapsed()})`);
+    } catch (e) {
+      console.warn(
+        `[stagehand] consent pre-clear skipped: ${e instanceof Error ? e.message : e}`,
+      );
+    }
 
     // DOM-mode agent: act / fillForm / extract / goto via the page's
     // accessibility tree — no screenshots, no coordinate guessing.

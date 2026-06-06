@@ -253,13 +253,18 @@ function buildReservationMailto(args: {
   venueEmail: string | null;
   travelerName: string | null;
   travelerPhone: string | null;
+  travelerEmail: string | null;
   partySize: number | null;
 }): string {
-  const { item, venueEmail, travelerName, travelerPhone, partySize } = args;
-  const venue = item.title.replace(
-    /^(dinner|lunch|breakfast|brunch|drinks|cocktails|round|tee\s*time|spa|massage)\s*(—|–|-|:|at)\s*/i,
-    "",
-  );
+  const { item, venueEmail, travelerName, travelerPhone, travelerEmail, partySize } =
+    args;
+  const venue =
+    item.title
+      .replace(
+        /^(dinner|lunch|breakfast|brunch|drinks|cocktails|round|tee\s*time|spa|massage)\s*(—|–|-|:|at)\s*/i,
+        "",
+      )
+      .trim() || item.title;
   const when = item.startTime ? new Date(item.startTime) : null;
   const dateStr = when
     ? when.toLocaleDateString("en-US", {
@@ -279,26 +284,53 @@ function buildReservationMailto(args: {
         })
       : null;
 
-  const lines: string[] = [
-    `Hello ${venue},`,
+  // A reservation reads naturally for a restaurant/bar ("a table"); for
+  // a spa/activity/other it's "a reservation". Keeps the copy warm and
+  // correct regardless of venue type.
+  const isTable = item.type === "DINING" || item.type === "NIGHTLIFE";
+  const ask = isTable ? "a table" : "a reservation";
+
+  const details: string[] = [];
+  if (dateStr) details.push(`    Date:    ${dateStr}`);
+  if (timeStr) details.push(`    Time:    ${timeStr}`);
+  if (partySize && partySize > 0)
+    details.push(`    Guests:  ${partySize} ${partySize === 1 ? "person" : "people"}`);
+  if (travelerName) details.push(`    Name:    ${travelerName}`);
+
+  // Warm, concierge-toned. Closes with a clear callback line so the
+  // venue can phone or email the guest directly to confirm — exactly
+  // what these form-less restaurants do.
+  const reach: string[] = [];
+  if (travelerPhone && travelerEmail)
+    reach.push(
+      `You can reach me directly at ${travelerPhone} or by replying to this email (${travelerEmail}).`,
+    );
+  else if (travelerPhone)
+    reach.push(`You can reach me directly at ${travelerPhone}, or just reply here.`);
+  else reach.push("Please feel free to reply to this email to confirm.");
+
+  const signoff: string[] = ["Warm regards,"];
+  if (travelerName) signoff.push(travelerName);
+  if (travelerPhone) signoff.push(travelerPhone);
+  if (travelerEmail) signoff.push(travelerEmail);
+
+  const body = [
+    `Dear ${venue} team,`,
     "",
-    "I'd like to request a reservation:",
+    `I would love to book ${ask} with you and would be grateful if you could confirm availability:`,
     "",
-  ];
-  if (dateStr) lines.push(`• Date: ${dateStr}`);
-  if (timeStr) lines.push(`• Time: ${timeStr}`);
-  if (partySize && partySize > 0) lines.push(`• Party size: ${partySize}`);
-  if (travelerName) lines.push(`• Name: ${travelerName}`);
-  lines.push(
+    ...details,
     "",
-    "Could you please confirm availability? Thank you very much.",
+    "If that exact time isn't available, I'd happily take the closest option you have.",
     "",
-    travelerName ?? "",
-  );
-  if (travelerPhone) lines.push(travelerPhone);
+    ...reach,
+    "",
+    "Thank you very much — I'm looking forward to it.",
+    "",
+    ...signoff,
+  ].join("\n");
 
   const subject = `Reservation request — ${venue}${dateStr ? `, ${dateStr}` : ""}`;
-  const body = lines.join("\n");
   const to = venueEmail ?? "";
   return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(
     subject,
@@ -611,6 +643,7 @@ export function BookingStatusPanel({
                                   me?.name ||
                                   null,
                                 travelerPhone: me?.profile.phone ?? null,
+                                travelerEmail: me?.email ?? null,
                                 partySize: trip?.groupSize ?? null,
                               })}
                               className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-[11px] font-medium text-background hover:bg-foreground/90 transition"
