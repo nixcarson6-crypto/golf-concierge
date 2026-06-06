@@ -132,6 +132,14 @@ export async function runStagehandBooking(
     // Block the agent's actions until Browserbase finishes solving any
     // captcha — so the agent doesn't try to click through a challenge.
     waitForCaptchaSolves: opts.solveCaptchas,
+    // We pass agent callbacks (onStepFinish → live progress) and an abort
+    // signal (our wall-clock timeout) to agent.execute(). Stagehand
+    // requires experimental: true + disableAPI: true to use those — the
+    // server-side Stagehand API path doesn't support them. disableAPI
+    // just runs the LLM directly (no Stagehand-cloud caching), which is
+    // exactly what we want: fresh session per booking, no shared cache.
+    experimental: true,
+    disableAPI: true,
     verbose: 0,
     browserbaseSessionCreateParams: {
       projectId,
