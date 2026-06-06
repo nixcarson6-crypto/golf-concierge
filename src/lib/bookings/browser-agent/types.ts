@@ -49,12 +49,18 @@ export type BookingTask = {
   request: BookingRequest;
   traveler: TravelerIdentity;
   venue: VenueTarget;
-  /** YYYY-MM-DD of the reservation, or null if the item had no date. */
+  /** YYYY-MM-DD of the reservation (check-IN for hotels), or null. */
   isoDate: string | null;
   /** Human reservation time ("7:40 PM"), venue-local intent, or null. */
   displayTime: string | null;
   /** Long human date ("Friday, August 21, 2026") for the prompt, or null. */
   displayDate: string | null;
+  /** For LODGING only: check-OUT date YYYY-MM-DD (item.endTime), or null. */
+  isoCheckOut: string | null;
+  /** For LODGING only: human check-out date, or null. */
+  displayCheckOut: string | null;
+  /** For LODGING only: number of nights (checkout − checkin), or null. */
+  nights: number | null;
   /** Hard budget ceiling in cents (from the priced item), or null if unknown. */
   budgetCents: number | null;
   /** Same ceiling in whole USD for the prompt, or null. */
@@ -126,6 +132,21 @@ export function buildBookingTask(args: {
 }): BookingTask {
   const { request, traveler, venue } = args;
   const start = request.startTime ?? null;
+  // Check-out only matters for hotels. For other item types endTime is
+  // the activity end (same day), so we ONLY surface it for LODGING.
+  const isLodging = request.type === "LODGING";
+  const end = isLodging ? (request.endTime ?? null) : null;
+  const isoIn = toIsoDate(start);
+  const isoOut = toIsoDate(end);
+  const nights =
+    isoIn && isoOut
+      ? Math.max(
+          0,
+          Math.round(
+            (Date.parse(isoOut) - Date.parse(isoIn)) / (24 * 60 * 60 * 1000),
+          ),
+        )
+      : null;
   const partySize =
     normalizePartySize(request.party) ??
     normalizePartySize(traveler.partySize) ??
@@ -135,9 +156,12 @@ export function buildBookingTask(args: {
     request,
     traveler: { ...traveler, partySize },
     venue,
-    isoDate: toIsoDate(start),
+    isoDate: isoIn,
     displayTime: toDisplayTime(start),
     displayDate: toDisplayDate(start),
+    isoCheckOut: isoOut,
+    displayCheckOut: toDisplayDate(end),
+    nights: nights && nights > 0 ? nights : null,
     budgetCents: normalizeBudget(request.budget),
     budgetUsd: centsToUsd(normalizeBudget(request.budget)),
   };

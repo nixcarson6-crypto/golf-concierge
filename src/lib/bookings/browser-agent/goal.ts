@@ -168,8 +168,22 @@ export function buildGoal(
   if (v.phone) lines.push(`**Venue phone (context / fallback only):** ${v.phone}`);
   lines.push(``);
   lines.push(`**What to book:** ${describeService(task)}`);
-  if (task.displayDate) lines.push(`**Date:** ${task.displayDate} (${task.isoDate})`);
-  else lines.push(`**Date:** not specified — use the venue's soonest sensible date for this request, or report needs_review if a date is mandatory and unclear.`);
+  // Hotels need BOTH dates so the agent doesn't book a single night.
+  if (task.isoCheckOut && task.nights) {
+    lines.push(
+      `**Check-IN:** ${task.displayDate ?? task.isoDate} (${task.isoDate})`,
+    );
+    lines.push(
+      `**Check-OUT:** ${task.displayCheckOut ?? task.isoCheckOut} (${task.isoCheckOut})`,
+    );
+    lines.push(
+      `**Nights:** ${task.nights} — set BOTH the arrival AND departure dates so the stay is ${task.nights} night${task.nights === 1 ? "" : "s"}, NOT one night.`,
+    );
+  } else if (task.displayDate) {
+    lines.push(`**Date:** ${task.displayDate} (${task.isoDate})`);
+  } else {
+    lines.push(`**Date:** not specified — use the venue's soonest sensible date for this request, or report needs_review if a date is mandatory and unclear.`);
+  }
   if (task.displayTime) lines.push(`**Time (venue-local intent):** ${task.displayTime}`);
   lines.push(`**Party size:** ${t.partySize}`);
   if (task.budgetUsd != null)

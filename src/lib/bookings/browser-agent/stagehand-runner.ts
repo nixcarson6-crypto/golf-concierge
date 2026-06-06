@@ -37,7 +37,10 @@ import type { RawBookingOutcome } from "./outcome";
  *  STAGEHAND_MODEL if Anthropic ships a newer one. */
 const STAGEHAND_MODEL =
   optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-sonnet-4-6";
-const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 40;
+// 25-step cap (was 40). The lean prompt targets 8-15 steps for a normal
+// booking; 25 leaves headroom for a complex multi-page flow without
+// letting a confused agent burn 40 LLM calls (and Carson's credits).
+const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 25;
 
 /** Schema the agent extracts from the final page — maps 1:1 to our
  *  RawBookingOutcome so verifyOutcome can gate it unchanged. */
@@ -104,18 +107,50 @@ export type RunStagehandResult = {
  * and complete WITHOUT a card. For the minority that demand a card at
  * checkout, the agent stops and the booking surfaces as needs_review.
  */
-const PAYMENT_ADDENDUM = `
+/**
+ * LEAN system prompt, purpose-built for the Stagehand DOM agent.
+ *
+ * The original goal.ts system prompt is ~3,000 words written for the
+ * vision/computer-use agent — full of "take a screenshot", "alt+F2",
+ * coordinate instructions, batch-actions-per-turn, etc. that the DOM
+ * agent doesn't use. Re-sending that wall of text on EVERY step was the
+ * main reason each step took 5-30s and bookings burned huge token
+ * counts (Carson's 28-step, 6-minute, credit-draining runs). This is
+ * the same rules, tight — only what the DOM agent needs.
+ */
+const STAGEHAND_SYSTEM = `You are Pyltrix's booking agent. Make ONE real reservation at the venue described in the task — for the EXACT date(s)/time/party given — then stop. Work the page with clicks, typing, and form-filling. Be FAST and decisive: a normal booking is 8-15 steps. Don't re-read pages you've already seen.
 
-## Payment — IMPORTANT for this booking
-Do NOT enter any credit card, and do NOT make up a card number. Most reservations (tee times, restaurant tables, spa) confirm WITHOUT payment — you pay at the venue. Complete those normally.
-If the venue REQUIRES a card / deposit to finish the reservation, STOP before the card form. Do not enter anything. End by stating clearly that the booking reached the payment step and needs review (a human will complete payment). Never fabricate payment details.`;
+RULES
+1. ONE booking only. Never submit twice. If you submit and aren't certain it went through, report needs_review — never resubmit (a double-booking is worse than a missed one).
+2. NEVER claim success without proof. "confirmed" requires a real confirmation/reservation/order number OR an explicit "your reservation is confirmed" message visible on the page — read it and quote it. If you don't see that, it's needs_review or failed, never confirmed.
+3. NEVER invent data. Use only the traveler details in the task. If a REQUIRED field needs something you weren't given, report needs_review.
+4. DATES: use the EXACT check-in/check-out (for hotels) or date/time (for everything else) from the task. For a hotel, set BOTH the arrival AND departure dates so the full night count matches — do not book a single night unless the task says one night.
+5. BUDGET: if the total looks far above normal for this booking, or over a stated ceiling, stop and report failed / budget_exceeded.
+6. PAYMENT: do NOT enter any card or make one up. Most reservations (tee times, tables, spa) confirm WITHOUT payment — finish those normally. If a card/deposit is required to complete, STOP at the card step and report needs_review.
+
+FINDING THE BOOKING
+- Look for: Book, Reserve, Reservations, Check Availability, Book a table, Book a tee time.
+- Resort tee times / spa / activities usually live under "Experiences", "Activities", "Things to Do", "Recreation", or "Golf" — open the specific one, then use its Check Availability / Add to Cart flow.
+- Multi-location chains show a city picker (e.g. "Aspen | Boulder"). Click the DESTINATION CITY named in the task.
+- If the venue's own site has no form but mentions OpenTable / Resy / Tock, go to that platform (opentable.com / resy.com / exploretock.com), search the venue name + city, click the matching result (verify the address), and book there. The platform IS the venue's real reservation system — that's not the wrong venue.
+- Dismiss cookie banners and popups. Use guest checkout. Decline add-ons, upgrades, marketing.
+
+WHEN TO STOP (report the outcome honestly)
+- Real confirmation visible → confirmed, with the number quoted.
+- No availability for the requested dates → failed / no_availability. (First double-check you entered the dates correctly — a single-night search on a multi-night stay often shows "no rooms".)
+- Genuinely no online booking AND no platform mentioned (phone/email only) → failed / form_not_found.
+- A captcha you can't pass → failed / captcha_blocked. A mandatory account login you don't have → failed / login_required.
+- A card is required to finish → needs_review.`;
 
 export async function runStagehandBooking(
   opts: RunStagehandOptions,
 ): Promise<RunStagehandResult> {
   const apiKey = env("BROWSERBASE_API_KEY");
   const projectId = env("BROWSERBASE_PROJECT_ID");
-  const system = opts.system + PAYMENT_ADDENDUM;
+  // Use the lean DOM-native prompt, NOT the heavy vision-era goal.system
+  // that run-booking passes (kept on opts.system for the computer-use
+  // fallback). This is the single biggest speed + cost win.
+  const system = STAGEHAND_SYSTEM;
 
   const stagehand = new Stagehand({
     env: "BROWSERBASE",
@@ -209,6 +244,45 @@ export async function runStagehandBooking(
     console.log(
       `[stagehand] ✓ agent finished (${elapsed()}) success=${result.success} completed=${result.completed} steps=${result.actions?.length ?? stepCount}\n  agent message: ${result.message?.slice(0, 300)}`,
     );
+
+    // If the agent crashed internally (Stagehand surfaces these as
+    // success=false with the error in result.message rather than
+    // throwing), DON'T waste an extract() call — the session is usually
+    // dead. Classify and return immediately so the retry loop / UI gets
+    // an honest reason instead of a misleading needs_review.
+    const agentMsg = result.message ?? "";
+    if (result.success === false) {
+      if (/credit balance is too low|insufficient.*credit|quota/i.test(agentMsg)) {
+        console.error("[stagehand] ✗ Anthropic credits exhausted mid-booking.");
+        return {
+          outcome: {
+            status: "failed",
+            failureReason: "ambiguous",
+            message:
+              "Booking stopped — the AI account ran out of credits. Top up Anthropic billing and try again.",
+          },
+          sessionUrl,
+        };
+      }
+      if (
+        /awaitActivePage|Cannot read properties of null|transport closed|socket-close|CDP/i.test(
+          agentMsg,
+        )
+      ) {
+        console.error(`[stagehand] ✗ session crashed mid-run: ${agentMsg.slice(0, 160)}`);
+        return {
+          outcome: {
+            status: "failed",
+            // ambiguous IS retryable — a fresh session usually recovers
+            // from a CDP/transport drop.
+            failureReason: "ambiguous",
+            message:
+              "The booking session dropped before finishing — retrying on a fresh session.",
+          },
+          sessionUrl,
+        };
+      }
+    }
 
     // Pull the structured outcome from the FINAL page. This is the proof
     // gate — the agent's own claim of success is not trusted; we read the
