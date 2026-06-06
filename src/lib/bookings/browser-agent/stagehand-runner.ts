@@ -39,11 +39,14 @@ import type { RawBookingOutcome } from "./outcome";
  *  STAGEHAND_MODEL per-deploy. */
 const STAGEHAND_MODEL =
   optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-sonnet-4-6";
-// 35-step cap. A real reservation flow (navigate → reservations →
-// date → party → time slot → name/email/phone → submit → confirmation)
-// legitimately takes ~15-25 steps. 25 was cutting complex forms off
-// before they finished; 35 leaves headroom while still bounding a
-// runaway loop. The wall-clock timeout is the real backstop.
+// Default step cap. A restaurant/tee-time/spa reservation (navigate →
+// reservations → date → party → time slot → name/email/phone → submit →
+// confirmation) legitimately takes ~15-25 steps, so 35 is plenty AND
+// keeps those FAST. Hotels are a different beast — date picker → search →
+// room list → rate → guest details → checkout is a long flow that blew
+// past 35 (Belmond hit the cap mid-flow). The caller passes a per-type
+// budget via opts.maxSteps; this is the fallback. The wall-clock timeout
+// is the real backstop either way.
 const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 35;
 
 /** Schema the agent extracts from the final page — maps 1:1 to our
@@ -94,6 +97,10 @@ export type RunStagehandOptions = {
   advancedStealth: boolean;
   /** Hard wall-clock budget for the whole booking. */
   timeoutMs: number;
+  /** Per-booking step budget. Restaurants/tee-times are quick (~35);
+   *  hotels need more (~55) for the longer date→room→rate→guest flow.
+   *  Falls back to MAX_STEPS / the STAGEHAND_MAX_STEPS env when unset. */
+  maxSteps?: number;
   /** Live progress callback → wire to updateProgress for the UI. */
   onStep?: (label: string) => void | Promise<void>;
 };
@@ -138,6 +145,7 @@ RULES
 
 FINDING THE BOOKING
 - Look for: Book, Reserve, Reservations, Check Availability, Book a table, Book a tee time.
+- HOTEL: be DIRECT and fast — accept cookies, set BOTH check-in and check-out dates plus the guest count, click Check Availability / Search, then pick the FIRST room+rate that fits the budget. Do NOT open and compare every room type or read the whole page repeatedly — choose one suitable room and move on. Continue to the guest-details form, fill it, and proceed toward booking. If a deposit or card is required to confirm (luxury hotels usually ask for one), STOP at the payment step and report needs_review — and in your message quote the EXACT room name + total price you reached (e.g. "Junior Suite, sea view — €22,490 for 5 nights, stopped at the deposit/card step") so the customer can finish payment themselves. Don't burn steps looping back to the room list.
 - Resort tee times / spa / activities usually live under "Experiences", "Activities", "Things to Do", "Recreation", or "Golf" — open the specific one, then use its Check Availability / Add to Cart flow.
 - Multi-location chains show a city picker (e.g. "Aspen | Boulder"). Click the DESTINATION CITY named in the task.
 - If the venue's own site has no form but mentions OpenTable / Resy / Tock, go to that platform (opentable.com / resy.com / exploretock.com), search the venue name + city, click the matching result (verify the address), and book there. The platform IS the venue's real reservation system — that's not the wrong venue.
@@ -271,11 +279,12 @@ export async function runStagehandBooking(
       systemPrompt: system,
     });
 
-    console.log(`[stagehand] agent.execute starting (maxSteps=${MAX_STEPS})…`);
+    const maxSteps = opts.maxSteps ?? MAX_STEPS;
+    console.log(`[stagehand] agent.execute starting (maxSteps=${maxSteps})…`);
     let stepCount = 0;
     const result = await agent.execute({
       instruction: opts.task,
-      maxSteps: MAX_STEPS,
+      maxSteps,
       signal: controller.signal,
       callbacks: {
         onStepFinish: async () => {

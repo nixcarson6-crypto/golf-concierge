@@ -228,6 +228,12 @@ export async function runBrowserBooking(args: {
         try {
           if (useStagehand) {
             const { runStagehandBooking } = await import("./stagehand-runner");
+            // Per-type step budget. Hotels run a long date→search→room→
+            // rate→guest-details flow that blew past the old flat 35-step
+            // cap (Belmond hit it mid-flow). Restaurants/tee-times/spa are
+            // short, so they stay tight — keeps the common case FAST while
+            // giving hotels room to reach a real terminal state.
+            const maxSteps = item.type === "LODGING" ? 55 : 35;
             const result = await runStagehandBooking({
               startUrl,
               system: goal.system,
@@ -235,6 +241,7 @@ export async function runBrowserBooking(args: {
               solveCaptchas: captchaOn,
               advancedStealth: stealthOn,
               timeoutMs: 600_000,
+              maxSteps,
               onStep: async (label) => {
                 await bridgeNudge(label);
               },
