@@ -145,7 +145,8 @@ FINDING THE BOOKING
 WHEN TO STOP (report the outcome honestly)
 - Real confirmation visible → confirmed, with the number quoted.
 - No availability for the requested date/time → failed / no_availability. (First double-check the date is correct — many sites default to "today" and show no times.)
-- Genuinely no online booking AND no platform mentioned (phone/email only) → failed / form_not_found.
+- PHONE-ONLY VENUE → failed / form_not_found. Some venues (especially small European restaurants) take reservations ONLY by phone — the site has a contact page with a phone number but NO online booking form, no "reserve" button, and names no platform (OpenTable/Resy/Tock). Don't grind for 20 steps hunting a form that isn't there: once you've checked the obvious booking entry points and confirmed it's phone-only, STOP and report form_not_found. In your message, state plainly that the venue takes reservations by phone and include the phone number you saw on the page so the customer can call. The system already shows the customer a Call button.
+- Genuinely no online booking AND no platform mentioned (other email-only cases) → failed / form_not_found.
 - A captcha you can't pass → failed / captcha_blocked. A mandatory account login you don't have → failed / login_required.
 - A card is required to finish → needs_review.`;
 

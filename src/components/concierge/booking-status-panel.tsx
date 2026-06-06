@@ -34,6 +34,8 @@ import {
   Sparkles,
   PartyPopper,
   ChevronDown,
+  Phone,
+  Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
@@ -60,27 +62,46 @@ function statusFor(item: WorkspaceItineraryItem): {
   kind: RowStatus;
   code: string | null;
   amountCents: number | null;
+  /** Venue phone to call when the agent couldn't book online (e.g. a
+   *  phone-only restaurant). Sourced from Google Places at booking time. */
+  phone: string | null;
+  /** Venue website fallback. */
+  website: string | null;
+  /** Why the booking failed — drives the "Call to book" vs "Needs you" copy. */
+  failureReason: string | null;
 } {
   const b = item.booking ?? null;
-  if (!b) return { kind: "pending", code: null, amountCents: null };
+  const phone = b?.fallbackContact?.phone ?? null;
+  const website = b?.fallbackContact?.website ?? null;
+  if (!b)
+    return {
+      kind: "pending",
+      code: null,
+      amountCents: null,
+      phone: null,
+      website: null,
+      failureReason: null,
+    };
+  const base = { phone, website, failureReason: b.failureReason ?? null };
   switch (b.status) {
     case "CONFIRMED":
       return {
         kind: "confirmed",
         code: b.confirmationCode ?? null,
         amountCents: b.amountChargedCents ?? item.cost ?? null,
+        ...base,
       };
     case "SEARCHING":
     case "PENDING":
     case "HELD":
-      return { kind: "booking", code: null, amountCents: null };
+      return { kind: "booking", code: null, amountCents: null, ...base };
     case "NEEDS_REVIEW":
-      return { kind: "review", code: null, amountCents: null };
+      return { kind: "review", code: null, amountCents: null, ...base };
     case "FAILED":
     case "CANCELLED":
-      return { kind: "failed", code: null, amountCents: null };
+      return { kind: "failed", code: null, amountCents: null, ...base };
     default:
-      return { kind: "pending", code: null, amountCents: null };
+      return { kind: "pending", code: null, amountCents: null, ...base };
   }
 }
 
@@ -396,72 +417,118 @@ export function BookingStatusPanel({
               confirmed={groupConfirmed}
               defaultOpen={defaultOpen}
             >
-              {groupItems.map(({ item, kind, code, amountCents }) => {
-                // Walk-in venues (casual restaurants/activities Google
-                // says don't take reservations) get a distinct label
-                // and are NOT tappable — running the agent on them
-                // just wastes Browserbase time.
-                const isWalkIn = item.reservationNeed === "walk_in";
-                const canBook =
-                  AGENT_BOOKABLE.has(item.type) &&
-                  !isWalkIn &&
-                  (kind === "pending" || kind === "failed");
-                const isThisBooking = bookingId === item.id;
-                const rowInner = (
-                  <>
-                    <StatusBadge kind={isThisBooking ? "booking" : kind} />
-                    <div className="min-w-0 flex-1">
-                      <p
-                        className={cn(
-                          "text-[13px] leading-snug truncate",
-                          kind === "confirmed"
-                            ? "font-medium text-foreground"
-                            : "text-foreground/85",
-                        )}
-                      >
-                        {item.title}
-                      </p>
-                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <span>
-                          {isThisBooking
-                            ? "Starting…"
-                            : isWalkIn
-                              ? "Walk-in · no booking needed"
-                              : canBook
-                                ? "Tap to book"
-                                : statusLabel(kind)}
-                        </span>
-                        {code && (
-                          <span className="tabular-nums">· #{code}</span>
-                        )}
-                        {amountCents != null && amountCents > 0 && (
-                          <span className="tabular-nums">
-                            · ${Math.round(amountCents / 100).toLocaleString()}
-                          </span>
-                        )}
+              {groupItems.map(
+                ({ item, kind, code, amountCents, phone, website, failureReason }) => {
+                  // Walk-in venues (casual restaurants/activities Google
+                  // says don't take reservations) get a distinct label
+                  // and are NOT tappable — running the agent on them
+                  // just wastes Browserbase time.
+                  const isWalkIn = item.reservationNeed === "walk_in";
+                  // Phone-only venue (e.g. a small Portofino trattoria that
+                  // takes reservations only by phone). The agent reported
+                  // form_not_found — re-running it is futile, so we DON'T
+                  // make the row a re-book button; instead we surface the
+                  // venue's phone number so the customer can call in one tap.
+                  const isPhoneOnly =
+                    kind === "failed" && failureReason === "form_not_found";
+                  const canBook =
+                    AGENT_BOOKABLE.has(item.type) &&
+                    !isWalkIn &&
+                    !isPhoneOnly &&
+                    (kind === "pending" || kind === "failed");
+                  // Any failed booking offers a manual fallback (call /
+                  // visit site) so the customer is never at a dead end.
+                  const showFallback =
+                    kind === "failed" && Boolean(phone || website);
+                  const isThisBooking = bookingId === item.id;
+                  const statusText = isThisBooking
+                    ? "Starting…"
+                    : isWalkIn
+                      ? "Walk-in · no booking needed"
+                      : isPhoneOnly
+                        ? "Reservations by phone"
+                        : canBook
+                          ? "Tap to book"
+                          : statusLabel(kind);
+                  const rowInner = (
+                    <>
+                      <StatusBadge kind={isThisBooking ? "booking" : kind} />
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={cn(
+                            "text-[13px] leading-snug truncate",
+                            kind === "confirmed"
+                              ? "font-medium text-foreground"
+                              : "text-foreground/85",
+                          )}
+                        >
+                          {item.title}
+                        </p>
+                        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <span>{statusText}</span>
+                          {code && (
+                            <span className="tabular-nums">· #{code}</span>
+                          )}
+                          {amountCents != null && amountCents > 0 && (
+                            <span className="tabular-nums">
+                              · ${Math.round(amountCents / 100).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
                       </div>
+                    </>
+                  );
+                  // The main row: a re-book button when the agent can retry,
+                  // otherwise inert. Fallback links (call/site) render BELOW
+                  // it for any failed booking.
+                  const mainRow = canBook ? (
+                    <button
+                      type="button"
+                      disabled={bookingId !== null}
+                      onClick={() => void bookItem(item)}
+                      className="w-full flex items-start gap-2.5 text-left rounded-lg px-2.5 py-2 hover:bg-surface-raised transition disabled:opacity-60"
+                    >
+                      {rowInner}
+                    </button>
+                  ) : (
+                    <div className="flex items-start gap-2.5 rounded-lg px-2.5 py-2">
+                      {rowInner}
                     </div>
-                  </>
-                );
-                return canBook ? (
-                  <button
-                    key={item.id}
-                    type="button"
-                    disabled={bookingId !== null}
-                    onClick={() => void bookItem(item)}
-                    className="w-full flex items-start gap-2.5 text-left rounded-lg px-2.5 py-2 hover:bg-surface-raised transition disabled:opacity-60"
-                  >
-                    {rowInner}
-                  </button>
-                ) : (
-                  <div
-                    key={item.id}
-                    className="flex items-start gap-2.5 rounded-lg px-2.5 py-2"
-                  >
-                    {rowInner}
-                  </div>
-                );
-              })}
+                  );
+                  return (
+                    <div key={item.id}>
+                      {mainRow}
+                      {showFallback && (
+                        <div className="flex items-center gap-2 pl-9 pr-2.5 pb-1.5">
+                          {phone && (
+                            <a
+                              href={`tel:${phone.replace(/[^\d+]/g, "")}`}
+                              className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-[11px] font-medium text-background hover:bg-foreground/90 transition"
+                            >
+                              <Phone className="size-3" />
+                              Call to book{" "}
+                              <span className="tabular-nums opacity-80">
+                                {phone}
+                              </span>
+                            </a>
+                          )}
+                          {website && (
+                            <a
+                              href={website}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-foreground/80 hover:bg-surface-raised transition"
+                            >
+                              <Globe className="size-3" />
+                              Visit site
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                },
+              )}
             </CategorySection>
           );
         })}

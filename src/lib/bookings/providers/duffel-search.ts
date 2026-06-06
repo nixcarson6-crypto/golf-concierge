@@ -146,11 +146,18 @@ export async function searchFlights(
   // Two ranking modes — both score lower-is-better, so we always
   // sort ascending. The weights flip between modes:
   //
-  // QUALITY (default — what customers see on first load):
-  //   stops × 240min + duration + (price/$1000) × 30min
-  //   Connections dominate (each ~3-4h elapsed), duration is the
-  //   primary discriminator, price is a soft tiebreaker so a $5k
-  //   nonstop never beats a $400 nonstop.
+  // QUALITY (default — what customers see on first load, and what
+  // becomes offers[0], the headline "View & book" flight):
+  //   stops × 300min + duration + (price/$1000) × 5min
+  //   Carson's explicit call — the default flight must be the QUICKEST,
+  //   most-efficient way there, NOT the cheapest. So total travel time
+  //   (duration) is the primary discriminator and connections are
+  //   penalised hard (each stop adds ~3-4h elapsed AND a missed-connection
+  //   risk). Price is only a FEATHER-WEIGHT tiebreaker (5 min per $1000 →
+  //   a $10k gap moves a flight just 50 min in the ranking), so it only
+  //   separates near-identical-duration options. A faster flight always
+  //   beats a slower-but-cheaper one; the cheapest deal is one tap away
+  //   on the "Cheaper" chip.
   //
   // PRICE (when customer taps "Cheaper" — they want the deal):
   //   price-cents + stops × 5000 + duration × 8
@@ -171,7 +178,7 @@ export async function searchFlights(
     const score =
       rankMode === "price"
         ? o.totalAmount + totalStops * 5000 + totalMinutes * 8
-        : totalStops * 240 + totalMinutes + (o.totalAmount / 1000) * 30;
+        : totalStops * 300 + totalMinutes + (o.totalAmount / 1000) * 5;
     return { offer: o, score };
   });
   scored.sort((a, b) => a.score - b.score);
