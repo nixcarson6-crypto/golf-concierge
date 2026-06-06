@@ -30,23 +30,21 @@ import { AGENT_VIEWPORT } from "./runtime";
 import type { RawBookingOutcome } from "./outcome";
 
 /** Stagehand model id — DOM agent driven by Claude.
- *  MUST be a CURRENTLY-AVAILABLE model. claude-sonnet-4-5-20250929 was
- *  retired and calling it made the agent throw instantly (the 27s
- *  black-screen "Completed" Carson saw). claude-sonnet-4-6 is current,
- *  fast, and the right tier for form-filling. Override per-deploy with
- *  STAGEHAND_MODEL if Anthropic ships a newer one. */
-/** Stagehand model id — DOM agent driven by Claude.
- *  HAIKU by default. The DOM booking agent is doing 'click the button
- *  labelled Reserve, type the date, pick the time slot' — instruction-
- *  following, not deep reasoning. Haiku is ~3x faster and ~3x cheaper
- *  than Sonnet for exactly this kind of task. Override with
- *  STAGEHAND_MODEL if a venue needs heavier reasoning. */
+ *  SONNET. Haiku couldn't hold the multi-step plan on real reservation
+ *  forms (it did the clicks but lost the thread — set the date then
+ *  stalled instead of going date→party→time→submit). Booking a form is
+ *  genuine multi-step reasoning, so it needs Sonnet. We make it FAST via
+ *  mechanics (lean prompt, tight DOM-settle, skip redundant calls,
+ *  enough steps to finish) — NOT by downgrading the model. Override with
+ *  STAGEHAND_MODEL per-deploy. */
 const STAGEHAND_MODEL =
-  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-haiku-4-5";
-// 25-step cap. The lean prompt + Haiku target 8-15 steps for a normal
-// booking; 25 leaves headroom for a complex multi-page flow without
-// letting a confused agent burn through credits on runaway loops.
-const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 25;
+  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-sonnet-4-6";
+// 35-step cap. A real reservation flow (navigate → reservations →
+// date → party → time slot → name/email/phone → submit → confirmation)
+// legitimately takes ~15-25 steps. 25 was cutting complex forms off
+// before they finished; 35 leaves headroom while still bounding a
+// runaway loop. The wall-clock timeout is the real backstop.
+const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 35;
 
 /** Schema the agent extracts from the final page — maps 1:1 to our
  *  RawBookingOutcome so verifyOutcome can gate it unchanged. */
@@ -233,9 +231,21 @@ export async function runStagehandBooking(
 
     // DOM-mode agent: act / fillForm / extract / goto via the page's
     // accessibility tree — no screenshots, no coordinate guessing.
+    //
+    // SPEED via split models (NOT downgrading the brain):
+    //   model          = Sonnet — high-level planning ("now set the
+    //                    party size, then the time, then submit"). This
+    //                    is the part Haiku couldn't do.
+    //   executionModel = Haiku — the per-action observe/act tool calls
+    //                    ("find the date field", "click 7:30 PM"). These
+    //                    are the BULK of the calls and don't need
+    //                    reasoning, so Haiku runs them ~3x faster/cheaper
+    //                    while Sonnet stays in charge of the plan.
     const agent = stagehand.agent({
       mode: "dom",
       model: STAGEHAND_MODEL,
+      executionModel:
+        optionalEnv("STAGEHAND_EXECUTION_MODEL") ?? "anthropic/claude-haiku-4-5",
       systemPrompt: system,
     });
 

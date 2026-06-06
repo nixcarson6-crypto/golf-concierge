@@ -86,6 +86,7 @@ const definitions = {
   // "computer-use" (legacy vision loop, fallback).
   BOOKING_ENGINE: { required: false },
   STAGEHAND_MODEL: { required: false },
+  STAGEHAND_EXECUTION_MODEL: { required: false },
   STAGEHAND_MAX_STEPS: { required: false },
   // Model used by the booking agent's computer-use loop. MUST be a model
   // that supports the computer_20250124 tool — that's a Sonnet-line
