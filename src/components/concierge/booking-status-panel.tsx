@@ -46,18 +46,21 @@ import type {
   WorkspaceMe,
 } from "./workspace";
 
-// Item types the browser agent can book directly (matches
-// AgentBookingPanel). Flights go through "Book all" (Duffel), FREE_TIME
-// isn't a reservation, TRANSPORT is an Uber deep-link — so those rows
-// aren't tap-to-book here.
-const AGENT_BOOKABLE = new Set([
-  "LODGING",
-  "TEE_TIME",
-  "DINING",
-  "NIGHTLIFE",
-  "SPA",
-  "ACTIVITY",
-]);
+// Item types the browser agent books directly. SCOPED to the high-value
+// reservations Carson wants automated — hotels + golf. Flights go through
+// "Book all" (Duffel) and FREE_TIME / TRANSPORT aren't tap-to-book here.
+//
+// Restaurants, nightlife, spa, and activities are deliberately NOT
+// agent-booked: their forms are a minefield (bot walls, phone/email-only
+// venues) and the payoff is low. Instead we treat them as SUGGESTIONS —
+// the customer gets the venue's phone + a pre-drafted email + the website
+// and books in one tap themselves. (Carson's call: "forget booking
+// restaurants right now, give them the suggestion with their number.")
+const AGENT_BOOKABLE = new Set(["LODGING", "TEE_TIME"]);
+
+// Types we present as contact-and-book-yourself suggestions, never
+// auto-booked. Each surfaces Call / Draft-email / Visit-site actions.
+const SUGGESTION_TYPES = new Set(["DINING", "NIGHTLIFE", "SPA", "ACTIVITY"]);
 
 type RowStatus = "confirmed" | "booking" | "review" | "failed" | "pending";
 
@@ -76,17 +79,20 @@ function statusFor(item: WorkspaceItineraryItem): {
   failureReason: string | null;
 } {
   const b = item.booking ?? null;
-  const phone = b?.fallbackContact?.phone ?? null;
-  const website = b?.fallbackContact?.website ?? null;
+  // Prefer an agent-captured fallback contact, then fall back to the
+  // build-time Places contact stored on the item (suggestion venues that
+  // never run the agent only have the latter).
+  const phone = b?.fallbackContact?.phone ?? item.contact?.phone ?? null;
+  const website = b?.fallbackContact?.website ?? item.contact?.website ?? null;
   const email = b?.fallbackContact?.email ?? null;
   if (!b)
     return {
       kind: "pending",
       code: null,
       amountCents: null,
-      phone: null,
-      website: null,
-      email: null,
+      phone,
+      website,
+      email,
       failureReason: null,
     };
   const base = { phone, website, email, failureReason: b.failureReason ?? null };
@@ -429,10 +435,17 @@ export function BookingStatusPanel({
   if (!itinerary || items.length === 0) return null;
 
   const rows = items.map((item) => ({ item, ...statusFor(item) }));
-  // Walk-in rows are shown in the list but EXCLUDED from the counter +
-  // progress bar — they don't need booking, so counting them as "not
-  // confirmed" would make a 9-of-10 trip read as 7-of-10 forever.
-  const bookable = rows.filter((r) => r.item.reservationNeed !== "walk_in");
+  // Walk-in rows AND suggestion rows (restaurants/activities/nightlife/
+  // spa) are shown in the list but EXCLUDED from the counter + progress
+  // bar — we don't auto-book them, so counting them as "not confirmed"
+  // would make a fully-handled trip read as incomplete forever. The
+  // counter tracks only what the agent + Duffel actually book (flights,
+  // hotels, golf, transport).
+  const bookable = rows.filter(
+    (r) =>
+      !SUGGESTION_TYPES.has(r.item.type) &&
+      r.item.reservationNeed !== "walk_in",
+  );
   const total = bookable.length;
   const confirmed = bookable.filter((r) => r.kind === "confirmed").length;
   const inFlight = bookable.filter((r) => r.kind === "booking").length;
@@ -511,6 +524,10 @@ export function BookingStatusPanel({
             (r) => r.kind === "confirmed",
           ).length;
           const meta = CATEGORY_META[key];
+          // Dining + Activities are suggestion categories — we don't book
+          // them, so a "0/5 confirmed" ratio would read as failure. Show a
+          // plain count ("5 picks") instead.
+          const isSuggestionCategory = key === "DINING" || key === "ACTIVITIES";
           // Default-collapse categories that are fully booked OR are
           // TRANSPORT (the plumbing); expand the rest so the customer
           // sees what still needs doing.
@@ -523,6 +540,7 @@ export function BookingStatusPanel({
               icon={meta.icon}
               total={groupItems.length}
               confirmed={groupConfirmed}
+              suggestionMode={isSuggestionCategory}
               defaultOpen={defaultOpen}
             >
               {groupItems.map(
@@ -538,45 +556,55 @@ export function BookingStatusPanel({
                 }) => {
                   // Walk-in venues (casual restaurants/activities Google
                   // says don't take reservations) get a distinct label
-                  // and are NOT tappable — running the agent on them
-                  // just wastes Browserbase time.
+                  // and are NOT tappable.
                   const isWalkIn = item.reservationNeed === "walk_in";
+                  // Suggestion venue (restaurant/nightlife/spa/activity).
+                  // We never auto-book these — we hand the customer the
+                  // venue's number + a pre-drafted email + the website and
+                  // they book in one tap. Walk-ins among them need nothing.
+                  const isSuggestion = SUGGESTION_TYPES.has(item.type);
+                  const suggestionNeedsContact = isSuggestion && !isWalkIn;
                   // Phone/email-only venue (e.g. a small Portofino trattoria
                   // that takes reservations only by phone or email). The
                   // agent reported form_not_found — re-running it is futile,
-                  // so we DON'T make the row a re-book button; instead we
-                  // surface the venue's phone (one-tap call) and a
-                  // pre-drafted reservation email the customer just sends.
+                  // so we surface the venue's phone + a pre-drafted email.
                   const isPhoneOnly =
                     kind === "failed" && failureReason === "form_not_found";
+                  // Only hotels + golf are agent-bookable now.
                   const canBook =
                     AGENT_BOOKABLE.has(item.type) &&
                     !isWalkIn &&
                     !isPhoneOnly &&
                     (kind === "pending" || kind === "failed");
-                  // Any failed booking offers a manual fallback (call /
-                  // email / visit site) so the customer is never at a dead
-                  // end. We always offer "Draft email" on a phone/email-only
-                  // venue even if we didn't capture the address — the mailto
-                  // body is still pre-filled; they just add the recipient.
-                  const showEmailDraft = isPhoneOnly || Boolean(email);
+                  // Contact actions (Call / Draft email / Visit site) show
+                  // for: any suggestion venue that takes reservations, a
+                  // phone/email-only agent failure, or any other failed
+                  // booking — so the customer is never at a dead end. Draft
+                  // email is always offered for these (the mailto body is
+                  // pre-filled even when we have no address to fill "To").
+                  const showEmailDraft =
+                    suggestionNeedsContact || isPhoneOnly || Boolean(email);
                   const showFallback =
-                    kind === "failed" &&
+                    (suggestionNeedsContact || kind === "failed") &&
                     Boolean(phone || website || showEmailDraft);
                   const isThisBooking = bookingId === item.id;
                   const statusText = isThisBooking
                     ? "Starting…"
                     : isWalkIn
                       ? "Walk-in · no booking needed"
-                      : isPhoneOnly
-                        ? phone && email
-                          ? "Reservations by phone or email"
-                          : email
-                            ? "Reservations by email"
-                            : "Reservations by phone"
-                        : canBook
-                          ? "Tap to book"
-                          : statusLabel(kind);
+                      : suggestionNeedsContact
+                        ? phone
+                          ? "Reserve directly — call or email"
+                          : "Reserve directly with the venue"
+                        : isPhoneOnly
+                          ? phone && email
+                            ? "Reservations by phone or email"
+                            : email
+                              ? "Reservations by email"
+                              : "Reservations by phone"
+                          : canBook
+                            ? "Tap to book"
+                            : statusLabel(kind);
                   const rowInner = (
                     <>
                       <StatusBadge kind={isThisBooking ? "booking" : kind} />
@@ -720,6 +748,7 @@ function CategorySection({
   icon,
   total,
   confirmed,
+  suggestionMode = false,
   defaultOpen,
   children,
 }: {
@@ -727,6 +756,9 @@ function CategorySection({
   icon: React.ReactNode;
   total: number;
   confirmed: number;
+  /** Suggestion categories (dining/activities) aren't booked, so show a
+   *  plain count ("5 picks") instead of a confirmed/total ratio. */
+  suggestionMode?: boolean;
   defaultOpen: boolean;
   children: React.ReactNode;
 }) {
@@ -745,7 +777,9 @@ function CategorySection({
           {label}
         </p>
         <p className="text-[11px] tabular-nums text-muted-foreground">
-          {confirmed}/{total}
+          {suggestionMode
+            ? `${total} ${total === 1 ? "pick" : "picks"}`
+            : `${confirmed}/${total}`}
         </p>
         <ChevronDown
           className={cn(

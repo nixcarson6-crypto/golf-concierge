@@ -41,6 +41,22 @@ export async function POST(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  // The agent is scoped to the high-value reservations Carson wants
+  // automated: hotels + golf. Restaurants, nightlife, spa, and activities
+  // are presented as suggestions (phone + pre-drafted email + website) and
+  // booked directly by the customer — never auto-booked. Reject those here
+  // so a stray call can't kick off a wasteful agent run.
+  const AGENT_BOOKABLE_TYPES = new Set(["LODGING", "TEE_TIME"]);
+  if (!AGENT_BOOKABLE_TYPES.has(item.type)) {
+    return NextResponse.json(
+      {
+        error:
+          "This is a suggestion — reserve it directly with the venue using the phone number or the pre-drafted email.",
+      },
+      { status: 400 },
+    );
+  }
+
   // Walk-in venues don't take reservations — running the agent on them
   // just wastes time. Surface a clear message instead.
   const reservationNeed = (item.metadata as { reservationNeed?: string } | null)

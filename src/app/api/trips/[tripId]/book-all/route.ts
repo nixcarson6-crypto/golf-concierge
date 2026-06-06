@@ -205,16 +205,21 @@ export async function POST(
     // Map the Prisma ItineraryItemType enum onto our public Outcome
     // category for the client. The Booking row keeps the original
     // enum value as `type`.
+    //
+    // DINING / NIGHTLIFE / SPA / ACTIVITY are deliberately NOT booked
+    // here (mapped to null → skipped). Carson's call: we don't auto-book
+    // restaurants/activities — they're presented as suggestions with the
+    // venue's phone + a pre-drafted email, and the customer books them
+    // directly. Book All only commits the high-value reservations:
+    // flights (above), hotels, golf, and transport.
     const category: Outcome["category"] | null =
       item.type === "LODGING"
         ? "hotel"
         : item.type === "TEE_TIME"
           ? "golf"
-          : item.type === "DINING"
-            ? "restaurant"
-            : item.type === "TRANSPORT"
-              ? "transport"
-              : null;
+          : item.type === "TRANSPORT"
+            ? "transport"
+            : null;
     if (!category) continue;
 
     try {
@@ -236,12 +241,7 @@ export async function POST(
         data: {
           tripId,
           itineraryItemId: item.id,
-          provider:
-            category === "golf"
-              ? "GOLFNOW"
-              : category === "restaurant"
-                ? "OPENTABLE"
-                : "INTERNAL",
+          provider: category === "golf" ? "GOLFNOW" : "INTERNAL",
           providerReference: stubRef,
           type: item.type,
           status: "CONFIRMED",

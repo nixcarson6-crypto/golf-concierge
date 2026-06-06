@@ -218,6 +218,13 @@ export async function GET(
                 ((i.metadata as { reservationNeed?: string } | null)
                   ?.reservationNeed as "required" | "walk_in" | "unknown" | undefined) ??
                 null,
+              // Venue contact (phone/website) captured at build time for
+              // DINING/ACTIVITY/NIGHTLIFE/SPA — we don't auto-book those,
+              // we hand the customer the number to call or email directly.
+              contact:
+                (i.metadata as {
+                  contact?: { phone?: string | null; website?: string | null };
+                } | null)?.contact ?? null,
               booking: b
                 ? {
                     id: b.id,

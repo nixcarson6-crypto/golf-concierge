@@ -179,6 +179,10 @@ export type WorkspaceItineraryItem = {
    *   "unknown"  — Google didn't say (treat as required by default)
    *   null       — type doesn't apply (LODGING/TEE_TIME/SPA etc.) */
   reservationNeed?: "required" | "walk_in" | "unknown" | null;
+  /** Venue phone/website captured at build time for dining/activity/
+   *  nightlife/spa — surfaced as Call / Draft-email / Visit-site actions
+   *  since we don't auto-book those, we hand off the contact details. */
+  contact?: { phone?: string | null; website?: string | null } | null;
   booking?: WorkspaceItemBooking | null;
 };
 
