@@ -198,7 +198,7 @@ export function buildGoal(
   if (t.dateOfBirth) lines.push(`- Date of birth (only if a field requires it): ${t.dateOfBirth}`);
   lines.push(``);
   lines.push(
-    `The browser tab is ALREADY open to ${v.startUrl}. Start by taking a screenshot to see the current page. Then click into the booking flow, complete the reservation following every rule, pay with the \`request_payment_card\` tool when you reach checkout, and finish by calling \`report_outcome\`.`,
+    `The page is already open at ${v.startUrl}. Find the reservation flow, fill it in with the details above, submit, and stop when you see a confirmation page (quote the confirmation number). If you can't complete it, stop and clearly state which of the rules in your system prompt blocked you.`,
   );
 
   return { system: POLICY, firstUserMessage: lines.join("\n") };
