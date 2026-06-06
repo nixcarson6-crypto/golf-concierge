@@ -557,8 +557,12 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     "",
   );
   // Strip trailing phrases that describe what to do AT the destination.
+  // Verb list mirrors the bare-imperative garbage check below — any
+  // verb that's a directive ("find the closest course", "pick the
+  // best hotel", "see the sights") should peel off as filler, not
+  // become part of the trip title.
   s = s.replace(
-    /\s+(?:and|to|where\s+we'?ll|so\s+we\s+can)\s+(?:stay|sleep|book|play|golf|do|stay\s+at|stay\s+in|hang\s+out|relax|chill).*$/i,
+    /\s+(?:and|to|where\s+we'?ll|so\s+we\s+can)\s+(?:stay|sleep|book|play|golf|do|stay\s+at|stay\s+in|hang\s+out|relax|chill|find|pick|explore|see|visit|check|try|grab|get|eat|drink|tour|shop|hit|swim|surf|ski).*$/i,
     "",
   );
   // Strip trailing "vibe / leftover-time" clauses. "Vail Colorado, the

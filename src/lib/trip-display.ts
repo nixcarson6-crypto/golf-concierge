@@ -54,6 +54,15 @@ export function stripLocationSuffix(s: string): string {
   out = out.replace(/,\s*[A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)?$/i, "");
   // " - Region" or " — Region" → strip
   out = out.replace(/\s+[-–—]\s+[A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)?$/i, "");
+  // " and find/pick/explore the X" → strip. Catches conversational
+  // tails that snuck into the destination field on older quiz inputs
+  // (e.g. "Portofino and Find the Closet Golf Course There"). The
+  // parser now strips these at write-time; this is a safety net for
+  // pre-fix rows already in the DB.
+  out = out.replace(
+    /\s+and\s+(?:find|pick|explore|see|visit|check|try|grab|get|book|do|play|stay|eat|drink|tour|shop|hit|swim|surf|ski|relax|chill|hang)\b.*$/i,
+    "",
+  );
   return out.trim() || s;
 }
 

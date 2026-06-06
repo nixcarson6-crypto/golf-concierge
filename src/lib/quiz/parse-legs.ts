@@ -38,17 +38,24 @@ export function parseLegs(input: string): ParsedLeg[] | null {
 
   // Pick the right separator based on what the user actually wrote.
   // When EXPLICIT leg markers exist ("then", "and then", "plus",
-  // "followed by", "after that"), split on ONLY those — they're
-  // unambiguous leg boundaries. Commas in a long sentence are clause
-  // breaks, not leg breaks ("Pebble Beach for 3 nights, August 8 2026,
-  // group of 4..."), and splitting on them shreds the input into a
-  // wall of garbage "legs" (dates, course names, dinner clauses).
+  // "followed by", "after that", or the X-"to"-Y connector), split on
+  // ONLY those — they're unambiguous leg boundaries. Commas in a long
+  // sentence are clause breaks, not leg breaks ("Pebble Beach for 3
+  // nights, August 8 2026, group of 4..."), and splitting on them
+  // shreds the input into a wall of garbage "legs" (dates, course
+  // names, dinner clauses).
+  //
+  // "X to Y" matters because users type it all the time — "Spain to
+  // Portofino", "Pinehurst to Pebble Beach". Without it the input
+  // either looks single-leg (no inter-leg flight generated) or the
+  // bare-and fallback fires and the second leg ends up carrying
+  // trailing conversational junk into the title.
   //
   // Only fall back to comma/bare-and splitting when there's no THEN
   // marker — that preserves the "Capri, Lake Como, Portofino" case
   // (three explicit places, no other connectives).
   const THEN_RE =
-    /\s+(?:and\s+then|after\s+that|followed\s+by|then|plus)\s+/i;
+    /\s+(?:and\s+then|after\s+that|followed\s+by|then|plus|to)\s+/i;
   const hasThen = THEN_RE.test(s);
   const splitRe = hasThen
     ? THEN_RE
