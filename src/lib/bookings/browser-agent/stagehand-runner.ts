@@ -160,8 +160,10 @@ DATES (get these right — most failures start here)
 HOTEL PLAYBOOK
 1. Click Book / Reserve / Book Now / Check Availability.
 2. Set check-in, check-out, and guest count. Search.
-3. Pick a room. **The room/suite name in the task is a PREFERENCE, not a requirement.** If the exact named room (e.g. "Junior Suite") isn't listed, pick the FIRST available room that sleeps the party and fits budget. The search returning rooms — even differently-named ones — means the hotel IS available: select one and CONTINUE. Quitting because the named room isn't listed is a failure you must never make. Don't compare every room or re-read the page — choose one and move on.
-4. Continue to guest details, fill name/email/phone, proceed toward booking, and STOP at the payment/deposit step per rule 6.
+3. Pick a room. **The room/suite name in the task is a PREFERENCE, not a requirement.** If the exact named room (e.g. "Junior Suite") isn't listed, pick the FIRST available room that sleeps the party and fits the budget. The search returning rooms — even differently-named ones — means the hotel IS available: select one and CONTINUE. Quitting because the named room isn't listed is a failure you must never make. Don't compare every room or re-read the page — choose one and move on.
+4. WHEN THE PAGE SHOWS RATES WITH "RESERVE" / "BOOK" BUTTONS, YOUR ACTION IS TO CLICK ONE. Do not keep reading. Do not "pause to think". Click. If multiple rate options for the same room are shown (e.g. "Best Flexible Rate" vs "Best Flexible With Breakfast"), pick the CHEAPEST that fits the budget and click ITS Reserve/Book button. Sitting on a rate list without clicking is the same failure as quitting.
+5. BUDGET — if the CHEAPEST available rate for any suitable room exceeds the budget ceiling, do NOT just stop. Report failed / budget_exceeded in your message and QUOTE THE EXACT PRICE you saw (e.g. "Cheapest available rate is Quinta Courtyard Suite at $24,368 for 7 nights — over the $X budget"). Never stop silently when the only issue is price.
+6. Continue to guest details, fill name/email/phone, proceed toward booking, and STOP at the payment/card step per rule 6 above (the system pays).
 
 GOLF / TEE-TIME PLAYBOOK
 - The booking lives under "Tee Times", "Book a Tee Time", "Golf", "Reserve", or a resort's "Experiences" / "Recreation" section — open it.
@@ -180,7 +182,9 @@ WHEN TO STOP (report honestly)
 - A captcha you can't pass → failed / captcha_blocked. Mandatory account login you don't have → failed / login_required.
 - Genuinely no online booking path at all (phone/email only) → failed / form_not_found — and quote the phone/email you saw.
 - Card/deposit step reached → STOP with everything filled and the card fields BLANK (rule 6 — the system enters payment); note the room/tee time + total.
-- Going in circles with no progress → needs_review describing exactly where you're stuck.`;
+- Going in circles with no progress → needs_review describing exactly where you're stuck.
+
+NEVER STOP SILENTLY. If you can see a Reserve/Book/Submit button that fits the task, click it. If you can't proceed for any reason — budget, missing field, broken flow, unclear UI — say WHY in your message, with the exact prices/labels you saw. "Just stopping" with no actionable message is the worst failure mode.`;
 
 export async function runStagehandBooking(
   opts: RunStagehandOptions,
@@ -318,8 +322,16 @@ export async function runStagehandBooking(
       },
     });
     console.log(
-      `[stagehand] ✓ agent finished (${elapsed()}) success=${result.success} completed=${result.completed} steps=${result.actions?.length ?? stepCount}\n  agent message: ${result.message?.slice(0, 300)}`,
+      `[stagehand] ✓ agent finished (${elapsed()}) success=${result.success} completed=${result.completed} steps=${result.actions?.length ?? stepCount}\n  agent message: ${result.message?.slice(0, 600) || "(no message)"}`,
     );
+    // Loud flag when the agent stops without saying anything useful — that's
+    // the "just stopped" case and we want it screaming in the terminal so we
+    // can see it instead of a quiet needs_review later.
+    if ((result.message ?? "").trim().length < 40) {
+      console.warn(
+        `[stagehand] ⚠ thin/empty agent message — likely a silent stop. steps=${stepCount}, last progress label may indicate where.`,
+      );
+    }
 
     // If the agent crashed internally (Stagehand surfaces these as
     // success=false with the error in result.message rather than
