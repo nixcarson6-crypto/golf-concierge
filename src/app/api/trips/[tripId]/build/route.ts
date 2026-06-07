@@ -523,6 +523,47 @@ export async function POST(
       return a.date.localeCompare(b.date);
     });
 
+  // DEDUPE: kill any duplicate (from, to, date) hops the AI emitted (e.g.
+  // 3 identical LIM→DFW return items for a 3-person trip). Without this,
+  // the Duffel search returns N identical slices and the rewriter
+  // produces N identical flight cards. Order preserved.
+  const seen = new Set<string>();
+  const dedupedFlightItems = flightItems.filter((f) => {
+    const key = `${f.from}->${f.to}@${f.date}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (dedupedFlightItems.length !== flightItems.length) {
+    console.warn(
+      `[build] dropped ${flightItems.length - dedupedFlightItems.length} duplicate FLIGHT slice(s) — AI emitted ${flightItems.length}, kept ${dedupedFlightItems.length}.`,
+    );
+  }
+  // FORCE TRIP DATES: the AI sometimes slips bookend flights by a day or
+  // two ("buffer"); the trip dates are the customer's exact in-destination
+  // dates and the flights MUST bookend them. Snap the outbound (first
+  // hop) to startDate and the final return (last hop) to endDate. Inter-
+  // leg dates are kept as-is — those are determined by the itinerary.
+  if (dedupedFlightItems.length > 0 && constraints.startDate) {
+    if (dedupedFlightItems[0].date !== constraints.startDate) {
+      console.info(
+        `[build] snapping outbound flight date ${dedupedFlightItems[0].date} → trip startDate ${constraints.startDate}.`,
+      );
+      dedupedFlightItems[0] = { ...dedupedFlightItems[0], date: constraints.startDate };
+    }
+  }
+  if (dedupedFlightItems.length > 1 && constraints.endDate) {
+    const lastIdx = dedupedFlightItems.length - 1;
+    if (dedupedFlightItems[lastIdx].date !== constraints.endDate) {
+      console.info(
+        `[build] snapping return flight date ${dedupedFlightItems[lastIdx].date} → trip endDate ${constraints.endDate}.`,
+      );
+      dedupedFlightItems[lastIdx] = { ...dedupedFlightItems[lastIdx], date: constraints.endDate };
+    }
+  }
+  flightItems.length = 0;
+  flightItems.push(...dedupedFlightItems);
+
   // Airport chain is derived for UI breakdown only (still useful for
   // the result page even when some hops are train/drive).
   const airportChain: string[] = [];

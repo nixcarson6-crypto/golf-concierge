@@ -33,32 +33,56 @@ export async function rewriteFlightItemsFromOffer(args: {
   });
   if (flightItems.length === 0) return;
 
-  const outbound = offer.slices[0];
-  const returnSlice = offer.slices[offer.slices.length - 1];
+  const slices = offer.slices;
 
-  for (const item of flightItems) {
+  // Dedupe: the AI sometimes emits more FLIGHT items than the offer has
+  // slices (we've seen 4 items for a round-trip — 1 outbound + 3 identical
+  // returns, multiplying the flight total by 2). The offer's slice count
+  // is ground truth: keep exactly that many items (in order), delete any
+  // extras. Without this guard the old code mapped every extra item to
+  // `slices[last]`, producing visible duplicate cards on the result page.
+  const keep = flightItems.slice(0, slices.length);
+  const drop = flightItems.slice(slices.length);
+  if (drop.length > 0) {
+    console.warn(
+      `[rewrite-flights] AI emitted ${flightItems.length} FLIGHT items but offer has ${slices.length} slices — deleting ${drop.length} extra(s) to avoid duplicate cards.`,
+    );
+    await db.itineraryItem.deleteMany({
+      where: { id: { in: drop.map((d) => d.id) } },
+    });
+  }
+
+  for (let i = 0; i < keep.length; i++) {
+    const item = keep[i];
     const meta = (item.metadata as Record<string, unknown> | null) ?? {};
-    const segment =
-      meta.segment === "return"
-        ? "return"
-        : meta.segment === "outbound"
+    // Map item → slice by index. The AI emits items in flight order
+    // (outbound, [inter-leg hops…], return), and Duffel returns slices
+    // in the same order we asked for them — so item[i] ↔ slice[i] is
+    // correct for round-trips AND multi-leg trips. Honour an explicit
+    // metadata.segment hint when present, falling back to "outbound"
+    // for the first, "return" for the last, "inter" otherwise.
+    const slice = slices[i];
+    const segment: "outbound" | "return" | "inter" =
+      meta.segment === "outbound" || meta.segment === "return"
+        ? meta.segment
+        : i === 0
           ? "outbound"
-          : null;
-    let slice: typeof outbound | null = null;
-    if (segment === "return") slice = returnSlice;
-    else if (segment === "outbound") slice = outbound;
-    else {
-      const idx = flightItems.indexOf(item);
-      slice = idx === 0 ? outbound : returnSlice;
-    }
-    if (!slice) continue;
+          : i === keep.length - 1
+            ? "return"
+            : "inter";
 
     const title = `${offer.airlineName} · ${slice.origin} → ${slice.destination}`;
     const stopsLabel = slice.stops === 0 ? "nonstop" : `${slice.stops} stop`;
     const description = `${slice.origin} ${formatTime(slice.departing)} → ${slice.destination} ${formatTime(slice.arriving)} · ${formatDuration(slice.durationMinutes)} · ${stopsLabel} · ${formatCabin(slice.cabin)}`;
     const startTime = parseIsoDate(slice.departing);
     const endTime = parseIsoDate(slice.arriving);
-    const costCents = Math.round(offer.perPassengerAmount * args.passengers);
+    // Per-slice cost = (offer total / slice count) × passengers / passengers
+    // i.e. the offer's per-pax amount divided across slices × passengers.
+    // Apportioning across slices avoids the "one outbound at full fare +
+    // returns at full fare" sum > offer total bug.
+    const costCents = Math.round(
+      (offer.perPassengerAmount * args.passengers) / slices.length,
+    );
 
     await db.itineraryItem.update({
       where: { id: item.id },
@@ -76,7 +100,7 @@ export async function rewriteFlightItemsFromOffer(args: {
           airline: offer.airlineName,
           airlineCode: offer.airlineIataCode,
           offerId: offer.id,
-          segment: segment ?? (item === flightItems[0] ? "outbound" : "return"),
+          segment,
         } as object,
       },
     });

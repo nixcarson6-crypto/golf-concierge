@@ -331,16 +331,35 @@ Coverage:
 - Flights — ALWAYS include outbound + return flight items as the trip
   bookends when the customer is flying in (which is the default). Only
   skip flights when the trip is genuinely drivable (≤ 4 hours from the
-  origin) AND the customer didn't specify "fly" anywhere. For multi-leg
-  trips, emit a FLIGHT for the home → leg-0 outbound, for every inter-
-  leg hop unless it's < 4 hours drive/train, and for the final leg →
-  home return. Tag each FLIGHT with metadata.from and metadata.to set to
-  the airport IATA codes (e.g. metadata.from="DFW", metadata.to="PBI").
-  If you don't know the exact code for a market, use null for cost and
-  give a realistic estimate-band in the description ("≈$600-900 pp,
-  business class") — the trip pipeline runs a live Duffel search after
-  you emit the items, so DO NOT skip the items just because you're not
-  sure about the price.
+  origin) AND the customer didn't specify "fly" anywhere.
+  COUNT: emit EXACTLY ONE FLIGHT item per slice — for a normal round
+  trip that means EXACTLY TWO (outbound + return), NEVER three or four.
+  Do NOT duplicate the return for a multi-passenger group; Duffel's
+  per-pax price × passengers is computed downstream. Duplicating the
+  return inflates the trip total by 2× or 3×.
+  INTERNAL HOPS: if your itinerary moves between cities within a single
+  destination country (e.g. Lima ↔ Cusco in Peru, Tokyo ↔ Sapporo in
+  Japan, Lisbon ↔ Funchal in Portugal), emit a FLIGHT item for each
+  internal leg too — that's an additional 1-2 items between the bookends
+  (so the total becomes 3 or 4 slices, NOT a doubled return). Even for a
+  single-destination trip ("Peru"), if you put items in Lima AND Cusco,
+  you MUST include a LIM→CUZ flight after the Lima items and a CUZ→LIM
+  flight before the return home. Without those internal flights the
+  customer has a transfer to "Cusco airport" with no way to actually
+  get to Cusco.
+  DATES: the OUTBOUND FLIGHT'S departure date MUST be the trip's
+  startDate exactly. The RETURN FLIGHT'S departure date MUST be the
+  trip's endDate (or, for an overnight international red-eye, endDate or
+  the day before — never AFTER endDate). Do NOT slip the flights by a
+  day or two as "buffer" or "travel days"; the trip dates are the
+  customer's exact in-destination dates and the flights bookend them.
+  Tag each FLIGHT with metadata.from and metadata.to set to the airport
+  IATA codes (e.g. metadata.from="DFW", metadata.to="PBI") AND
+  metadata.segment ("outbound" / "return" / "inter"). If you don't know
+  the exact code for a market, use null for cost and give a realistic
+  estimate-band in the description ("≈$600-900 pp, business class") —
+  the trip pipeline runs a live Duffel search after you emit the items,
+  so DO NOT skip the items just because you're not sure about the price.
 
 - ROUTING — fastest and most efficient, always. When picking airports
   for FLIGHT items, choose the airport pair that gives the SHORTEST

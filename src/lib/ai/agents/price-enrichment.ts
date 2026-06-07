@@ -118,7 +118,7 @@ export async function enrichItineraryPrices(
     if (Date.now() > deadline) return null;
     try {
       if (item.type === "LODGING") {
-        return await priceLodging(item, opts.destination);
+        return await priceLodging(item, opts.destination, groupSize);
       }
       if (item.type === "TEE_TIME") {
         return await priceTeeTime(item, opts.destination, groupSize);
@@ -170,12 +170,22 @@ export async function enrichItineraryPrices(
 async function priceLodging(
   item: PricedItem,
   destination: string | null,
+  groupSize: number,
 ): Promise<number | null> {
   const hotelName = stripParenTail(item.title);
   if (!hotelName) return null;
   const nights = nightsFor(item);
   if (nights <= 0) return null;
   const where = destination ?? item.location ?? "";
+
+  // How many rooms is this stay? Default to one room per traveller — the
+  // luxury-golf-group baseline our AI describes in its itinerary
+  // ("Three Ocean View Suites"), and what Carson actually asked for. We
+  // also accept an explicit override the AI may have set in metadata, and
+  // detect "doubles"/"shared" language in the description for groups that
+  // want one room per pair. Without this multiplier a 3-suite × 6-night
+  // Belmond stay was being priced at one suite — a real undercount.
+  const rooms = roomCountFor(item, groupSize);
 
   // Try TWO queries — a specific "nightly rate" query first; if the
   // extractor can't find a confident rate, fall back to a broader query
@@ -194,14 +204,14 @@ async function priceLodging(
       extracted.sourceUrl &&
       extracted.unit !== "per_round_per_player"
     ) {
-      const cents = Math.round(extracted.priceUsd * nights * 100);
+      const cents = Math.round(extracted.priceUsd * nights * rooms * 100);
       await stampSource(
         item.id,
         extracted.sourceUrl,
-        `${fmt(extracted.priceUsd)}/night × ${nights} nights${extracted.confidence === "medium" ? " · est." : ""}`,
+        `${fmt(extracted.priceUsd)}/night × ${nights} nights × ${rooms} ${rooms === 1 ? "room" : "rooms"}${extracted.confidence === "medium" ? " · est." : ""}`,
       );
       console.log(
-        `[price-enrichment] ✓ ${hotelName}: $${extracted.priceUsd}/night × ${nights} = $${Math.round(extracted.priceUsd * nights)} (${extracted.confidence})`,
+        `[price-enrichment] ✓ ${hotelName}: $${extracted.priceUsd}/night × ${nights} × ${rooms} rm = $${Math.round(extracted.priceUsd * nights * rooms)} (${extracted.confidence})`,
       );
       return cents;
     }
@@ -211,19 +221,56 @@ async function priceLodging(
   // These are KB-informed estimates, not invented numbers.
   const fromDesc = extractRateFromDescription(item.description, "per_night");
   if (fromDesc) {
-    const cents = Math.round(fromDesc * nights * 100);
+    const cents = Math.round(fromDesc * nights * rooms * 100);
     await stampSource(
       item.id,
       null,
-      `~${fmt(fromDesc)}/night × ${nights} nights · est.`,
+      `~${fmt(fromDesc)}/night × ${nights} nights × ${rooms} ${rooms === 1 ? "room" : "rooms"} · est.`,
     );
     console.log(
-      `[price-enrichment] ~ ${hotelName}: $${fromDesc}/night × ${nights} = $${Math.round(fromDesc * nights)} (description-est)`,
+      `[price-enrichment] ~ ${hotelName}: $${fromDesc}/night × ${nights} × ${rooms} rm = $${Math.round(fromDesc * nights * rooms)} (description-est)`,
     );
     return cents;
   }
   console.log(`[price-enrichment] ✗ ${hotelName}: no usable price found`);
   return null;
+}
+
+/**
+ * Decide how many rooms this lodging item represents. Defaults to one
+ * room per traveller (the luxury baseline), but honours explicit hints:
+ *   - metadata.rooms (number) wins if the AI set it.
+ *   - The description / title language is a useful signal: "three suites"
+ *     / "two casitas" → that count; "shared" / "double occupancy" /
+ *     "twin rooms" → ceil(groupSize / 2).
+ *   - Otherwise: groupSize (one per person).
+ */
+function roomCountFor(item: PricedItem, groupSize: number): number {
+  const meta = (item.metadata as { rooms?: number } | null) ?? null;
+  if (
+    meta?.rooms != null &&
+    Number.isFinite(meta.rooms) &&
+    meta.rooms >= 1 &&
+    meta.rooms <= 50
+  ) {
+    return Math.round(meta.rooms);
+  }
+  const hay = `${item.title ?? ""} ${item.description ?? ""}`.toLowerCase();
+  const wordCounts: Record<string, number> = {
+    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+  };
+  // "Three Junior Suites", "Two casitas", "Four rooms"
+  const m = hay.match(
+    /\b(one|two|three|four|five|six|seven|eight|\d{1,2})\s+(rooms?|suites?|casitas?|villas?|cabanas?|bungalows?|cabins?|tents?)\b/,
+  );
+  if (m) {
+    const n = wordCounts[m[1]] ?? parseInt(m[1], 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 50) return n;
+  }
+  if (/\b(shared|double[- ]occupancy|two[- ]to[- ]a[- ]room|twin\s+rooms?)\b/.test(hay)) {
+    return Math.max(1, Math.ceil(groupSize / 2));
+  }
+  return Math.max(1, groupSize);
 }
 
 /* --------------------------------------------------------------- tee time */
