@@ -50,6 +50,17 @@ const STAGEHAND_MODEL =
 // is the real backstop either way.
 const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 35;
 
+// Per-ACTION timeout (one act()/click()/extract() call inside a step).
+// Stagehand's default is 45s — far too generous for our ~10-min wall clock:
+// a single hung selector on a heavy site (Rocco Forte/Verdura's homepage was
+// the case that exposed this) silently burns 45s doing nothing, and 2-3 of
+// those exhaust the budget before the agent ever reaches room selection. We
+// cap it at 25s: long enough for a legit slow action / aria-tree build on a
+// big page, short enough that a genuine hang fails fast, hands the agent the
+// "try a different description" hint, and lets it recover + keep making
+// progress. Tunable per-deploy via STAGEHAND_TOOL_TIMEOUT_MS.
+const TOOL_TIMEOUT_MS = Number(optionalEnv("STAGEHAND_TOOL_TIMEOUT_MS")) || 25_000;
+
 /** Schema the agent extracts from the final page — maps 1:1 to our
  *  RawBookingOutcome so verifyOutcome can gate it unchanged. */
 const stagehandOutcomeSchema = z.object({
@@ -331,11 +342,16 @@ export async function runStagehandBooking(
     });
 
     const maxSteps = opts.maxSteps ?? MAX_STEPS;
-    console.log(`[stagehand] agent.execute starting (maxSteps=${maxSteps})…`);
+    console.log(
+      `[stagehand] agent.execute starting (maxSteps=${maxSteps}, toolTimeout=${TOOL_TIMEOUT_MS}ms)…`,
+    );
     let stepCount = 0;
     const result = await agent.execute({
       instruction: opts.task,
       maxSteps,
+      // Cap each individual tool call so a hung action recovers fast instead
+      // of eating 45s of the wall-clock budget (see TOOL_TIMEOUT_MS above).
+      toolTimeout: TOOL_TIMEOUT_MS,
       signal: controller.signal,
       callbacks: {
         onStepFinish: async () => {

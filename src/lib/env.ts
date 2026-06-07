@@ -88,6 +88,9 @@ const definitions = {
   STAGEHAND_MODEL: { required: false },
   STAGEHAND_EXECUTION_MODEL: { required: false },
   STAGEHAND_MAX_STEPS: { required: false },
+  // Per-action timeout (ms) for one agent tool call. Default 25s; caps
+  // hung selectors on heavy sites so they don't burn the wall-clock budget.
+  STAGEHAND_TOOL_TIMEOUT_MS: { required: false },
   // "false" disables the CDP heavy-resource blocklist (analytics/ads/video
   // the DOM agent never needs). Default on — it speeds every page load.
   BROWSER_AGENT_BLOCK_HEAVY: { required: false },
