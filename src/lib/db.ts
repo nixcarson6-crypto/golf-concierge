@@ -54,17 +54,37 @@ function isTransientConnectionError(err: unknown): boolean {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * Parse a comma-separated backoff override (e.g. "0,1000,3000,6000") into a
+ * positive-number array. Returns null on empty/garbage so the caller falls
+ * back to the default schedule.
+ */
+function parseBackoffs(raw: string | undefined): number[] | null {
+  if (!raw) return null;
+  const parts = raw
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n >= 0);
+  return parts.length > 0 ? parts : null;
+}
+
+/**
  * Wrap a single Prisma promise-returning method so it auto-retries on
- * Neon connection RSTs. Up to 3 attempts: immediate, +500ms, +1500ms.
- * That's enough headroom for Neon's compute to fully wake from auto-suspend
- * (typically <2s). Non-transient errors propagate immediately so we
- * never mask a real bug.
+ * Neon connection RSTs. Up to 5 attempts: immediate, +0.8s, +2.5s, +5s, +5s
+ * (~13s total). The old ~2s window (0/500/1500) was too tight for a COLD
+ * start — Neon auto-suspends idle compute, and a wake-from-suspend on the
+ * first request after idle occasionally takes 5-8s, longer than the retry
+ * window, so it surfaced as a hard "Can't reach database server" on the very
+ * first page load. The wider window rides out those cold starts. Non-
+ * transient errors still propagate immediately so we never mask a real bug.
+ * Tunable via DB_RETRY_BACKOFFS_MS (comma-separated ms) if ever needed.
  */
 async function callWithRetry<T>(
   fn: () => Promise<T>,
   label: string,
 ): Promise<T> {
-  const backoffsMs = [0, 500, 1500];
+  const backoffsMs = parseBackoffs(process.env.DB_RETRY_BACKOFFS_MS) ?? [
+    0, 800, 2500, 5000, 5000,
+  ];
   let lastErr: unknown;
   for (let attempt = 0; attempt < backoffsMs.length; attempt++) {
     if (attempt > 0) await sleep(backoffsMs[attempt]);
