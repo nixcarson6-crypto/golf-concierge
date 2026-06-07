@@ -36,6 +36,7 @@ import {
   ChevronDown,
   Phone,
   Globe,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
@@ -323,7 +324,41 @@ export function BookingStatusPanel({
     [bookingId, qc, tripId],
   );
 
-  // Everything that's meant to be booked. FREE_TIME isn't a reservation.
+  // Remove an item the customer doesn't want (e.g. 6 golf rounds, they only
+  // want one). Confirms first — the DELETE also cancels any booking tied to
+  // the item server-side — then refetches the workspace so totals + the
+  // category counters recompute. Mirrors the dialog's deleteItem flow.
+  const [removingId, setRemovingId] = React.useState<string | null>(null);
+  const removeItem = React.useCallback(
+    async (item: WorkspaceItineraryItem) => {
+      if (removingId || bookingId) return;
+      if (
+        !confirm(
+          `Remove "${item.title}" from the trip? This also cancels any booking tied to it.`,
+        )
+      ) {
+        return;
+      }
+      setRemovingId(item.id);
+      try {
+        const res = await fetch(
+          `/api/trips/${tripId}/itinerary-items/${item.id}`,
+          { method: "DELETE" },
+        );
+        if (!res.ok) {
+          toast.error("Couldn't remove that — try again.");
+          return;
+        }
+        toast.success("Removed from your trip.");
+        void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+      } catch {
+        toast.error("Network error — try again.");
+      } finally {
+        setRemovingId(null);
+      }
+    },
+    [removingId, bookingId, qc, tripId],
+  );
   const items = React.useMemo(
     () => (itinerary?.items ?? []).filter((i) => i.type !== "FREE_TIME"),
     [itinerary],
@@ -560,7 +595,28 @@ export function BookingStatusPanel({
                   );
                   return (
                     <div key={item.id}>
-                      {mainRow}
+                      <div className="flex items-center">
+                        <div className="min-w-0 flex-1">{mainRow}</div>
+                        {/* Quick-remove: drop a round/item the customer
+                            doesn't want without opening the dialog. Subtle
+                            until hovered (and always tappable on touch),
+                            turns red on hover. Confirm + cancel-any-booking
+                            is handled in removeItem. */}
+                        <button
+                          type="button"
+                          onClick={() => void removeItem(item)}
+                          disabled={removingId !== null || bookingId !== null}
+                          aria-label={`Remove ${item.title} from trip`}
+                          title="Remove from trip"
+                          className="shrink-0 mr-1 grid size-7 place-items-center rounded-lg text-muted-foreground/40 opacity-70 hover:opacity-100 hover:text-red-600 hover:bg-red-500/10 focus-visible:opacity-100 transition disabled:opacity-30 disabled:pointer-events-none"
+                        >
+                          {removingId === item.id ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <X className="size-3.5" />
+                          )}
+                        </button>
+                      </div>
                       {showContacts && (
                         <div className="flex flex-wrap items-center gap-1.5 pl-9 pr-2.5 pb-2 -mt-0.5">
                           {phone && (
