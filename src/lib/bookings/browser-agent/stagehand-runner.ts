@@ -28,6 +28,7 @@ import { Stagehand } from "@browserbasehq/stagehand";
 import { env, optionalEnv } from "@/lib/env";
 import { AGENT_VIEWPORT } from "./runtime";
 import type { RawBookingOutcome } from "./outcome";
+import type { CardProvider } from "./agent";
 
 /** Stagehand model id — DOM agent driven by Claude.
  *  SONNET. Haiku couldn't hold the multi-step plan on real reservation
@@ -101,6 +102,14 @@ export type RunStagehandOptions = {
    *  hotels need more (~55) for the longer date→room→rate→guest flow.
    *  Falls back to MAX_STEPS / the STAGEHAND_MAX_STEPS env when unset. */
   maxSteps?: number;
+  /**
+   * Just-in-time payment. When set, the runner drives the booking up to
+   * the card-entry step, then calls this to charge the customer + mint a
+   * single-use virtual card, and types that card in to complete payment.
+   * When unset (or it returns `unavailable`), the runner stops at the
+   * payment step and reports needs_review — no card is ever entered.
+   */
+  cardProvider?: CardProvider;
   /** Live progress callback → wire to updateProgress for the UI. */
   onStep?: (label: string) => void | Promise<void>;
 };
@@ -141,7 +150,7 @@ CORE RULES
 3. CONFIRMED requires PROOF: a real confirmation/reservation/order number or an explicit "your reservation is confirmed" message — quote it. Submitted but no confirmation visible → needs_review.
 4. NEVER invent data. Use only the traveler details in the task. If a REQUIRED field needs something you weren't given, report needs_review.
 5. NEVER exceed the budget ceiling (including taxes/fees/deposit). Over budget → failed / budget_exceeded.
-6. PAYMENT: do NOT enter a card. When you reach a card/deposit step, STOP and report needs_review, quoting the exact room/tee time + total price you reached (e.g. "Standard King — $1,325 for 5 nights, stopped at the deposit step") so the customer can finish payment. Reaching the payment step with everything filled is a GOOD outcome, not a failure.
+6. PAYMENT: do NOT type any card number yourself, and never make one up. Drive the booking all the way TO the card-entry step — pick the room/tee time, fill all guest/driver details, accept mandatory terms — and STOP the moment a credit-card NUMBER is required, leaving the card fields blank. Reaching that filled-in payment step is a GOOD outcome: the system takes over from there to enter payment securely. In your message, quote the exact room/tee time + total price you reached (e.g. "Standard King — $1,325 for 5 nights, at the card step").
 
 DATES (get these right — most failures start here)
 - Use the EXACT dates from the task. If the date field is a text box, type the date in the format it shows (try MM/DD/YYYY). If it's a calendar widget, use the month arrows to reach the right month, then click the day.
@@ -170,7 +179,7 @@ WHEN TO STOP (report honestly)
 - No availability for the requested date (after confirming the date is set correctly) → failed / no_availability.
 - A captcha you can't pass → failed / captcha_blocked. Mandatory account login you don't have → failed / login_required.
 - Genuinely no online booking path at all (phone/email only) → failed / form_not_found — and quote the phone/email you saw.
-- Card/deposit step reached → needs_review with the room/tee time + price (rule 6).
+- Card/deposit step reached → STOP with everything filled and the card fields BLANK (rule 6 — the system enters payment); note the room/tee time + total.
 - Going in circles with no progress → needs_review describing exactly where you're stuck.`;
 
 export async function runStagehandBooking(
@@ -351,6 +360,83 @@ export async function runStagehandBooking(
       }
     }
 
+    // ── PAYMENT PHASE ────────────────────────────────────────────────────
+    // If a card provider is wired AND the agent didn't already crash or
+    // confirm, check whether it stopped at a card-entry step. If so, charge
+    // the customer + mint a single-use virtual card (cardProvider) and type
+    // it in to finish. The PAN is fetched here, used once, and never logged
+    // or persisted; the single-use card + the <2s auth webhook bound the
+    // blast radius to exactly this one charge.
+    const agentAlreadyConfirmed = /confirm(ed|ation)|reservation (#|number|id)/i.test(
+      agentMsg,
+    );
+    if (
+      opts.cardProvider &&
+      result.success !== false &&
+      !agentAlreadyConfirmed
+    ) {
+      const pay = await detectPaymentStep(stagehand).catch(() => ({
+        atPayment: false,
+        amountCents: null,
+        currency: null,
+      }));
+      if (pay.atPayment) {
+        console.log(
+          `[stagehand] payment step detected (${elapsed()}) — total=${pay.amountCents != null ? `${pay.amountCents}c ${pay.currency ?? ""}` : "unknown"} — charging + paying`,
+        );
+        await opts.onStep?.("Securing payment…");
+        const card = await opts.cardProvider(pay.amountCents);
+        if (card.status !== "ok") {
+          // Couldn't charge / no saved card / Stripe off → stop cleanly at
+          // payment. NEVER enter a card we don't have. Customer not charged.
+          console.warn(`[stagehand] card provider unavailable: ${card.reason}`);
+          return {
+            outcome: {
+              status: "needs_review",
+              message:
+                "Everything's filled in and ready to pay — we paused at the payment step. " +
+                card.reason.replace(/\s*(Stop entering payment and )?call report_outcome[^.]*\.?/gi, "").trim(),
+            },
+            sessionUrl,
+          };
+        }
+        // Card in hand. Type it and submit. Scoped instruction — the PAN
+        // appears only in THIS execute call, not the booking-navigation
+        // context, and we deliberately do NOT log the result message.
+        await opts.onStep?.("Completing payment…");
+        try {
+          await agent.execute({
+            instruction: cardEntryInstruction(card),
+            maxSteps: 14,
+            signal: controller.signal,
+            callbacks: {
+              onStepFinish: async () => {
+                await opts.onStep?.("Completing payment…");
+              },
+            },
+          });
+          console.log(`[stagehand] ✓ payment submitted (${elapsed()})`);
+        } catch (payErr) {
+          // Customer is already charged (cardProvider charged before we
+          // typed). The funded single-use card lets a human finish, so
+          // surface needs_review, NOT a failure — never imply we lost money.
+          console.error(
+            `[stagehand] payment-entry error (${elapsed()}): ${payErr instanceof Error ? payErr.message : payErr}`,
+          );
+          return {
+            outcome: {
+              status: "needs_review",
+              message:
+                "We secured your payment but hit a snag entering it on the venue's checkout — Pyltrix is finishing this booking manually and will confirm shortly.",
+            },
+            sessionUrl,
+          };
+        }
+        // Fall through to the proof extract below — it reads the
+        // confirmation off the post-payment page.
+      }
+    }
+
     // Pull the structured outcome from the FINAL page. This is the proof
     // gate — the agent's own claim of success is not trusted; we read the
     // confirmation off the page ourselves.
@@ -441,6 +527,75 @@ export async function runStagehandBooking(
     clearTimeout(wallClock);
     await stagehand.close().catch(() => {});
   }
+}
+
+/**
+ * Is the browser sitting at a card-entry / payment step, and if so what's
+ * the total being charged? One cheap extract read of the current page. The
+ * total is the source of truth for what we charge (most items carry no
+ * upfront price). Fails closed (atPayment=false) — we only ever ENTER a
+ * card when we're confident it's the real checkout, never speculatively.
+ */
+async function detectPaymentStep(
+  stagehand: Stagehand,
+): Promise<{ atPayment: boolean; amountCents: number | null; currency: string | null }> {
+  const schema = z.object({
+    atPaymentStep: z
+      .boolean()
+      .describe(
+        "true ONLY if the current page is asking for a credit/debit CARD NUMBER to complete this booking (a card-number field, or a 'Payment'/'Pay'/'Checkout' step with card inputs). false for room lists, guest-detail forms, confirmation pages, or anything without a card field.",
+      ),
+    totalAmount: z
+      .number()
+      .nullable()
+      .describe(
+        "The TOTAL amount that will be charged, in major currency units (e.g. 1325.00 for $1,325). The grand total / amount due, not a per-night rate. null if not clearly shown.",
+      ),
+    currency: z
+      .string()
+      .nullable()
+      .describe("3-letter currency code of the total (USD, EUR, GBP, …) if shown, else null."),
+  });
+  const res = await stagehand.extract(
+    "Determine whether the current page is the payment / card-entry step that needs a credit card number to finish the booking, and read the grand total to be charged.",
+    schema,
+  );
+  const amountCents =
+    res?.totalAmount != null && Number.isFinite(res.totalAmount) && res.totalAmount > 0
+      ? Math.round(res.totalAmount * 100)
+      : null;
+  return {
+    atPayment: Boolean(res?.atPaymentStep),
+    amountCents,
+    currency: res?.currency ?? null,
+  };
+}
+
+/**
+ * Scoped instruction that hands the agent the single-use virtual card to
+ * type. Kept terse and used in exactly one execute() call so the PAN never
+ * enters the long booking-navigation context. The billing ZIP matches the
+ * Issuing cardholder's billing address (94105) so AVS checks pass.
+ */
+function cardEntryInstruction(card: {
+  number: string;
+  expMonth: number;
+  expYear: number;
+  cvc: string;
+  cardholderName?: string;
+}): string {
+  const mm = String(card.expMonth).padStart(2, "0");
+  const yy2 = String(card.expYear).slice(-2);
+  const name = card.cardholderName ?? "Pyltrix Traveler";
+  return [
+    "You are on the payment step. Enter this card to complete the booking, then submit ONCE.",
+    `- Card number: ${card.number}`,
+    `- Expiry: ${mm}/${yy2} (or ${mm}/${card.expYear} if a 4-digit year is required)`,
+    `- CVC / security code: ${card.cvc}`,
+    `- Name on card: ${name}`,
+    "- If a billing ZIP/postal code is required, use 94105. If billing address is required, use 1 Market St, San Francisco, CA 94105, US.",
+    "Fill the card fields with EXACTLY these values (card-number fields are often inside a small frame — click into the field first, then type). Tick any mandatory terms checkbox. Then click the final Pay / Confirm / Complete Booking button exactly ONCE and wait for the page to change. Do NOT click pay twice.",
+  ].join("\n");
 }
 
 function progressLabel(step: number): string {

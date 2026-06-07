@@ -38,7 +38,9 @@ export function buildCardProviderForBooking(args: {
   /** Hard ceiling — agent must not exceed this. */
   budgetCents: number | null;
 }): CardProvider {
-  return async (): Promise<
+  return async (
+    observedAmountCents?: number | null,
+  ): Promise<
     | {
         status: "ok";
         number: string;
@@ -69,17 +71,46 @@ export function buildCardProviderForBooking(args: {
       };
     }
 
-    // Vendor amount + service fee → customer charge.
-    const budget = args.budgetCents ?? null;
-    if (budget == null || budget <= 0) {
+    // The amount we charge is the REAL total the agent read off the
+    // checkout page when available — most items (hotels especially) have
+    // no upfront price, so the page total is the source of truth. Fall
+    // back to the booking budget only when the page total couldn't be
+    // read. Whichever we use becomes the single-use card's spend ceiling.
+    const observed =
+      typeof observedAmountCents === "number" &&
+      Number.isFinite(observedAmountCents) &&
+      observedAmountCents > 0
+        ? Math.round(observedAmountCents)
+        : null;
+    const vendorAmount = observed ?? args.budgetCents ?? null;
+    if (vendorAmount == null || vendorAmount <= 0) {
       return {
         status: "unavailable",
         reason:
-          "No budget on file for this booking — cannot charge without an expected amount. Stop entering payment and call report_outcome with status 'needs_review'.",
+          "Couldn't read the booking total from the page and no budget is on file — cannot charge a blank amount. Stop entering payment and call report_outcome with status 'needs_review'.",
       };
     }
-    const fee = Math.round((budget * SERVICE_FEE_BPS) / 10_000);
-    const customerChargeCents = budget + fee;
+    // Guard against a misread page total wildly exceeding the budget (e.g.
+    // the agent grabbed a year or a phone number). If we have a budget and
+    // the observed total is >3x it, refuse — fail safe rather than overcharge.
+    if (
+      observed != null &&
+      args.budgetCents != null &&
+      args.budgetCents > 0 &&
+      observed > args.budgetCents * 3
+    ) {
+      return {
+        status: "unavailable",
+        reason: `The checkout total we read ($${Math.round(observed / 100)}) is far above the expected budget — pausing to avoid overcharging. Call report_outcome with status 'needs_review'.`,
+      };
+    }
+    const fee = Math.round((vendorAmount * SERVICE_FEE_BPS) / 10_000);
+    const customerChargeCents = vendorAmount + fee;
+    // Persist the real total onto the booking so the <2s auth webhook can
+    // gate the virtual-card charge against the amount we actually expect.
+    await db.booking
+      .update({ where: { id: args.bookingId }, data: { cost: vendorAmount } })
+      .catch(() => {});
 
     let chargeId: string | null = null;
     try {
@@ -119,7 +150,11 @@ export function buildCardProviderForBooking(args: {
     try {
       cardId = await createSingleUseCard({
         cardholderId,
-        amountCents: budget,
+        // Spend ceiling = the real total + a small tolerance so legit
+        // tax/resort fees the vendor tacks on at the final click don't
+        // trip a false decline. The per-authorization limit is the hard
+        // cap; the auth webhook is the second gate.
+        amountCents: Math.round(Math.max(vendorAmount * 1.15, vendorAmount + 2000)),
         bookingId: args.bookingId,
         tripId: args.tripId,
       });

@@ -145,6 +145,10 @@ export async function GET(
       role: access.role,
       myApproval: myMember?.approvalStatus ?? null,
       myPayment: myMember?.paymentStatus ?? null,
+      // Whether the customer has a card saved in the Stripe vault — gates
+      // whether the agent can complete paid bookings (hotels/golf/cars)
+      // end-to-end vs. stop at the payment step.
+      hasSavedCard: Boolean(me.defaultPaymentMethodId),
       // Saved traveler profile — used by the one-click booking modal
       // to pre-fill the passenger form so customers don't re-enter
       // their DOB/email/phone on every booking.

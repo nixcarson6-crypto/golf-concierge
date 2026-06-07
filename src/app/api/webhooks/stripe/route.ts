@@ -76,6 +76,36 @@ export async function POST(req: Request) {
 
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
+
+      // SETUP mode = the "save your card" flow. Pull the saved
+      // PaymentMethod off the SetupIntent and record it as the user's
+      // default so the booking agent can charge it later off-session.
+      if (session.mode === "setup") {
+        const userId = session.metadata?.appUserId;
+        const setupIntentId =
+          typeof session.setup_intent === "string"
+            ? session.setup_intent
+            : session.setup_intent?.id;
+        if (userId && setupIntentId) {
+          try {
+            const si = await stripe().setupIntents.retrieve(setupIntentId);
+            const pm =
+              typeof si.payment_method === "string"
+                ? si.payment_method
+                : si.payment_method?.id;
+            if (pm) {
+              await db.user.update({
+                where: { id: userId },
+                data: { defaultPaymentMethodId: pm },
+              });
+            }
+          } catch (err) {
+            console.warn("[stripe webhook] setup-mode save failed:", err);
+          }
+        }
+        break;
+      }
+
       const tripId = session.metadata?.tripId;
       const memberId = session.metadata?.memberId;
       const bookingIdsCsv = session.metadata?.bookingIds;

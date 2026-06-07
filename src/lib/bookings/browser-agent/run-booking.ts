@@ -247,6 +247,12 @@ export async function runBrowserBooking(args: {
               advancedStealth: stealthOn,
               timeoutMs: 600_000,
               maxSteps,
+              // Just-in-time payment: when the agent reaches the card step,
+              // this charges the customer + mints a single-use virtual card
+              // and the runner types it in. Returns `unavailable` (→ clean
+              // needs_review, no card entered) when Stripe isn't configured
+              // or the customer hasn't saved a card.
+              cardProvider,
               onStep: async (label) => {
                 await bridgeNudge(label);
               },

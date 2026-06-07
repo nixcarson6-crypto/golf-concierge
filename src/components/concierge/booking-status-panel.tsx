@@ -49,6 +49,7 @@ import type {
 // Uber/chauffeur transfers aren't browser-bookable, so only car RENTALS
 // among transport items are tap-to-book.
 import { isAgentBookable } from "@/lib/bookings/agent-scope";
+import { SaveCardButton } from "./save-card-button";
 
 // Types we present as contact-and-book-yourself suggestions, never
 // auto-booked. Each surfaces Call / Visit-site actions. (Carson's call:
@@ -242,9 +243,13 @@ function categoryFor(type: WorkspaceItineraryItem["type"]): CategoryKey {
 export function BookingStatusPanel({
   tripId,
   itinerary,
+  hasSavedCard,
 }: {
   tripId: string;
   itinerary: WorkspaceItinerary | null;
+  /** When false + there are agent-bookable items, we prompt to save a card
+   *  so the agent can complete paid bookings end-to-end. */
+  hasSavedCard?: boolean;
 }) {
   const qc = useQueryClient();
   const [bookingId, setBookingId] = React.useState<string | null>(null);
@@ -405,6 +410,13 @@ export function BookingStatusPanel({
             )}
           </button>
         )}
+        {/* Prompt to vault a card when there are agent-bookable items
+            (hotels/golf/cars) and none is saved — without it the agent
+            stops at the payment step instead of finishing the booking. */}
+        {hasSavedCard === false &&
+          rows.some((r) =>
+            isAgentBookable(r.item.type, r.item.title, r.item.description),
+          ) && <SaveCardButton returnTo={`/trips/${tripId}`} />}
       </header>
 
       {/* Grouped rows — collapsible categories so a 40-item trip reads

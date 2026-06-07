@@ -72,7 +72,15 @@ const DEFAULT_INPUT_TOKEN_BUDGET = 200_000;
  * memory longer than this call; for the no-Stripe MVP path we pass
  * `unavailableCardProvider` which makes the agent gracefully bail out.
  */
-export type CardProvider = () => Promise<
+/**
+ * Called when the agent reaches checkout. `observedAmountCents` is the real
+ * total read off the vendor's payment page — it's the source of truth for
+ * what to charge, because most items (hotels especially) carry no upfront
+ * price. Falls back to the booking budget when the page total can't be read.
+ */
+export type CardProvider = (
+  observedAmountCents?: number | null,
+) => Promise<
   | {
       status: "ok";
       number: string;

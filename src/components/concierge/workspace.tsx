@@ -100,6 +100,8 @@ export type WorkspaceMe = {
   role: TripRole;
   myApproval: ApprovalStatus | null;
   myPayment: PaymentStatus | null;
+  /** Has a card saved in the Stripe vault (gates agent end-to-end paid bookings). */
+  hasSavedCard?: boolean;
   profile: {
     legalGivenName: string | null;
     legalFamilyName: string | null;
@@ -555,7 +557,11 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
     />
   );
   const bookingStatus = (
-    <BookingStatusPanel tripId={tripId} itinerary={snapshot.itinerary} />
+    <BookingStatusPanel
+      tripId={tripId}
+      itinerary={snapshot.itinerary}
+      hasSavedCard={snapshot.me.hasSavedCard}
+    />
   );
 
   // The quiz is the front door now. The chat workspace has been the
