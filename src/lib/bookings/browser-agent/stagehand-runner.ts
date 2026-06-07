@@ -308,12 +308,16 @@ export async function runStagehandBooking(
           `[stagehand] ✓ consent dismissed deterministically ("${cleared}") (${elapsed()})`,
         );
       } else {
-        // BACKSTOP: only when the fast pass found nothing do we spend an
-        // LLM act() — catches the non-standard banners the DOM scan misses.
-        await stagehand.act(
-          "If a cookie consent, privacy, or GDPR banner/modal is visible, click the button that accepts all cookies (labelled Accept, Accept all, I agree, OK, Allow all, or the equivalent in another language like Accetta tutti / Aceptar / Tout accepter / Zustimmen) to dismiss it. Also close any newsletter or promo popup. If nothing like that is visible, do nothing.",
+        // No standard banner matched. Do NOT spend an unbounded LLM act()
+        // here — on heavy sites (Four Seasons Bosphorus) that call ballooned
+        // to ~105s because it isn't covered by the agent's toolTimeout and it
+        // re-reads the entire bloated page. The agent's STEP 0 clears any
+        // non-standard banner as its very first action instead, and THAT is
+        // bounded by the 25s per-action timeout. One bounded agent step beats
+        // a 100-second pre-clear hang every time.
+        console.log(
+          `[stagehand] no standard consent banner matched — deferring to agent STEP 0 (${elapsed()})`,
         );
-        console.log(`[stagehand] ✓ consent pre-clear via act() (${elapsed()})`);
       }
     } catch (e) {
       console.warn(
