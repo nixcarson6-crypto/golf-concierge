@@ -36,14 +36,11 @@ import {
   ChevronDown,
   Phone,
   Globe,
-  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
   WorkspaceItinerary,
   WorkspaceItineraryItem,
-  WorkspaceTrip,
-  WorkspaceMe,
 } from "./workspace";
 
 // Item types the browser agent books directly. SCOPED to the high-value
@@ -246,113 +243,12 @@ function categoryFor(type: WorkspaceItineraryItem["type"]): CategoryKey {
   }
 }
 
-/**
- * Build a pre-drafted reservation-request email for a venue with no
- * online booking form (phone/email-only). Returns a `mailto:` URL that
- * opens the customer's own mail client with the venue address, a subject,
- * and a complete body pre-filled — they review and hit send. Works whether
- * or not we captured the venue's email (an empty `to` just lets them paste
- * it). Deterministic, no AI call.
- */
-function buildReservationMailto(args: {
-  item: WorkspaceItineraryItem;
-  venueEmail: string | null;
-  travelerName: string | null;
-  travelerPhone: string | null;
-  travelerEmail: string | null;
-  partySize: number | null;
-}): string {
-  const { item, venueEmail, travelerName, travelerPhone, travelerEmail, partySize } =
-    args;
-  const venue =
-    item.title
-      .replace(
-        /^(dinner|lunch|breakfast|brunch|drinks|cocktails|round|tee\s*time|spa|massage)\s*(—|–|-|:|at)\s*/i,
-        "",
-      )
-      .trim() || item.title;
-  const when = item.startTime ? new Date(item.startTime) : null;
-  const dateStr = when
-    ? when.toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        timeZone: "UTC",
-      })
-    : null;
-  const timeStr =
-    when && !(when.getUTCHours() === 0 && when.getUTCMinutes() === 0)
-      ? when.toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-          timeZone: "UTC",
-        })
-      : null;
-
-  // A reservation reads naturally for a restaurant/bar ("a table"); for
-  // a spa/activity/other it's "a reservation". Keeps the copy warm and
-  // correct regardless of venue type.
-  const isTable = item.type === "DINING" || item.type === "NIGHTLIFE";
-  const ask = isTable ? "a table" : "a reservation";
-
-  const details: string[] = [];
-  if (dateStr) details.push(`    Date:    ${dateStr}`);
-  if (timeStr) details.push(`    Time:    ${timeStr}`);
-  if (partySize && partySize > 0)
-    details.push(`    Guests:  ${partySize} ${partySize === 1 ? "person" : "people"}`);
-  if (travelerName) details.push(`    Name:    ${travelerName}`);
-
-  // Warm, concierge-toned. Closes with a clear callback line so the
-  // venue can phone or email the guest directly to confirm — exactly
-  // what these form-less restaurants do.
-  const reach: string[] = [];
-  if (travelerPhone && travelerEmail)
-    reach.push(
-      `You can reach me directly at ${travelerPhone} or by replying to this email (${travelerEmail}).`,
-    );
-  else if (travelerPhone)
-    reach.push(`You can reach me directly at ${travelerPhone}, or just reply here.`);
-  else reach.push("Please feel free to reply to this email to confirm.");
-
-  const signoff: string[] = ["Warm regards,"];
-  if (travelerName) signoff.push(travelerName);
-  if (travelerPhone) signoff.push(travelerPhone);
-  if (travelerEmail) signoff.push(travelerEmail);
-
-  const body = [
-    `Dear ${venue} team,`,
-    "",
-    `I would love to book ${ask} with you and would be grateful if you could confirm availability:`,
-    "",
-    ...details,
-    "",
-    "If that exact time isn't available, I'd happily take the closest option you have.",
-    "",
-    ...reach,
-    "",
-    "Thank you very much — I'm looking forward to it.",
-    "",
-    ...signoff,
-  ].join("\n");
-
-  const subject = `Reservation request — ${venue}${dateStr ? `, ${dateStr}` : ""}`;
-  const to = venueEmail ?? "";
-  return `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(
-    subject,
-  )}&body=${encodeURIComponent(body)}`;
-}
-
 export function BookingStatusPanel({
   tripId,
   itinerary,
-  trip,
-  me,
 }: {
   tripId: string;
   itinerary: WorkspaceItinerary | null;
-  trip?: WorkspaceTrip | null;
-  me?: WorkspaceMe | null;
 }) {
   const qc = useQueryClient();
   const [bookingId, setBookingId] = React.useState<string | null>(null);
@@ -551,7 +447,6 @@ export function BookingStatusPanel({
                   amountCents,
                   phone,
                   website,
-                  email,
                   failureReason,
                 }) => {
                   // Walk-in venues (casual restaurants/activities Google
@@ -576,38 +471,43 @@ export function BookingStatusPanel({
                     !isWalkIn &&
                     !isPhoneOnly &&
                     (kind === "pending" || kind === "failed");
-                  // Contact actions (Call / Draft email / Visit site) show
-                  // for: any suggestion venue that takes reservations, a
-                  // phone/email-only agent failure, or any other failed
-                  // booking — so the customer is never at a dead end. Draft
-                  // email is always offered for these (the mailto body is
-                  // pre-filled even when we have no address to fill "To").
-                  const showEmailDraft =
-                    suggestionNeedsContact || isPhoneOnly || Boolean(email);
-                  const showFallback =
-                    (suggestionNeedsContact || kind === "failed") &&
-                    Boolean(phone || website || showEmailDraft);
+                  // Contact links (Call + Website) show for any suggestion
+                  // venue that takes reservations, and as a fallback on a
+                  // failed agent booking — so the customer always has a way
+                  // to reach the venue. We don't draft emails or auto-book
+                  // these; they reserve directly.
+                  const showContacts = suggestionNeedsContact || kind === "failed";
+                  // There's always a working "Website" link: the venue's
+                  // real site when we have it, else a Google search for the
+                  // venue so the customer can find it + its number.
+                  const webHref =
+                    website ??
+                    `https://www.google.com/search?q=${encodeURIComponent(
+                      `${item.title}${item.location ? ` ${item.location}` : ""}`,
+                    )}`;
                   const isThisBooking = bookingId === item.id;
                   const statusText = isThisBooking
                     ? "Starting…"
                     : isWalkIn
                       ? "Walk-in · no booking needed"
                       : suggestionNeedsContact
-                        ? phone
-                          ? "Reserve directly — call or email"
-                          : "Reserve directly with the venue"
+                        ? "Reserve directly with the venue"
                         : isPhoneOnly
-                          ? phone && email
-                            ? "Reservations by phone or email"
-                            : email
-                              ? "Reservations by email"
-                              : "Reservations by phone"
+                          ? "Reservations by phone"
                           : canBook
                             ? "Tap to book"
                             : statusLabel(kind);
                   const rowInner = (
                     <>
-                      <StatusBadge kind={isThisBooking ? "booking" : kind} />
+                      {isSuggestion && !isThisBooking ? (
+                        // Suggestions aren't a booking task — show the venue
+                        // type icon, not a to-do circle that reads "unbooked".
+                        <span className="grid size-5 place-items-center shrink-0">
+                          <TypeIcon type={item.type} />
+                        </span>
+                      ) : (
+                        <StatusBadge kind={isThisBooking ? "booking" : kind} />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p
                           className={cn(
@@ -653,61 +553,26 @@ export function BookingStatusPanel({
                   return (
                     <div key={item.id}>
                       {mainRow}
-                      {showFallback && (
-                        <div className="flex flex-wrap items-center gap-2 pl-9 pr-2.5 pb-1.5">
-                          {showEmailDraft && (
-                            <a
-                              href={buildReservationMailto({
-                                item,
-                                venueEmail: email,
-                                travelerName:
-                                  [
-                                    me?.profile.legalGivenName,
-                                    me?.profile.legalFamilyName,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" ")
-                                    .trim() ||
-                                  me?.name ||
-                                  null,
-                                travelerPhone: me?.profile.phone ?? null,
-                                travelerEmail: me?.email ?? null,
-                                partySize: trip?.groupSize ?? null,
-                              })}
-                              className="inline-flex items-center gap-1.5 rounded-md bg-foreground px-2.5 py-1 text-[11px] font-medium text-background hover:bg-foreground/90 transition"
-                            >
-                              <Mail className="size-3" />
-                              Draft email
-                            </a>
-                          )}
+                      {showContacts && (
+                        <div className="flex flex-wrap items-center gap-1.5 pl-9 pr-2.5 pb-2 -mt-0.5">
                           {phone && (
                             <a
                               href={`tel:${phone.replace(/[^\d+]/g, "")}`}
-                              className={cn(
-                                "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition",
-                                showEmailDraft
-                                  ? "border border-border text-foreground/80 hover:bg-surface-raised"
-                                  : "bg-foreground text-background hover:bg-foreground/90",
-                              )}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-[11px] font-medium text-foreground/90 hover:bg-surface-raised hover:border-border transition"
                             >
-                              <Phone className="size-3" />
-                              Call{" "}
-                              <span className="tabular-nums opacity-80">
-                                {phone}
-                              </span>
+                              <Phone className="size-3 text-muted-foreground" />
+                              <span className="tabular-nums">{phone}</span>
                             </a>
                           )}
-                          {website && (
-                            <a
-                              href={website}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-foreground/80 hover:bg-surface-raised transition"
-                            >
-                              <Globe className="size-3" />
-                              Visit site
-                            </a>
-                          )}
+                          <a
+                            href={webHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-[11px] font-medium text-foreground/90 hover:bg-surface-raised hover:border-border transition"
+                          >
+                            <Globe className="size-3 text-muted-foreground" />
+                            Website
+                          </a>
                         </div>
                       )}
                     </div>
