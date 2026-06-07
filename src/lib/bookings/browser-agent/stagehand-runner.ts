@@ -697,10 +697,59 @@ const HEAVY_RESOURCE_BLOCKLIST = [
   "*snap.licdn.com*",
   "*analytics.tiktok.com*",
   "*sentry.io*",
+  "*px.ads.linkedin.com*",
+  "*ct.pinterest.com*",
+  "*static.ads-twitter.com*",
+  "*analytics.twitter.com*",
+  "*scorecardresearch.com*",
+  "*quantserve.com*",
+  "*chartbeat.com*",
+  "*nr-data.net*",
+  "*js-agent.newrelic.com*",
+  "*cdn.optimizely.com*",
+  "*qualtrics.com*",
+  "*dynamicyield.com*",
+  // Live-chat / support widgets — heavy bundles the agent never touches.
+  "*widget.intercom.io*",
+  "*js.driftt.com*",
+  "*static.zdassets.com*",
+  "*embed.tawk.to*",
+  "*cdn.livechatinc.com*",
+  "*client.crisp.chat*",
+  // Raw video + embedded players (hero reels, virtual tours). Pure weight.
   "*.mp4*",
   "*.webm*",
   "*.m4v*",
   "*.mov*",
+  "*player.vimeo.com*",
+  "*youtube.com/embed*",
+  "*i.ytimg.com*",
+  // Web fonts — the DOM agent reads the accessibility tree's text, never the
+  // rendered glyphs, so blocking these only swaps in system fonts (instant)
+  // with ZERO functional impact. recaptcha/gstatic serve JS+images, not
+  // woff, so captcha solving is unaffected.
+  "*.woff*",
+  "*.ttf",
+  "*.otf",
+  "*.eot",
+];
+
+/**
+ * Images, gated separately behind BROWSER_AGENT_BLOCK_IMAGES. Blocking images
+ * is the single biggest page-load win on photo-heavy luxury-hotel sites — the
+ * DOM agent doesn't see pixels, so it's free speed DURING the booking. The one
+ * cost: the final "Booked ✓" confirmation screenshot renders with broken image
+ * placeholders (the confirmation number + text still show fine). Off by default
+ * so the proof screenshot stays pristine; flip the env to trade it for speed.
+ */
+const IMAGE_BLOCKLIST = [
+  "*.jpg*",
+  "*.jpeg*",
+  "*.png*",
+  "*.gif*",
+  "*.webp*",
+  "*.avif*",
+  "*.svg*",
 ];
 
 /**
@@ -713,11 +762,13 @@ async function blockHeavyResources(page: unknown): Promise<void> {
   if (optionalEnv("BROWSER_AGENT_BLOCK_HEAVY") === "false") return;
   const cdp = page as CdpPage;
   if (typeof cdp?.sendCDP !== "function") return;
+  const urls =
+    optionalEnv("BROWSER_AGENT_BLOCK_IMAGES") === "true"
+      ? [...HEAVY_RESOURCE_BLOCKLIST, ...IMAGE_BLOCKLIST]
+      : HEAVY_RESOURCE_BLOCKLIST;
   try {
     await cdp.sendCDP("Network.enable");
-    await cdp.sendCDP("Network.setBlockedURLs", {
-      urls: HEAVY_RESOURCE_BLOCKLIST,
-    });
+    await cdp.sendCDP("Network.setBlockedURLs", { urls });
   } catch (e) {
     console.warn(
       `[stagehand] heavy-resource block skipped: ${e instanceof Error ? e.message : e}`,

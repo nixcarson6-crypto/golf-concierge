@@ -94,6 +94,10 @@ const definitions = {
   // "false" disables the CDP heavy-resource blocklist (analytics/ads/video
   // the DOM agent never needs). Default on — it speeds every page load.
   BROWSER_AGENT_BLOCK_HEAVY: { required: false },
+  // "true" also blocks images during the agent run — biggest page-load win,
+  // but the final confirmation screenshot renders with broken images. Off by
+  // default so the "Booked ✓" proof screenshot stays clean.
+  BROWSER_AGENT_BLOCK_IMAGES: { required: false },
   // Model used by the booking agent's computer-use loop. MUST be a model
   // that supports the computer_20250124 tool — that's a Sonnet-line
   // capability; Opus 4.x doesn't carry it. Sonnet 4.5 is the stable default.
