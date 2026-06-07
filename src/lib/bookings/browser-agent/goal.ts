@@ -190,6 +190,15 @@ export function buildGoal(
     lines.push(`**Budget ceiling:** $${task.budgetUsd.toLocaleString()} total — do NOT exceed this.`);
   else
     lines.push(`**Budget ceiling:** none given — if the price looks unexpectedly high (10x a normal price for this kind of booking), stop and report needs_review.`);
+  // Hotels: the room/suite named in the itinerary is a PREFERENCE, not a
+  // hard requirement. Real failure mode we hit — the agent found 9
+  // bookable rooms but quit because none was literally a "Junior Suite".
+  // Make the rule explicit and impossible to misread.
+  if (task.request.type === "LODGING") {
+    lines.push(
+      `**Room type is a PREFERENCE, not a requirement.** The name above (e.g. "Junior Suite") is just the itinerary's suggestion. If that EXACT room is not offered, you MUST pick the closest available room that sleeps ${t.partySize} and stays within budget — and continue the booking. NEVER stop, fail, or report needs_review just because the named room type isn't in the list. ANY suitable available room booked for these dates is SUCCESS. Booking the best available room is far better than booking nothing.`,
+    );
+  }
   lines.push(``);
   lines.push(`## Traveller details (use exactly; do not invent extras)`);
   lines.push(`- Name: ${t.givenName} ${t.familyName}`);
@@ -261,7 +270,7 @@ function describeService(task: BookingTask): string {
     case "TEE_TIME":
       return `A golf tee time${title ? ` — ${title}` : ""} for ${people}.`;
     case "LODGING":
-      return `A hotel/lodging reservation${title ? ` — ${title}` : ""} for ${people}.`;
+      return `A hotel/lodging reservation for ${people}${title ? ` — the itinerary suggests "${title}" (room type is a preference; see the rule below)` : ""}.`;
     case "DINING":
       return `A restaurant reservation${title ? ` — ${title}` : ""} for ${people}.`;
     case "SPA":
