@@ -43,20 +43,16 @@ import type {
   WorkspaceItineraryItem,
 } from "./workspace";
 
-// Item types the browser agent books directly. SCOPED to the high-value
-// reservations Carson wants automated — hotels + golf. Flights go through
-// "Book all" (Duffel) and FREE_TIME / TRANSPORT aren't tap-to-book here.
-//
-// Restaurants, nightlife, spa, and activities are deliberately NOT
-// agent-booked: their forms are a minefield (bot walls, phone/email-only
-// venues) and the payoff is low. Instead we treat them as SUGGESTIONS —
-// the customer gets the venue's phone + a pre-drafted email + the website
-// and books in one tap themselves. (Carson's call: "forget booking
-// restaurants right now, give them the suggestion with their number.")
-const AGENT_BOOKABLE = new Set(["LODGING", "TEE_TIME"]);
+// What the browser agent books — hotels, golf, and car rentals — lives
+// in one shared module (isAgentBookable) so the panel and the server
+// route never drift. Flights go through "Book all" (Duffel); per-ride
+// Uber/chauffeur transfers aren't browser-bookable, so only car RENTALS
+// among transport items are tap-to-book.
+import { isAgentBookable } from "@/lib/bookings/agent-scope";
 
 // Types we present as contact-and-book-yourself suggestions, never
-// auto-booked. Each surfaces Call / Draft-email / Visit-site actions.
+// auto-booked. Each surfaces Call / Visit-site actions. (Carson's call:
+// "forget booking restaurants — give them the suggestion with the number.")
 const SUGGESTION_TYPES = new Set(["DINING", "NIGHTLIFE", "SPA", "ACTIVITY"]);
 
 type RowStatus = "confirmed" | "booking" | "review" | "failed" | "pending";
@@ -465,9 +461,9 @@ export function BookingStatusPanel({
                   // so we surface the venue's phone + a pre-drafted email.
                   const isPhoneOnly =
                     kind === "failed" && failureReason === "form_not_found";
-                  // Only hotels + golf are agent-bookable now.
+                  // Hotels, golf, and car rentals are agent-bookable.
                   const canBook =
-                    AGENT_BOOKABLE.has(item.type) &&
+                    isAgentBookable(item.type, item.title, item.description) &&
                     !isWalkIn &&
                     !isPhoneOnly &&
                     (kind === "pending" || kind === "failed");

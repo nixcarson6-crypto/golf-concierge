@@ -228,12 +228,17 @@ export async function runBrowserBooking(args: {
         try {
           if (useStagehand) {
             const { runStagehandBooking } = await import("./stagehand-runner");
-            // Per-type step budget. Hotels run a long date→search→room→
-            // rate→guest-details flow that blew past the old flat 35-step
-            // cap (Belmond hit it mid-flow). Restaurants/tee-times/spa are
-            // short, so they stay tight — keeps the common case FAST while
-            // giving hotels room to reach a real terminal state.
-            const maxSteps = item.type === "LODGING" ? 55 : 35;
+            // Per-type step budget. Hotels run the longest flow
+            // (date→search→room→rate→guest-details) and blew past the old
+            // flat 35-step cap; car rentals are medium (location→dates→
+            // vehicle→driver); golf is short. Sizing each keeps the quick
+            // ones FAST while giving the long ones room to finish.
+            const maxSteps =
+              item.type === "LODGING"
+                ? 55
+                : item.type === "TRANSPORT"
+                  ? 45
+                  : 35;
             const result = await runStagehandBooking({
               startUrl,
               system: goal.system,
