@@ -356,6 +356,14 @@ export async function runStagehandBooking(
       // Cap each individual tool call so a hung action recovers fast instead
       // of eating 45s of the wall-clock budget (see TOOL_TIMEOUT_MS above).
       toolTimeout: TOOL_TIMEOUT_MS,
+      // DOM mode reads the accessibility tree to act — it never NEEDS a
+      // screenshot. But the agent still reaches for the screenshot tool, and
+      // on pages with a looping background video (Four Seasons) that capture
+      // never settles and burns a full toolTimeout per call. We don't use the
+      // agent's screenshot for the final proof anyway (the Stagehand path
+      // returns finalScreenshot:null), so take the tool away — it forces the
+      // agent onto the DOM tree, which is what makes DOM mode fast.
+      excludeTools: ["screenshot"],
       signal: controller.signal,
       callbacks: {
         onStepFinish: async () => {
