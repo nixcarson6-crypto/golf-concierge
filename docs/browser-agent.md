@@ -67,6 +67,26 @@ it's re-sent on every step. Current shape:
 - **Hard rule:** when you see Reserve/Book buttons, **CLICK ONE.** Multiple rates for the same room → cheapest that fits budget. Sitting on a rate list = same failure as quitting
 - **NEVER STOP SILENTLY** — if can't proceed, say WHY with exact prices/labels
 
+### Pre-agent speed passes (in `stagehand-runner.ts`, before the agent loop)
+
+Two deterministic steps run once per session, BEFORE the LLM agent starts —
+they cut fixed latency off every booking without touching the model:
+
+- **Heavy-resource block** (`blockHeavyResources`) — a CDP
+  `Network.setBlockedURLs` denylist drops analytics / ad / session-replay
+  hosts + raw video (`HEAVY_RESOURCE_BLOCKLIST`). The DOM agent reads the
+  a11y tree, not pixels, so none of it is needed; on media-heavy luxury
+  sites it's the bulk of what a page waits on. **Deliberately leaves CSS,
+  images, fonts, and recaptcha/gstatic/cloudflare-challenge alone** so
+  layout, confirmation reads, and captcha solving are unaffected. Disable
+  with `BROWSER_AGENT_BLOCK_HEAVY=false`.
+- **Deterministic consent dismissal** (`dismissConsentDeterministically`) —
+  an in-page DOM pass clicks the accept control of the common consent
+  managers (OneTrust / Cookiebot / Didomi / Usercentrics) or any visible
+  button labelled Accept/Agree/OK/Allow in 7 languages. One CDP round-trip,
+  **no LLM call.** The old `stagehand.act()` consent clear (~5-10s every
+  run) is now only the BACKSTOP, used when the fast pass finds nothing.
+
 ### Per-type step budgets (set in `run-booking.ts`)
 
 - `LODGING`: 55 steps (longest flow)
@@ -169,7 +189,11 @@ Three real bugs surfaced:
   - Six Senses Douro: reached rate cards, didn't click Reserve (likely budget mismatch — silent stop). Fixed with explicit "click Reserve when you see it" rule + "never stop silently" rule + louder logs (>40 char message check).
   - Hotel Saint George Marfa: quit because no "Junior Suite" exists. Fixed with "room name is a preference" rule.
   - Belmond Splendido: hit 35-step cap mid-flow. Fixed with per-type step budget (hotels = 55).
-- [ ] Verify the cookie pre-clear actually works on the Finca Cortesin / GDPR-banner sites (was the original silent-stall cause)
+- [x] Cookie pre-clear is now **deterministic** (`dismissConsentDeterministically`
+      in `stagehand-runner.ts`) — clicks the major consent managers + multi-
+      language Accept buttons in one CDP round-trip with no LLM call, falling
+      back to `act()` only when the DOM scan finds nothing. Still worth a live
+      smoke on Finca Cortesin to confirm the selector/label list covers it.
 - [ ] Iframe card-field detection (some payment processors put the card form in a child frame — Stagehand should handle but unconfirmed at real checkouts)
 
 ### Booking.com API (Carson is pursuing)

@@ -88,6 +88,9 @@ const definitions = {
   STAGEHAND_MODEL: { required: false },
   STAGEHAND_EXECUTION_MODEL: { required: false },
   STAGEHAND_MAX_STEPS: { required: false },
+  // "false" disables the CDP heavy-resource blocklist (analytics/ads/video
+  // the DOM agent never needs). Default on — it speeds every page load.
+  BROWSER_AGENT_BLOCK_HEAVY: { required: false },
   // Model used by the booking agent's computer-use loop. MUST be a model
   // that supports the computer_20250124 tool — that's a Sonnet-line
   // capability; Opus 4.x doesn't carry it. Sonnet 4.5 is the stable default.

@@ -260,6 +260,16 @@ export async function runStagehandBooking(
         "Stagehand init returned no page — the Browserbase session never opened a tab.",
       );
     }
+    // SPEED: drop heavy third-party junk (analytics, ad/marketing tags,
+    // session-replay, autoplay video) at the network layer BEFORE the first
+    // navigation. The DOM agent reads the accessibility tree, not pixels, so
+    // none of this is needed — but on luxury-hotel sites it's often the bulk
+    // of what a page waits on, so blocking it shaves seconds off every page
+    // load AND every domSettle. Deliberately tracker/media-only: CSS, images,
+    // fonts, and captcha/recaptcha/turnstile are left untouched so layout,
+    // confirmation reads, and the captcha-solver all keep working.
+    await blockHeavyResources(page);
+
     await opts.onStep?.(`Opening ${shortHost(opts.startUrl)}…`);
     await page.goto(opts.startUrl, {
       waitUntil: "domcontentloaded",
@@ -276,10 +286,24 @@ export async function runStagehandBooking(
     // error is swallowed (STEP 0 in the system prompt is the backstop).
     try {
       await opts.onStep?.("Clearing cookie banner…");
-      await stagehand.act(
-        "If a cookie consent, privacy, or GDPR banner/modal is visible, click the button that accepts all cookies (labelled Accept, Accept all, I agree, OK, Allow all, or the equivalent in another language like Accetta tutti / Aceptar / Tout accepter / Zustimmen) to dismiss it. Also close any newsletter or promo popup. If nothing like that is visible, do nothing.",
-      );
-      console.log(`[stagehand] ✓ consent pre-clear done (${elapsed()})`);
+      // FAST PATH: a deterministic in-page DOM pass clicks the accept button
+      // of the common consent managers (OneTrust, Cookiebot, Didomi,
+      // Usercentrics…) and any button whose visible label reads
+      // Accept/Agree/OK in 7 languages. One CDP round-trip, no LLM call —
+      // this is the case that used to cost a full ~5-10s act() on EVERY run.
+      const cleared = await dismissConsentDeterministically(page);
+      if (cleared) {
+        console.log(
+          `[stagehand] ✓ consent dismissed deterministically ("${cleared}") (${elapsed()})`,
+        );
+      } else {
+        // BACKSTOP: only when the fast pass found nothing do we spend an
+        // LLM act() — catches the non-standard banners the DOM scan misses.
+        await stagehand.act(
+          "If a cookie consent, privacy, or GDPR banner/modal is visible, click the button that accepts all cookies (labelled Accept, Accept all, I agree, OK, Allow all, or the equivalent in another language like Accetta tutti / Aceptar / Tout accepter / Zustimmen) to dismiss it. Also close any newsletter or promo popup. If nothing like that is visible, do nothing.",
+        );
+        console.log(`[stagehand] ✓ consent pre-clear via act() (${elapsed()})`);
+      }
     } catch (e) {
       console.warn(
         `[stagehand] consent pre-clear skipped: ${e instanceof Error ? e.message : e}`,
@@ -608,6 +632,155 @@ function cardEntryInstruction(card: {
     "- If a billing ZIP/postal code is required, use 94105. If billing address is required, use 1 Market St, San Francisco, CA 94105, US.",
     "Fill the card fields with EXACTLY these values (card-number fields are often inside a small frame — click into the field first, then type). Tick any mandatory terms checkbox. Then click the final Pay / Confirm / Complete Booking button exactly ONCE and wait for the page to change. Do NOT click pay twice.",
   ].join("\n");
+}
+
+/**
+ * Minimal structural view of the Stagehand v3 "understudy" page — just the
+ * two primitives we use here. Avoids importing Stagehand's internal Page type
+ * (it isn't part of the public surface) while staying type-checked.
+ */
+type CdpPage = {
+  evaluate<R = unknown>(
+    fn: string | ((arg: unknown) => R | Promise<R>),
+    arg?: unknown,
+  ): Promise<R>;
+  sendCDP<T = unknown>(method: string, params?: object): Promise<T>;
+};
+
+/**
+ * URL globs for third-party junk the DOM agent never needs. Tracker / ad /
+ * analytics / session-replay hosts plus raw video — NOT fonts, CSS, images,
+ * or anything on google's recaptcha / gstatic / cloudflare-challenge paths
+ * (so captcha solving and on-page confirmation reads are unaffected).
+ * Matched by CDP `Network.setBlockedURLs` (supports `*` wildcards).
+ */
+const HEAVY_RESOURCE_BLOCKLIST = [
+  "*googletagmanager.com*",
+  "*google-analytics.com*",
+  "*analytics.google.com*",
+  "*g.doubleclick.net*",
+  "*googlesyndication.com*",
+  "*googleadservices.com*",
+  "*adservice.google.*",
+  "*connect.facebook.net*",
+  "*facebook.com/tr*",
+  "*hotjar.com*",
+  "*hotjar.io*",
+  "*static.hotjar.com*",
+  "*fullstory.com*",
+  "*clarity.ms*",
+  "*segment.io*",
+  "*cdn.segment.com*",
+  "*mixpanel.com*",
+  "*amplitude.com*",
+  "*intercom.io*",
+  "*intercomcdn.com*",
+  "*hs-scripts.com*",
+  "*hs-analytics.net*",
+  "*bat.bing.com*",
+  "*snap.licdn.com*",
+  "*analytics.tiktok.com*",
+  "*sentry.io*",
+  "*.mp4*",
+  "*.webm*",
+  "*.m4v*",
+  "*.mov*",
+];
+
+/**
+ * Block heavy third-party resources for the whole run via CDP. Best-effort:
+ * if the page doesn't expose CDP or the command fails, we just skip it — the
+ * booking still works, only a touch slower. Set BROWSER_AGENT_BLOCK_HEAVY
+ * =false to disable entirely.
+ */
+async function blockHeavyResources(page: unknown): Promise<void> {
+  if (optionalEnv("BROWSER_AGENT_BLOCK_HEAVY") === "false") return;
+  const cdp = page as CdpPage;
+  if (typeof cdp?.sendCDP !== "function") return;
+  try {
+    await cdp.sendCDP("Network.enable");
+    await cdp.sendCDP("Network.setBlockedURLs", {
+      urls: HEAVY_RESOURCE_BLOCKLIST,
+    });
+  } catch (e) {
+    console.warn(
+      `[stagehand] heavy-resource block skipped: ${e instanceof Error ? e.message : e}`,
+    );
+  }
+}
+
+/**
+ * Deterministically dismiss a cookie / consent / privacy banner by clicking
+ * the accept control in-page — no LLM call. Tries the well-known consent
+ * managers by selector first, then any visible button/link whose short label
+ * reads Accept / Agree / OK / Allow in EN, IT, ES, FR, DE, or PT. Returns the
+ * label/selector it clicked, or null if it found nothing to dismiss (caller
+ * then falls back to the LLM act()). Best-effort — never throws.
+ */
+async function dismissConsentDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const ACCEPT =
+        /^(accept all|accept cookies|accept|agree|i agree|allow all|allow cookies|got it|ok|okay|continue|enable all|accetta tutti|accetta|acconsento|accetto|aceptar todo|aceptar|de acuerdo|tout accepter|j.accepte|accepter|alle akzeptieren|akzeptieren|zustimmen|einverstanden|aceitar tudo|aceitar|concordo)$/i;
+      const KNOWN = [
+        "#onetrust-accept-btn-handler",
+        "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
+        "#CybotCookiebotDialogBodyButtonAccept",
+        "#didomi-notice-agree-button",
+        "button[data-testid='uc-accept-all-button']",
+        "#accept-recommended-btn-handler",
+        ".cc-allow",
+        ".cookie-accept",
+        "#cookie-accept",
+        "button[aria-label='Accept all']",
+        "button[aria-label='Accept all cookies']",
+      ];
+      const isVisible = (el: Element | null): boolean => {
+        if (!el) return false;
+        const rects = (el as HTMLElement).getClientRects();
+        if (!rects || rects.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return (
+          s.visibility !== "hidden" &&
+          s.display !== "none" &&
+          Number(s.opacity || "1") > 0.05
+        );
+      };
+      for (const sel of KNOWN) {
+        const el = document.querySelector(sel);
+        if (el && isVisible(el)) {
+          (el as HTMLElement).click();
+          return sel;
+        }
+      }
+      const nodes = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "button, [role=button], a, input[type=button], input[type=submit]",
+        ),
+      );
+      for (const el of nodes) {
+        const raw =
+          el.innerText ||
+          el.textContent ||
+          (el as HTMLInputElement).value ||
+          el.getAttribute("aria-label") ||
+          "";
+        const txt = raw.trim();
+        if (!txt || txt.length > 40) continue;
+        if (ACCEPT.test(txt) && isVisible(el)) {
+          el.click();
+          return txt;
+        }
+      }
+      return null;
+    });
+  } catch {
+    return null;
+  }
 }
 
 function progressLabel(step: number): string {
