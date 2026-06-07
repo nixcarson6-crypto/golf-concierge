@@ -94,9 +94,9 @@ const definitions = {
   // "false" disables the CDP heavy-resource blocklist (analytics/ads/video
   // the DOM agent never needs). Default on — it speeds every page load.
   BROWSER_AGENT_BLOCK_HEAVY: { required: false },
-  // "true" also blocks images during the agent run — biggest page-load win,
-  // but the final confirmation screenshot renders with broken images. Off by
-  // default so the "Booked ✓" proof screenshot stays clean.
+  // Images are blocked during the agent run by DEFAULT (biggest page-load
+  // win). Set "false" to restore a pristine confirmation screenshot at the
+  // cost of speed.
   BROWSER_AGENT_BLOCK_IMAGES: { required: false },
   // Model used by the booking agent's computer-use loop. MUST be a model
   // that supports the computer_20250124 tool — that's a Sonnet-line

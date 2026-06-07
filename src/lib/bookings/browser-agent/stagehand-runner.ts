@@ -735,12 +735,13 @@ const HEAVY_RESOURCE_BLOCKLIST = [
 ];
 
 /**
- * Images, gated separately behind BROWSER_AGENT_BLOCK_IMAGES. Blocking images
- * is the single biggest page-load win on photo-heavy luxury-hotel sites — the
- * DOM agent doesn't see pixels, so it's free speed DURING the booking. The one
- * cost: the final "Booked ✓" confirmation screenshot renders with broken image
- * placeholders (the confirmation number + text still show fine). Off by default
- * so the proof screenshot stays pristine; flip the env to trade it for speed.
+ * Images — blocked by DEFAULT (the single biggest page-load win on photo-heavy
+ * luxury-hotel sites; the DOM agent reads text/structure, not pixels, so the
+ * photos are pure dead weight). Carson's call (June 2026): prioritize speed.
+ * The only cost is cosmetic — the final "Booked ✓" confirmation screenshot
+ * renders with broken image placeholders, but the confirmation number, dates,
+ * and price all still show clearly, and those are the real proof. Set
+ * BROWSER_AGENT_BLOCK_IMAGES=false to restore a pristine screenshot.
  */
 const IMAGE_BLOCKLIST = [
   "*.jpg*",
@@ -762,10 +763,11 @@ async function blockHeavyResources(page: unknown): Promise<void> {
   if (optionalEnv("BROWSER_AGENT_BLOCK_HEAVY") === "false") return;
   const cdp = page as CdpPage;
   if (typeof cdp?.sendCDP !== "function") return;
+  // Images blocked by default for speed; opt OUT with =false (see IMAGE_BLOCKLIST).
   const urls =
-    optionalEnv("BROWSER_AGENT_BLOCK_IMAGES") === "true"
-      ? [...HEAVY_RESOURCE_BLOCKLIST, ...IMAGE_BLOCKLIST]
-      : HEAVY_RESOURCE_BLOCKLIST;
+    optionalEnv("BROWSER_AGENT_BLOCK_IMAGES") === "false"
+      ? HEAVY_RESOURCE_BLOCKLIST
+      : [...HEAVY_RESOURCE_BLOCKLIST, ...IMAGE_BLOCKLIST];
   try {
     await cdp.sendCDP("Network.enable");
     await cdp.sendCDP("Network.setBlockedURLs", { urls });
