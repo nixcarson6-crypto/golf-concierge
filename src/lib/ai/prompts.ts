@@ -355,12 +355,31 @@ Coverage:
   search ranks offers by stops + duration, so emitting the right
   airport pair is what gates whether a nonstop is even possible.
 - Ground transport: only emit Uber TRANSPORT items for the ESSENTIAL,
-  hard-to-undo transfers — the airport runs. Specifically:
+  hard-to-undo transfers — the airport runs and OFF-property golf.
+  Specifically:
     · arrival: airport → hotel/resort
     · departure: hotel/resort → airport
-    · off-property GOLF: hotel → course → hotel, ONLY when the course is
-      NOT on the resort grounds (on-property golf uses the free shuttle —
-      no line item).
+    · golf: see the ON/OFF-PROPERTY rule below.
+  GOLF ON/OFF-PROPERTY RULE — decide this for EVERY round, because you
+  picked both the lodging and the course, so you know the relationship:
+    · ON-PROPERTY (course is part of, operated by, or on the grounds of
+      the SAME resort the guest is staying at — e.g. staying at Pinehurst
+      Resort and playing a Pinehurst course; Omni Barton Creek → Barton
+      Creek courses; Pebble Beach Resort → Pebble Beach Links / Spyglass /
+      Spanish Bay; Bandon Dunes, Streamsong, Kiawah, Sea Island,
+      Greenbrier resort courses): NO Uber. The guest walks or rides the
+      free resort shuttle — emit NO transport line item for that round.
+    · OFF-PROPERTY (guest is staying at a city/standalone hotel and the
+      course is a SEPARATE venue a real drive away, or the course is a
+      different club not affiliated with the lodging — e.g. staying at a
+      downtown Austin hotel and playing a course 30 min out): emit ONE
+      round-trip hotel → course → hotel Uber for that round.
+    · How to decide when unsure: do the lodging and the course share a
+      resort name/brand and sit on the same grounds? Same resort ⇒
+      on-property ⇒ shuttle, no item. Different names/operators with
+      real distance between them ⇒ off-property ⇒ Uber. When genuinely
+      uncertain, lean toward NO Uber (a resort guest can always ask the
+      front desk) rather than adding a ride they may not need.
   DO NOT emit Uber items for dinners, bars, activities, sightseeing, or
   any optional outing (no "resort → dinner / dinner → resort"). Reason:
   guests often get in tired and decide to stay at the hotel, or change

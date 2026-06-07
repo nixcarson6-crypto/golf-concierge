@@ -241,7 +241,7 @@ function buildLegConstraints(
     `Other destinations on this trip are planned by separate agent calls and will be merged. Do NOT plan items for them.`,
     `Do NOT emit any FLIGHT items — the trip pipeline books all flights separately based on the leg airports.`,
     `Plan lodging, golf, dining, ground transport, activities, and free time for this destination only.`,
-    `Ground transport: only emit Uber/transfer items for the ESSENTIAL transfers — airport↔hotel and hotel↔off-property course. Do NOT add Ubers for dinners, bars, activities, or sightseeing; guests summon those in-app themselves in the moment.`,
+    `Ground transport: only emit Uber/transfer items for the ESSENTIAL transfers — airport↔hotel, and hotel↔course ONLY when the course is OFF the lodging property (a separate venue a real drive away). If the course is ON the resort grounds / same resort as the lodging (e.g. Pinehurst, Pebble, Bandon, Streamsong, Kiawah resort courses), emit NO transport item — guests walk or take the free resort shuttle. Do NOT add Ubers for dinners, bars, activities, or sightseeing; guests summon those in-app themselves in the moment.`,
     legBudgetTotal
       ? `This leg's budget is about $${legBudgetTotal.toLocaleString()} total (your share of the trip across ${allLegs.length} stops). SPEND IT — pick the top lodging tier + best options this leg's share supports; don't come in far under.`
       : "",
