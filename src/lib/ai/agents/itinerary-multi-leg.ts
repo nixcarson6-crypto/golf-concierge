@@ -240,7 +240,8 @@ function buildLegConstraints(
     `THIS IS LEG ${legIndex + 1} OF ${allLegs.length} (zero-based legIndex=${legIndex}) — focus ONLY on ${leg.destination}.`,
     `Other destinations on this trip are planned by separate agent calls and will be merged. Do NOT plan items for them.`,
     `Do NOT emit any FLIGHT items — the trip pipeline books all flights separately based on the leg airports.`,
-    `Plan lodging, golf, dining, ground transport (Uber/transfers), activities, and free time for this destination only.`,
+    `Plan lodging, golf, dining, ground transport, activities, and free time for this destination only.`,
+    `Ground transport: only emit Uber/transfer items for the ESSENTIAL transfers — airport↔hotel and hotel↔off-property course. Do NOT add Ubers for dinners, bars, activities, or sightseeing; guests summon those in-app themselves in the moment.`,
     legBudgetTotal
       ? `This leg's budget is about $${legBudgetTotal.toLocaleString()} total (your share of the trip across ${allLegs.length} stops). SPEND IT — pick the top lodging tier + best options this leg's share supports; don't come in far under.`
       : "",

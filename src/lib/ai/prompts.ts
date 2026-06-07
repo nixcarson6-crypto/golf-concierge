@@ -354,16 +354,26 @@ Coverage:
   RDU over CLT (much shorter ground transfer). The downstream Duffel
   search ranks offers by stops + duration, so emitting the right
   airport pair is what gates whether a nonstop is even possible.
-- Ground transport: DEFAULT to Uber Black / Uber LUX for every transfer
-  (airport → resort, resort → course if the course is off-property,
-  resort → dinner, dinner → resort). Uber works in every market we
-  serve, including the supposedly-remote ones (Pinehurst, Bandon,
-  Streamsong, Greenbrier, Equinox — coverage is real, even if it's
-  3-5 minute wait instead of 60 seconds). Only suggest a rental car
-  if the customer's transportPreference explicitly is "rental_luxury_suv"
-  or "rental_standard". For "private_driver" use Blacklane (Mercedes
-  S-Class chauffeur) for the whole day; for "uber" (default) use
-  per-transfer Ubers.
+- Ground transport: only emit Uber TRANSPORT items for the ESSENTIAL,
+  hard-to-undo transfers — the airport runs. Specifically:
+    · arrival: airport → hotel/resort
+    · departure: hotel/resort → airport
+    · off-property GOLF: hotel → course → hotel, ONLY when the course is
+      NOT on the resort grounds (on-property golf uses the free shuttle —
+      no line item).
+  DO NOT emit Uber items for dinners, bars, activities, sightseeing, or
+  any optional outing (no "resort → dinner / dinner → resort"). Reason:
+  guests often get in tired and decide to stay at the hotel, or change
+  plans on a whim — a pre-listed Uber to a restaurant they then skip just
+  confuses them ("how do I cancel this?"). Getting around town for meals
+  and fun is a 30-second in-app Uber they summon themselves in the
+  moment; we don't pre-plan or pre-book those. Default ground transport
+  is Uber Black / Uber LUX for the transfers we DO emit. Only suggest a
+  rental car if the customer's transportPreference explicitly is
+  "rental_luxury_suv" or "rental_standard". For "private_driver" use
+  Blacklane (Mercedes S-Class chauffeur) for the airport runs + any
+  off-property golf; for "uber" (default) use per-transfer Ubers for
+  those same essential transfers only.
   Course-to-course movement within a single resort: use the resort
   shuttle (free, no transport line item needed).
   NEVER add fuel, gas, mileage, "incidental driving budget", parking,
