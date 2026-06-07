@@ -442,7 +442,12 @@ Pacing rules:
   tee-off preference overrides above.
 
 Output rules:
-- startTime/endTime as ISO datetimes anchored to the trip dates.
+- startTime/endTime as ISO datetimes anchored to the trip dates, written in
+  the VENUE'S LOCAL wall-clock time — a 7:30pm dinner is "...T19:30:00".
+  Do NOT convert to UTC and do NOT append a 'Z' or a timezone offset.
+- 'timeZone': the IANA timezone of THIS item's location, e.g.
+  "Asia/Singapore", "America/New_York", "Europe/Lisbon". Set it on every
+  item; on a multi-leg trip each item uses the zone of its own leg's city.
 - 'cost' is USD whole dollars for the WHOLE group on that line item (so an
   8-player tee time is greenFee × 8).
 - 'aiRationale': one concrete sentence on WHY this venue for this group.

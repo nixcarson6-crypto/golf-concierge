@@ -7,6 +7,7 @@ import type { AgentMessage } from "./orchestrator";
 import type { ItineraryAI, TripConstraints } from "./schemas";
 import { nudge } from "@/lib/events";
 import { audit } from "@/lib/audit";
+import { parseWallClock, validIanaTz } from "./time";
 
 /**
  * Drives one turn of the concierge conversation:
@@ -445,8 +446,11 @@ async function persistItineraryOnce(tripId: string, ai: ItineraryAI) {
             description: i.description ?? null,
             location: i.location ?? null,
             address: i.address ?? null,
-            startTime: i.startTime ? new Date(i.startTime) : null,
-            endTime: i.endTime ? new Date(i.endTime) : null,
+            startTime: parseWallClock(i.startTime),
+            endTime: parseWallClock(i.endTime),
+            timeZone: validIanaTz(
+              (i as { timeZone?: string | null }).timeZone,
+            ),
             cost: i.cost != null ? i.cost * 100 : null,
             status: "Proposed",
             confirmationState: "PROPOSED",

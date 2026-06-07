@@ -406,6 +406,11 @@ model ItineraryItem {
   longitude         Float?
   startTime         DateTime?
   endTime           DateTime?
+  /// IANA timezone of the item's location (e.g. "Asia/Singapore"). The
+  /// startTime/endTime instant encodes the venue's local wall-clock as UTC;
+  /// the UI renders in UTC + this label so times never shift to the viewer's
+  /// own zone. Null on older rows / when the model didn't supply one.
+  timeZone          String?
   cost              Int?               // cents
   /// Free-form short status label for UI ("Searching availability…")
   status            String?

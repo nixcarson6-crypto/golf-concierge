@@ -998,6 +998,56 @@ function SuggestedFlightsSection({
 }
 
 /**
+ * Itinerary times are stored as the venue's LOCAL wall-clock encoded as UTC
+ * (see persistItinerary in conversation.ts). So we read them back in UTC to
+ * recover the exact digits the planner intended — NEVER the viewer's browser
+ * zone, which previously turned a 7:30pm Singapore dinner into 6:30am and
+ * scattered items across the wrong days. When an item carries an IANA
+ * timeZone we append a short label ("SGT", "GMT+8", "EDT") so the customer
+ * knows the time is local to the venue, not their own clock.
+ */
+function tzShortLabel(d: Date, timeZone?: string | null): string | null {
+  if (!timeZone) return null;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      timeZoneName: "short",
+    }).formatToParts(d);
+    return parts.find((p) => p.type === "timeZoneName")?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function fmtLocalTime(
+  iso: string | null,
+  timeZone?: string | null,
+): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const time = d.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+  });
+  const label = tzShortLabel(d, timeZone);
+  return label ? `${time} ${label}` : time;
+}
+
+function fmtLocalDayHeader(iso: string | null): string {
+  if (!iso) return "Trip plan";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Trip plan";
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
  * Trip-level totals summary. Sits between the header and the action
  * sections so the customer always sees the running cost and the
  * planned-vs-booked status at a glance.
@@ -1026,21 +1076,33 @@ function TotalsBanner({
       ? Math.min(...suggestedFlights.offers.map((o) => o.totalAmount))
       : 0;
   // Best-case full-trip estimate: planned itinerary + cheapest flight
-  // option if not yet booked. We don't double-count: if a flight is
-  // booked, the booking row already includes that cost; the cheapest-
-  // suggested layer only contributes when there's no real booking yet.
+  // option ONLY when flights aren't already represented in the total.
+  // Two ways they can be: a CONFIRMED flight booking, OR — the common
+  // case — priced FLIGHT items already living in the itinerary (the build
+  // writes the live Duffel fare onto FLIGHT items). Adding the suggested-
+  // flight layer on top of either double-counts the airfare, which is what
+  // inflated the banner to $57,932 when the real planned total was $35,166.
   const hasBookedFlight = bookings.some(
     (b) => b.type === "FLIGHT" && b.status === "CONFIRMED",
   );
-  const flightProvision = hasBookedFlight ? 0 : cheapestSuggestedFlight;
+  const hasPlannedFlightCost = (itinerary?.items ?? []).some(
+    (it) => it.type === "FLIGHT" && (it.cost ?? 0) > 0,
+  );
+  const flightProvision =
+    hasBookedFlight || hasPlannedFlightCost ? 0 : cheapestSuggestedFlight;
   const grandTotal = itineraryTotal + flightProvision;
 
-  // How many bookable items still have NO confirmed price? When most of
-  // the trip isn't priced yet, the running total reads misleadingly low
-  // ("$7,538" when the Four Seasons suite alone is more). Surface the
-  // count so the number is honestly framed as partial, not final.
-  const bookableItems = (itinerary?.items ?? []).filter(
-    (it) => it.type !== "FREE_TIME" && it.type !== "TRANSPORT",
+  // How many bookable items still have NO confirmed price? Only count the
+  // types that can EVER carry a hard price — FLIGHT / LODGING / TEE_TIME.
+  // DINING, SPA, ACTIVITY, NIGHTLIFE are unknowable up-front by design (see
+  // the pricing rules in CLAUDE.md) and TRANSPORT shows Uber ranges, so
+  // counting them as "still being priced — total will rise" is a lie: they
+  // will NEVER get a price. Before this fix a Singapore trip with 16
+  // dining/activity picks claimed "18 more items being priced" when only
+  // the 2 golf tee times were genuinely pending.
+  const PENDING_PRICE_TYPES = new Set(["FLIGHT", "LODGING", "TEE_TIME"]);
+  const bookableItems = (itinerary?.items ?? []).filter((it) =>
+    PENDING_PRICE_TYPES.has(it.type),
   );
   const unpricedCount = bookableItems.filter(
     (it) => it.cost == null || it.cost === 0,
@@ -1350,26 +1412,12 @@ function ItineraryCategoriesSection({
     return out;
   }, [itinerary]);
 
-  const fmtTimeOnly = (iso: string | null): string | null => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
+  const fmtTimeOnly = (
+    iso: string | null,
+    timeZone?: string | null,
+  ): string | null => fmtLocalTime(iso, timeZone);
 
-  const fmtDayHeader = (iso: string | null): string => {
-    if (!iso) return "Trip plan";
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "Trip plan";
-    return d.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  const fmtDayHeader = (iso: string | null): string => fmtLocalDayHeader(iso);
 
   /** Bucket items in chronological order into runs that share a calendar day. */
   function groupByDay(items: WorkspaceItineraryItem[]): {
@@ -1466,7 +1514,7 @@ function ItineraryCategoriesSection({
                         </p>
                       )}
                       {group.items.map((it) => {
-                        const time = fmtTimeOnly(it.startTime);
+                        const time = fmtTimeOnly(it.startTime, it.timeZone);
                         return (
                           <button
                             key={it.id}
@@ -1590,23 +1638,16 @@ function ItineraryDaysSection({
 
   const fmtDay = (key: string): string => {
     if (key === "no-date") return "Trip plan";
-    const d = new Date(key);
-    return d.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-    });
+    // key is a YYYY-MM-DD UTC date string from the grouping above; render it
+    // in UTC so the weekday/day match the bucket (viewer-zone formatting
+    // could roll a UTC-midnight date back to the previous day).
+    return fmtLocalDayHeader(`${key}T00:00:00Z`);
   };
 
-  const fmtTime = (iso: string | null): string | null => {
-    if (!iso) return null;
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
+  const fmtTime = (
+    iso: string | null,
+    timeZone?: string | null,
+  ): string | null => fmtLocalTime(iso, timeZone);
 
   return (
     <>
@@ -1628,7 +1669,7 @@ function ItineraryDaysSection({
             </p>
             <div className="space-y-1.5">
               {items.map((it) => {
-                const time = fmtTime(it.startTime);
+                const time = fmtTime(it.startTime, it.timeZone);
                 return (
                   <button
                     key={it.id}
@@ -1871,15 +1912,11 @@ function ItineraryItemDialog({
       });
   }, [open, item.title, item.location, item.type]);
 
-  const startTime = item.startTime ? new Date(item.startTime) : null;
-  const fmtDate = (d: Date) =>
-    d.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-    });
-  const fmtTime = (d: Date) =>
-    d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const startTime = item.startTime;
+  // Render the item's stored wall-clock (UTC-encoded) in UTC + its venue
+  // timeZone label, matching the day-by-day list — never the viewer's zone.
+  const fmtDate = (iso: string | null) => fmtLocalDayHeader(iso);
+  const fmtTime = (iso: string | null) => fmtLocalTime(iso, item.timeZone);
 
   const deleteItem = async () => {
     if (deleting) return;

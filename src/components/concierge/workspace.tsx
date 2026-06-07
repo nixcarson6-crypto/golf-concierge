@@ -165,6 +165,10 @@ export type WorkspaceItineraryItem = {
   location: string | null;
   startTime: string | null;
   endTime: string | null;
+  /** IANA timezone of the item's location (e.g. "Asia/Singapore"). The
+   *  startTime/endTime wall-clock is local to this zone; the UI renders the
+   *  stored time in UTC to recover those digits and labels it with this. */
+  timeZone?: string | null;
   cost: number | null;
   status: string | null;
   confirmationState: ConfirmationState;

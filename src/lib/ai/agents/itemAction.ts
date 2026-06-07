@@ -8,6 +8,7 @@ import {
   findDestination,
 } from "@/lib/data/destinations";
 import { nudge } from "@/lib/events";
+import { parseWallClock, validIanaTz } from "../time";
 
 const SINGLE_ITEM_SYSTEM = `
 ${CONCIERGE_VOICE}
@@ -132,8 +133,11 @@ export async function runItemAction(input: ItemActionInput) {
           description: replaced.description ?? null,
           location: replaced.location ?? null,
           address: replaced.address ?? null,
-          startTime: replaced.startTime ? new Date(replaced.startTime) : null,
-          endTime: replaced.endTime ? new Date(replaced.endTime) : null,
+          startTime: parseWallClock(replaced.startTime),
+          endTime: parseWallClock(replaced.endTime),
+          timeZone: validIanaTz(
+            (replaced as { timeZone?: string | null }).timeZone,
+          ),
           cost: replaced.cost != null ? replaced.cost * 100 : null,
           aiRationale: replaced.aiRationale ?? null,
           metadata: (replaced.metadata as object | null) ?? undefined,

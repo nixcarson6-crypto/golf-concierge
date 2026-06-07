@@ -198,6 +198,7 @@ export async function GET(
               location: i.location,
               startTime: i.startTime?.toISOString() ?? null,
               endTime: i.endTime?.toISOString() ?? null,
+              timeZone: i.timeZone ?? null,
               cost: i.cost,
               status: i.status,
               confirmationState: i.confirmationState,
