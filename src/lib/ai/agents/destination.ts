@@ -61,7 +61,12 @@ export async function runDestinationAgent(input: DestinationAgentInput) {
             },
           ],
           maxTokens: 4000,
-          temperature: 0.55,
+          // Higher temperature so "surprise me" genuinely varies its #1
+          // pick run-to-run instead of always landing on the highest
+          // base-score market (Bandon Dunes). The prompt makes the
+          // customer's answers the primary driver; this adds spread among
+          // equally-good fits.
+          temperature: 0.8,
         });
       const isRetryable = (msg: string): boolean =>
         msg.includes("truncated at max_tokens") ||
