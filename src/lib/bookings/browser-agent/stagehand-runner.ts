@@ -216,6 +216,19 @@ HOTEL PLAYBOOK
 5. BUDGET — if the CHEAPEST available rate for any suitable room exceeds the budget ceiling, do NOT just stop. Report failed / budget_exceeded in your message and QUOTE THE EXACT PRICE you saw (e.g. "Cheapest available rate is Quinta Courtyard Suite at $24,368 for 7 nights — over the $X budget"). Never stop silently when the only issue is price.
 6. Continue to guest details, fill name/email/phone, proceed toward booking, and STOP at the payment/card step per rule 6 above (the system pays).
 
+ACCOUNT / REGISTRATION WALLS
+- PREFER GUEST CHECKOUT. Only create an account when the venue genuinely
+  REQUIRES it to book (e.g. a "visitor registration" / "Inscription visiteur"
+  wall with no guest option).
+- When registration IS mandatory: use the traveller's email + the EXACT
+  "Account password" given in the task (never invent your own), tick any
+  required terms checkbox, submit the registration, then CONTINUE the booking
+  flow to completion — registering is NOT the end, it's a step. Don't stop and
+  report needs_review just because you registered; push on to the tee-time /
+  room selection and the real confirmation.
+- A login wall for an account you DON'T have credentials for (no register
+  option, only "sign in"), or SMS/phone verification, → failed / login_required.
+
 GOLF / TEE-TIME PLAYBOOK
 - The booking lives under "Tee Times", "Book a Tee Time", "Golf", "Reserve", or a resort's "Experiences" / "Recreation" section — open it.
 - Many courses embed a booking widget (GolfNow, Lightspeed/Chronogolf, ForeUp, TeeQuest). That widget IS the real booking system — use it, even if the URL host changes.

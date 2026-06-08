@@ -205,6 +205,11 @@ export function buildGoal(
   lines.push(`- Email: ${t.email}`);
   lines.push(`- Phone: ${t.phone}`);
   if (t.dateOfBirth) lines.push(`- Date of birth (only if a field requires it): ${t.dateOfBirth}`);
+  if (task.accountPassword) {
+    lines.push(
+      `- Account password (ONLY if this venue FORCES you to create an account / register to book — e.g. a "visitor registration" wall): ${task.accountPassword}. Register with the email above + this exact password, accept the required terms, then CONTINUE to complete the booking. Do NOT invent your own password, and do NOT register when guest checkout is available.`,
+    );
+  }
   lines.push(``);
   lines.push(
     `The page is already open at ${v.startUrl}. Find the reservation flow, fill it in with the details above, submit, and stop when you see a confirmation page (quote the confirmation number). If you can't complete it, stop and clearly state which of the rules in your system prompt blocked you.`,

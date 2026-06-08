@@ -27,9 +27,21 @@ import { optionalEnv } from "@/lib/env";
 import { audit } from "@/lib/audit";
 import { withAgentRun } from "@/lib/ai/orchestrator";
 import { withSession, navigate } from "./runtime";
+import { randomBytes } from "node:crypto";
 import { runAgent } from "./agent";
 import { buildGoal } from "./goal";
 import { buildBookingTask } from "./types";
+
+/**
+ * A strong, single-venue account password for venues that force registration
+ * to book. Always satisfies the common upper/lower/digit/symbol rule. Stored
+ * on the booking (not a Pyltrix credential) so it's recoverable; the customer
+ * can also reset it via their own email since registration uses that email.
+ */
+function generateAccountPassword(): string {
+  const rand = randomBytes(12).toString("base64").replace(/[^a-zA-Z0-9]/g, "");
+  return `Pyltrix-${rand.slice(0, 10)}9!`;
+}
 import {
   verifyOutcome,
   toBookingStatus,
@@ -172,7 +184,29 @@ export async function runBrowserBooking(args: {
     address: item.address ?? item.location ?? null,
     phone: places.phone ?? null,
   };
-  const task = buildBookingTask({ request, traveler, venue });
+  // Managed password for venues that force account creation to book (Carson's
+  // call: auto-register + STORE the password so the customer can recover
+  // access / reset via their email). Reuse any password minted on a prior
+  // attempt so a retry never spawns a second account; otherwise mint a strong
+  // one and persist it on the booking now (before the agent might use it).
+  const bookingMeta = (booking.metadata as Record<string, unknown> | null) ?? {};
+  const priorAccount = bookingMeta.venueAccount as { password?: string } | undefined;
+  const accountPassword = priorAccount?.password ?? generateAccountPassword();
+  if (!priorAccount?.password) {
+    await db.booking
+      .update({
+        where: { id: booking.id },
+        data: {
+          metadata: {
+            ...bookingMeta,
+            venueAccount: { email: traveler.email, password: accountPassword },
+          } as object,
+        },
+      })
+      .catch(() => {});
+  }
+
+  const task = buildBookingTask({ request, traveler, venue, accountPassword });
   const goal = buildGoal(task);
 
   const cardProvider = buildCardProviderForBooking({

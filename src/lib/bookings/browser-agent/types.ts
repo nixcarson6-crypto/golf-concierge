@@ -65,6 +65,10 @@ export type BookingTask = {
   budgetCents: number | null;
   /** Same ceiling in whole USD for the prompt, or null. */
   budgetUsd: number | null;
+  /** A Pyltrix-managed password the agent uses IF (and only if) the venue
+   *  forces account creation to book. Stored on the booking so the customer
+   *  can recover access (or reset via their email). Null when not minted. */
+  accountPassword: string | null;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -129,6 +133,8 @@ export function buildBookingTask(args: {
   request: BookingRequest;
   traveler: TravelerIdentity;
   venue: VenueTarget;
+  /** Managed password for venues that force account creation. */
+  accountPassword?: string | null;
 }): BookingTask {
   const { request, traveler, venue } = args;
   const start = request.startTime ?? null;
@@ -164,6 +170,7 @@ export function buildBookingTask(args: {
     nights: nights && nights > 0 ? nights : null,
     budgetCents: normalizeBudget(request.budget),
     budgetUsd: centsToUsd(normalizeBudget(request.budget)),
+    accountPassword: args.accountPassword ?? null,
   };
 }
 
