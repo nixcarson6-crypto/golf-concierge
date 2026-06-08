@@ -580,10 +580,28 @@ export async function POST(
   // hops), and (c) the airports the itinerary picked match the ones
   // we predicted. Otherwise we ignore pre-search and run the full
   // FLIGHT-items-derived search — slower but always correct.
+  // The pre-search computed the home→leg0 outbound (+ final→home return)
+  // anchored to the RESOLVED origin (e.g. BOS) — exactly what the "Pick your
+  // flight" card needs. Use it whenever the itinerary's OWN flight items
+  // don't already model that outbound-from-origin bookend.
+  //
+  // BUG THIS FIXES (multi-leg trips, e.g. Croatia DBV→SPU→PUY): the
+  // synthesized US↔Croatia bookends carry no IATA metadata, so they get
+  // filtered out of flightItems (the filter requires valid 3-letter codes),
+  // leaving ONLY the inter-leg hops. The old check —
+  // flightItems[0].to === preSearch.airports.first — then failed (the first
+  // surviving item goes to Split, not Dubrovnik), so we discarded the good
+  // BOS-anchored offers and searched just the tiny inter-leg hops, which
+  // return nothing → the "Set your home airport" banner reappeared with the
+  // origin sitting right there. Anchoring on "does the itinerary already
+  // model the outbound from origin?" is what actually matters.
+  const itineraryHasOutboundFromOrigin = flightItems.some(
+    (f) => f.from === originFromQuiz,
+  );
   const preSearchUsable =
     preSearch != null &&
-    flightItems.length <= 2 &&
-    (flightItems[0]?.to ?? preSearch.airports.first) === preSearch.airports.first;
+    preSearch.offers.length > 0 &&
+    !itineraryHasOutboundFromOrigin;
 
   // Run the flight search when EITHER we have IATA-tagged FLIGHT items to
   // slice on, OR the parallel pre-search already returned offers. The
@@ -655,7 +673,12 @@ export async function POST(
         suggestedFlights = {
           fetchedAt: new Date().toISOString(),
           origin: originFromQuiz,
-          destination: flightItems[0]?.to ?? preSearch?.airports.first ?? "",
+          // When we're showing the pre-search offers (home→leg0), the
+          // destination label is leg0's airport — NOT flightItems[0], which
+          // on a multi-leg trip is an inter-leg hop (e.g. →Split).
+          destination: preSearchUsable
+            ? (preSearch?.airports.first ?? "")
+            : (flightItems[0]?.to ?? preSearch?.airports.first ?? ""),
           cabin,
           passengers: groupSize,
           offers: offers.slice(0, 3),
