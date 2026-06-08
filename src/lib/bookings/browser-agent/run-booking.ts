@@ -227,7 +227,9 @@ export async function runBrowserBooking(args: {
       const attemptOnce = async () => {
         try {
           if (useStagehand) {
-            const { runStagehandBooking } = await import("./stagehand-runner");
+            const { runStagehandBooking, browserbaseRegionFor } = await import(
+              "./stagehand-runner"
+            );
             // Per-type step budget. Hotels run the longest flow
             // (date→search→room→rate→guest-details) and blew past the old
             // flat 35-step cap; car rentals are medium (location→dates→
@@ -247,6 +249,10 @@ export async function runBrowserBooking(args: {
               advancedStealth: stealthOn,
               timeoutMs: 600_000,
               maxSteps,
+              // Run the browser in the region nearest the venue so each of
+              // the ~25 actions has a short round-trip (an Italian hotel
+              // booked from US-West sends every click across the Atlantic).
+              region: browserbaseRegionFor(venue.address),
               // Just-in-time payment: when the agent reaches the card step,
               // this charges the customer + mints a single-use virtual card
               // and the runner types it in. Returns `unavailable` (→ clean

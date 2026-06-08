@@ -61,6 +61,35 @@ const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 35;
 // progress. Tunable per-deploy via STAGEHAND_TOOL_TIMEOUT_MS.
 const TOOL_TIMEOUT_MS = Number(optionalEnv("STAGEHAND_TOOL_TIMEOUT_MS")) || 25_000;
 
+// Default Browserbase region when we can't infer one from the venue.
+const DEFAULT_REGION = optionalEnv("BROWSERBASE_REGION") || "us-west-2";
+
+/**
+ * Pick the Browserbase region closest to the venue so the browser↔site
+ * round-trip on EVERY action is short. Booking an Italian hotel from a
+ * US-West browser sends ~25 clicks across the Atlantic and back — minutes
+ * of pure latency. Matching the region to the venue's country is the single
+ * biggest speed win on overseas bookings (Croatia / Italy / Turkey / UK).
+ * Keyword match on the venue's address/location; falls back to DEFAULT_REGION.
+ */
+export function browserbaseRegionFor(location: string | null | undefined): string {
+  const t = (location ?? "").toLowerCase();
+  if (!t) return DEFAULT_REGION;
+  // Europe + Middle East + Africa → Frankfurt (closest BB region).
+  const EU =
+    /\b(italy|italia|sicil|france|spain|espa|portugal|germany|deutschland|switzerland|swiss|austria|netherlands|belgium|ireland|scotland|england|wales|united kingdom|\buk\b|britain|greece|croatia|hrvatska|slovenia|denmark|sweden|norway|finland|iceland|poland|czech|hungary|turkey|t[uü]rkiye|morocco|monaco|amalfi|tuscany|taormina|positano|capri|dubrovnik|split|venice|venezia|rome|roma|milan|milano|paris|lisbon|lisboa|madrid|barcelona|st\.? andrews|ballybunion|algarve|dubai|abu dhabi|\buae\b|emirates|qatar|doha|saudi|bahrain)\b/;
+  // East/South Asia + Oceania → Singapore.
+  const APAC =
+    /\b(japan|nippon|tokyo|kyoto|osaka|china|hong kong|singapore|thailand|bangkok|phuket|vietnam|malaysia|indonesia|bali|philippines|south korea|korea|seoul|australia|sydney|melbourne|new zealand|auckland|queenstown|fiji)\b/;
+  // US East + Caribbean → Virginia.
+  const US_EAST =
+    /\b(new york|florida|carolina|georgia|virginia|massachusetts|boston|miami|orlando|atlanta|pinehurst|bahamas|caribbean|dominican|puerto rico|jamaica|turks|cayman|nassau|new jersey|connecticut|maine|vermont|pennsylvania|maryland|washington,? d)\b/;
+  if (EU.test(t)) return "eu-central-1";
+  if (APAC.test(t)) return "ap-southeast-1";
+  if (US_EAST.test(t)) return "us-east-1";
+  return DEFAULT_REGION;
+}
+
 /** Schema the agent extracts from the final page — maps 1:1 to our
  *  RawBookingOutcome so verifyOutcome can gate it unchanged. */
 const stagehandOutcomeSchema = z.object({
@@ -123,6 +152,10 @@ export type RunStagehandOptions = {
   cardProvider?: CardProvider;
   /** Live progress callback → wire to updateProgress for the UI. */
   onStep?: (label: string) => void | Promise<void>;
+  /** Browserbase region (us-west-2 / us-east-1 / eu-central-1 /
+   *  ap-southeast-1). Set to the region nearest the venue so every action's
+   *  round-trip is short. Defaults to DEFAULT_REGION when unset. */
+  region?: string;
 };
 
 export type RunStagehandResult = {
@@ -253,6 +286,7 @@ export async function runStagehandBooking(
         ...(opts.advancedStealth ? { advancedStealth: true } : {}),
       },
       ...(opts.solveCaptchas ? { proxies: true } : {}),
+      region: opts.region ?? DEFAULT_REGION,
       timeout: Math.ceil(opts.timeoutMs / 1000) + 60,
     } as never,
   });
@@ -265,7 +299,7 @@ export async function runStagehandBooking(
 
   try {
     console.log(
-      `[stagehand] init… model=${STAGEHAND_MODEL} captcha=${opts.solveCaptchas} stealth=${opts.advancedStealth}`,
+      `[stagehand] init… model=${STAGEHAND_MODEL} region=${opts.region ?? DEFAULT_REGION} captcha=${opts.solveCaptchas} stealth=${opts.advancedStealth}`,
     );
     await stagehand.init();
     const sessionUrl = stagehand.browserbaseSessionURL ?? null;
