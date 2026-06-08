@@ -129,6 +129,10 @@ export type RunStagehandResult = {
   outcome: RawBookingOutcome;
   /** Browserbase session-replay URL for the proof/debug surface. */
   sessionUrl: string | null;
+  /** Base64 PNG of the final confirmation page — the customer's "Booked ✓"
+   *  proof. Null when the run failed before a proof-worthy page, or the
+   *  capture timed out. */
+  finalScreenshot: string | null;
 };
 
 /**
@@ -405,6 +409,7 @@ export async function runStagehandBooking(
               "Booking stopped — the AI account ran out of credits. Top up Anthropic billing and try again.",
           },
           sessionUrl,
+          finalScreenshot: null,
         };
       }
       if (
@@ -423,6 +428,7 @@ export async function runStagehandBooking(
               "The booking session dropped before finishing — retrying on a fresh session.",
           },
           sessionUrl,
+          finalScreenshot: null,
         };
       }
     }
@@ -465,6 +471,7 @@ export async function runStagehandBooking(
                 card.reason.replace(/\s*(Stop entering payment and )?call report_outcome[^.]*\.?/gi, "").trim(),
             },
             sessionUrl,
+            finalScreenshot: null,
           };
         }
         // Card in hand. Type it and submit. Scoped instruction — the PAN
@@ -497,6 +504,7 @@ export async function runStagehandBooking(
                 "We secured your payment but hit a snag entering it on the venue's checkout — Pyltrix is finishing this booking manually and will confirm shortly.",
             },
             sessionUrl,
+            finalScreenshot: null,
           };
         }
         // Fall through to the proof extract below — it reads the
@@ -563,6 +571,16 @@ export async function runStagehandBooking(
         ? result.message.slice(0, 240)
         : extracted.message;
 
+    // Capture the final page as the customer's proof. We're sitting on the
+    // post-booking page right now (the extract just read it), so this is the
+    // confirmation screen for a success, or wherever it stopped for a
+    // needs_review. Best-effort + bounded — a video-heavy page can stall the
+    // capture, and proof is a nice-to-have, never worth failing the booking.
+    const finalScreenshot =
+      extracted.status === "confirmed" || extracted.status === "needs_review"
+        ? await captureProofScreenshot(page)
+        : null;
+
     return {
       outcome: {
         status: extracted.status,
@@ -573,6 +591,7 @@ export async function runStagehandBooking(
         message,
       },
       sessionUrl,
+      finalScreenshot,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -589,6 +608,7 @@ export async function runStagehandBooking(
         message: msg,
       },
       sessionUrl: null,
+      finalScreenshot: null,
     };
   } finally {
     clearTimeout(wallClock);
@@ -790,6 +810,33 @@ async function blockHeavyResources(page: unknown): Promise<void> {
     console.warn(
       `[stagehand] heavy-resource block skipped: ${e instanceof Error ? e.message : e}`,
     );
+  }
+}
+
+/**
+ * Capture the current page as a base64 PNG — the customer's booking proof.
+ * Uses CDP Page.captureScreenshot (no Playwright screenshot dependency),
+ * bounded by a wall-clock so a never-settling page (looping hero video)
+ * can't hang the capture. Best-effort: returns null on any failure or
+ * timeout — proof is a bonus, never worth failing or stalling the booking.
+ */
+async function captureProofScreenshot(
+  page: unknown,
+  timeoutMs = 8000,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.sendCDP !== "function") return null;
+  try {
+    const shot = await Promise.race([
+      cdp.sendCDP<{ data?: string }>("Page.captureScreenshot", {
+        format: "png",
+        captureBeyondViewport: false,
+      }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+    return shot?.data ?? null;
+  } catch {
+    return null;
   }
 }
 

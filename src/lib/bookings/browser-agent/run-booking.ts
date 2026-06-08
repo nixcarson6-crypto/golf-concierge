@@ -257,7 +257,10 @@ export async function runBrowserBooking(args: {
                 await bridgeNudge(label);
               },
             });
-            return { outcome: result.outcome, finalScreenshot: null };
+            return {
+              outcome: result.outcome,
+              finalScreenshot: result.finalScreenshot,
+            };
           }
           const result = await withSession(async (session) => {
             await bridgeNudge(`Opening ${shortHost(startUrl)}…`);
