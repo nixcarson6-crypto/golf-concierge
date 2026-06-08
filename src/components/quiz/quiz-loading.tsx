@@ -124,7 +124,7 @@ export function QuizLoading({ tripId }: { tripId?: string }) {
               ? "Complex multi-destination trips can take 1–3 minutes. Still working — hang tight."
               : elapsed < 300
                 ? "Big multi-leg trips or slow networks can push past 5 minutes. Still working — don't refresh."
-                : "This is taking longer than usual. We'll time out at 8 minutes; refresh and try a simpler request if it doesn't finish."}
+                : "This is taking longer than usual. We'll time out at 12 minutes; refresh and try a simpler request if it doesn't finish."}
         </p>
       </div>
     </div>

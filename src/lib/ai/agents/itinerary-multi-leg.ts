@@ -44,7 +44,7 @@ export type MultiLegResult = {
  * actually FASTER than all-at-once. Bump via MULTI_LEG_CONCURRENCY once on a
  * higher API tier.
  */
-const DEFAULT_CONCURRENCY = 2;
+const DEFAULT_CONCURRENCY = 4;
 
 /** Hard ceiling per leg. A single stuck Opus call (truncation-retry loop,
  *  overload backoff) can't hang the whole build past this — it just fails

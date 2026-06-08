@@ -125,15 +125,15 @@ export function QuizContainer({ tripId }: { tripId: string }) {
 
   const submit = async () => {
     setSubmitting(true);
-    // 8-minute client-side hard ceiling. Server-side maxDuration is 5
-    // minutes (Vercel Pro cap) but on slow networks (e.g. a phone
-    // hotspot) the request can spend an extra few minutes just on the
-    // round-trip + DB writes from a far-away region. Keeping the client
-    // generous prevents falsely killing a build that would otherwise
-    // finish — premature abort is way more user-hostile than a long
-    // spinner with clear progress text.
+    // 12-minute client-side hard ceiling. Big multi-leg trips (3-4 stops)
+    // legitimately need several minutes of itinerary generation, and on a
+    // slow DB / far-away region the round-trip + writes add more. Keeping
+    // the client generous prevents falsely killing a build that would
+    // otherwise finish — premature abort is way more user-hostile than a
+    // long spinner with clear progress text. (Server maxDuration is the
+    // hard cap in production; this just stops the browser giving up early.)
     const controller = new AbortController();
-    const abortTimer = setTimeout(() => controller.abort(), 8 * 60 * 1000);
+    const abortTimer = setTimeout(() => controller.abort(), 12 * 60 * 1000);
     // One silent auto-retry on transient server failures (502, network
     // blip) before we dump the customer to the error banner. Most
     // 'we couldn't finish your itinerary' failures are model-tier
