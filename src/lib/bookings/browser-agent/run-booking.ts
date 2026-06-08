@@ -52,7 +52,11 @@ export async function runBrowserBooking(args: {
     db.booking.findUnique({ where: { id: args.bookingId } }),
     db.itineraryItem.findUnique({
       where: { id: args.itineraryItemId },
-      include: { itinerary: { select: { tripId: true } } },
+      include: {
+        itinerary: {
+          select: { tripId: true, trip: { select: { groupSize: true } } },
+        },
+      },
     }),
     db.user.findUnique({
       where: { id: args.userId },
@@ -125,8 +129,15 @@ export async function runBrowserBooking(args: {
     dateOfBirth: user.dateOfBirth
       ? user.dateOfBirth.toISOString().slice(0, 10)
       : null,
+    // Party size = how many people the reservation is for. The trip's
+    // groupSize is the source of truth (the customer answered "2 players");
+    // a per-item metadata override wins if the itinerary set one (e.g. a
+    // dinner for a subset). Only fall back to 1 when we truly have nothing —
+    // booking 2 travelers as "1 adult" was a real bug.
     partySize:
-      (item.metadata as { partySize?: number } | null)?.partySize ?? 1,
+      (item.metadata as { partySize?: number } | null)?.partySize ??
+      item.itinerary.trip?.groupSize ??
+      1,
   };
 
   if (!traveler.givenName || !traveler.familyName || !traveler.email) {
