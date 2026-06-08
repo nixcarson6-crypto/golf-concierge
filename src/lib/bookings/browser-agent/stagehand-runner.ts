@@ -576,9 +576,15 @@ export async function runStagehandBooking(
     // confirmation screen for a success, or wherever it stopped for a
     // needs_review. Best-effort + bounded — a video-heavy page can stall the
     // capture, and proof is a nice-to-have, never worth failing the booking.
+    //
+    // CAPTURE THE ACTIVE TAB, NOT pages[0]. Venues routinely open their
+    // booking engine in a NEW tab ("Book Online" → third-party engine), so
+    // the confirmation lives on the LAST-opened page, not the original
+    // homepage tab. Grab the freshest page (matches what extract() read).
+    const proofPage = stagehand.context.pages().at(-1) ?? page;
     const finalScreenshot =
       extracted.status === "confirmed" || extracted.status === "needs_review"
-        ? await captureProofScreenshot(page)
+        ? await captureProofScreenshot(proofPage)
         : null;
 
     return {
