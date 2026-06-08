@@ -313,6 +313,28 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       if (!res.ok) throw new Error("Failed to load workspace");
       return res.json();
     },
+    // The booking agent runs in the BACKGROUND for minutes and writes its
+    // result (Booked / Needs review / Failed + confirmation #) to the DB.
+    // The UI must reflect that WITHOUT depending on the SSE bridge, which can
+    // silently fail (notably the nudge→stream hop). So:
+    //  - poll every 3s WHILE any booking is actively in flight, and stop once
+    //    everything is terminal (no idle polling);
+    //  - keep polling even when the tab is backgrounded — the customer is
+    //    usually watching the booking happen on the venue tab — so the result
+    //    is already there when they switch back;
+    //  - refetch on focus + zero staleTime so returning to Pyltrix always
+    //    shows the latest.
+    refetchInterval: (query) => {
+      const snap = query.state.data as WorkspaceSnapshot | undefined;
+      const items = snap?.itinerary?.items ?? [];
+      const ACTIVE = new Set(["PENDING", "SEARCHING", "HELD"]);
+      return items.some((it) => it.booking && ACTIVE.has(it.booking.status))
+        ? 3000
+        : false;
+    },
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   // (Chat suggestions query removed — ConciergeChat is no longer
