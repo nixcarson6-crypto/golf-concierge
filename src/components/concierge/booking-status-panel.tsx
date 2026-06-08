@@ -359,6 +359,60 @@ export function BookingStatusPanel({
     },
     [removingId, bookingId, qc, tripId],
   );
+
+  // Sold-out recovery: when an item failed with no_availability, fetch the
+  // single best comparable alternative (Haiku swap call), apply it, and let
+  // the row flip back to "Tap to book" on the new venue. Carson's call:
+  // auto-SUGGEST (swap in the alternative), not auto-book — the customer
+  // still taps to book the replacement. The swap endpoint resets the stale
+  // booking so the row becomes bookable again.
+  const [findingAltId, setFindingAltId] = React.useState<string | null>(null);
+  const findAlternative = React.useCallback(
+    async (item: WorkspaceItineraryItem) => {
+      if (findingAltId || bookingId) return;
+      setFindingAltId(item.id);
+      try {
+        const url = `/api/trips/${tripId}/itinerary-items/${item.id}/swap`;
+        const res = await fetch(url);
+        const data = (await res.json().catch(() => null)) as {
+          alternatives?: Array<{
+            name: string;
+            description?: string;
+            location?: string;
+            estimatedCostUSD?: number;
+          }>;
+        } | null;
+        const alt = data?.alternatives?.[0];
+        if (!res.ok || !alt) {
+          toast.error("Couldn't find an alternative — try the website below.");
+          return;
+        }
+        const apply = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: alt.name,
+            description: alt.description,
+            location: alt.location,
+            estimatedCostUSD: alt.estimatedCostUSD,
+          }),
+        });
+        if (!apply.ok) {
+          toast.error("Couldn't apply the alternative — try again.");
+          return;
+        }
+        toast.success(
+          `${item.title} was full — swapped in ${alt.name}. Tap to book it.`,
+        );
+        void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+      } catch {
+        toast.error("Network error — try again.");
+      } finally {
+        setFindingAltId(null);
+      }
+    },
+    [findingAltId, bookingId, qc, tripId],
+  );
   const items = React.useMemo(
     () => (itinerary?.items ?? []).filter((i) => i.type !== "FREE_TIME"),
     [itinerary],
@@ -508,6 +562,11 @@ export function BookingStatusPanel({
                   // so we surface the venue's phone + a pre-drafted email.
                   const isPhoneOnly =
                     kind === "failed" && failureReason === "form_not_found";
+                  // Sold out for the trip's dates. The venue exists and is
+                  // bookable — there's just no inventory — so the concierge
+                  // move is to offer a comparable alternative, not a dead end.
+                  const isSoldOut =
+                    kind === "failed" && failureReason === "no_availability";
                   // Hotels, golf, and car rentals are agent-bookable.
                   const canBook =
                     isAgentBookable(item.type, item.title, item.description) &&
@@ -617,6 +676,28 @@ export function BookingStatusPanel({
                           )}
                         </button>
                       </div>
+                      {isSoldOut && (
+                        <div className="pl-9 pr-2.5 pb-2 -mt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => void findAlternative(item)}
+                            disabled={findingAltId !== null || bookingId !== null}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--copper))] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[hsl(var(--copper))]/90 transition disabled:opacity-60"
+                          >
+                            {findingAltId === item.id ? (
+                              <>
+                                <Loader2 className="size-3.5 animate-spin" />
+                                Finding an available option…
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="size-3.5" />
+                                Sold out — find an available alternative
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
                       {showContacts && (
                         <div className="flex flex-wrap items-center gap-1.5 pl-9 pr-2.5 pb-2 -mt-0.5">
                           {phone && (

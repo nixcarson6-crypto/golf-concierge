@@ -174,12 +174,25 @@ export async function POST(
         choice.estimatedCostUSD != null
           ? choice.estimatedCostUSD * 100
           : item.cost,
+      // A swapped venue is a fresh, unbooked pick — reset the confirmation
+      // state so the item is bookable again. (Key for the sold-out recovery
+      // flow: a no_availability FAILED item swapped to a new venue must flip
+      // back to "Tap to book", not stay stuck on "Couldn't book".)
+      confirmationState: "PROPOSED",
       metadata: {
         ...meta,
         swappedAt: new Date().toISOString(),
         swappedFrom: item.title,
       },
     },
+  });
+
+  // The old booking attempt was for the venue we just replaced — it's stale.
+  // Clear any non-confirmed booking so the row starts clean on the new venue.
+  // (itineraryItemId is unique, so this is at most one row; never touches a
+  // genuinely CONFIRMED booking.)
+  await db.booking.deleteMany({
+    where: { itineraryItemId: item.id, status: { not: "CONFIRMED" } },
   });
   nudge(tripId);
 
