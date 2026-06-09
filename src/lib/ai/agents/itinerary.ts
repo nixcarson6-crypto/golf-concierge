@@ -80,7 +80,7 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
       // away. Best-effort: empty section if the search returns nothing.
       const nearbyCourses = await searchGolfCoursesNear(input.destination);
       const courseSection = nearbyCourses.length
-        ? `NEARBY_COURSES (LIVE Google search near "${input.destination}", ranked with ratings — these are REAL courses that actually exist here. STRONGLY prefer the best-rated course that's genuinely CLOSE to the lodging; do NOT haul the guest to a famous course far away when a good one is nearby):\n${formatCoursesForPrompt(nearbyCourses)}\n\n`
+        ? `NEARBY_COURSES (LIVE Google search near "${input.destination}", ALREADY RANKED best-review-first — these are REAL courses that exist here. If the customer did NOT name a specific course, DEFAULT to the TOP entry (the best-reviewed) that's genuinely close to the lodging. Never haul the guest to a famous course far away when a higher-reviewed one is nearby):\n${formatCoursesForPrompt(nearbyCourses)}\n\n`
         : "";
 
       const userMessage = isRefine

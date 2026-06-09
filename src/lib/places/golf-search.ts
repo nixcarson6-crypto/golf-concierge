@@ -74,11 +74,26 @@ export async function searchGolfCoursesNear(
         ratingCount: p.userRatingCount ?? null,
         website: p.websiteUri ?? null,
       }))
-      .filter((c) => c.name);
+      .filter((c) => c.name)
+      // Rank by review QUALITY so the best-reviewed course is first — what
+      // the customer wants when they haven't named a course. Bayesian
+      // average (prior 4.0, weight 20) so a 5.0★ with 2 reviews can't
+      // outrank a 4.6★ with 500.
+      .sort((a, b) => bayesianScore(b) - bayesianScore(a));
   } catch (e) {
     console.warn(`[places/golf] ${(e as Error).message}`);
     return [];
   }
+}
+
+/** Bayesian-average review score: pulls low-sample ratings toward a 4.0
+ *  prior so a 5.0★/2-reviews can't beat a 4.6★/500-reviews. */
+function bayesianScore(c: NearbyCourse): number {
+  if (c.rating == null) return 0;
+  const n = c.ratingCount ?? 0;
+  const PRIOR = 4.0;
+  const WEIGHT = 20;
+  return (c.rating * n + PRIOR * WEIGHT) / (n + WEIGHT);
 }
 
 /** Compact, prompt-ready lines: "★4.6 (320) — Il Picciolo Etna Golf Club — Castiglione…". */
