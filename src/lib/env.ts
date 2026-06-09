@@ -34,6 +34,10 @@ const definitions = {
   STRIPE_WEBHOOK_SECRET: { required: false },
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: { required: false },
 
+  // LiteAPI — primary hotel booking API (search + book ~2M properties). The
+  // browser agent is the fallback for properties it doesn't cover.
+  LITEAPI_KEY: { required: false },
+
   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: { required: false },
   GOOGLE_MAPS_SERVER_API_KEY: { required: false },
 

@@ -20,6 +20,7 @@
     "check:agent": "dotenv -e .env.local -- tsx scripts/agent-dryrun.ts",
     "check:browser": "dotenv -e .env.local -- tsx scripts/browser-smoke.ts",
     "check:stripe": "dotenv -e .env.local -- tsx scripts/check-stripe.ts",
+    "check:liteapi": "dotenv -e .env.local -- tsx scripts/check-liteapi.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {
