@@ -1,12 +1,14 @@
 /**
- * Prove LiteAPI's EUROPEAN luxury coverage + measure real booking-API speed.
+ * Targeted LiteAPI lookup: does it carry specific marquee resorts?
  *
  *   pnpm check:liteapi
  *
- * For each European market: the search round-trip TIME, the price range, the
- * 5 priciest properties, and a scan for real luxury brands (Four Seasons,
- * Ritz, Aman, Belmond, Rosewood…). Retries once on a 429 rate-limit and
- * paces requests so the sandbox doesn't throttle. Read-only — no booking.
+ * For each target city we check BOTH:
+ *  - the static hotel DB (listHotels) → does the property even EXIST in
+ *    LiteAPI, and scan its name for the brand we're after;
+ *  - live rates (searchHotelRates) → is it bookable for the dates, + price.
+ * This separates "not in LiteAPI at all" from "in LiteAPI, no rates for
+ * these dates / city-name didn't match". Read-only — no booking.
  */
 
 import {
@@ -18,52 +20,52 @@ import {
 const CHECKIN = "2026-09-10";
 const CHECKOUT = "2026-09-12";
 
-const MARKETS = [
-  { label: "Florence, Italy", countryCode: "IT", cityName: "Florence" },
-  { label: "Milan, Italy", countryCode: "IT", cityName: "Milan" },
-  { label: "Paris, France", countryCode: "FR", cityName: "Paris" },
+// label, country, city variants to try, and the brand keywords to look for.
+const TARGETS = [
+  { label: "Splendido, Portofino", cc: "IT", cities: ["Portofino", "Santa Margherita Ligure"], look: ["splendido", "belmond"] },
+  { label: "Aman Venice", cc: "IT", cities: ["Venice", "Venezia"], look: ["aman"] },
+  { label: "Milan (re-test by name)", cc: "IT", cities: ["Milan", "Milano"], look: ["four seasons", "bulgari", "mandarin", "armani"] },
 ];
-
-const LUXURY = [
-  "four seasons", "ritz", "st. regis", "st regis", "waldorf", "fairmont",
-  "mandarin oriental", "peninsula", "aman", "rosewood", "belmond", "bulgari",
-  "montage", "auberge", "park hyatt", "jw marriott", "conrad", "edition",
-  "savoy", "savoia", "danieli", "gritti", "cipriani", "hassler", "de russie",
-  "le bristol", "plaza", "crillon", "george v", "shangri", "raffles",
-];
-
-const isLuxury = (n: string) => {
-  const s = n.toLowerCase();
-  return LUXURY.some((k) => s.includes(k));
-};
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Run a market search, retrying once on a 429 throttle. */
-async function searchWithRetry(m: (typeof MARKETS)[number]) {
-  for (let attempt = 1; attempt <= 2; attempt++) {
+async function listWithRetry(cc: string, city: string) {
+  for (let a = 1; a <= 2; a++) {
     try {
-      const t0 = Date.now();
-      const rates = await searchHotelRates({
-        checkin: CHECKIN,
-        checkout: CHECKOUT,
-        adults: 2,
-        countryCode: m.countryCode,
-        cityName: m.cityName,
-        currency: "USD",
-      });
-      return { rates, ms: Date.now() - t0 };
+      return await listHotels({ countryCode: cc, cityName: city, limit: 100 });
     } catch (e) {
-      const msg = (e as Error).message;
-      if (msg.includes("429") && attempt === 1) {
-        console.log("  …rate-limited, waiting 4s and retrying");
+      if ((e as Error).message.includes("429") && a === 1) {
         await sleep(4000);
         continue;
       }
       throw e;
     }
   }
-  throw new Error("unreachable");
+  return [];
+}
+
+async function ratesWithRetry(cc: string, city: string) {
+  for (let a = 1; a <= 2; a++) {
+    try {
+      const t0 = Date.now();
+      const rates = await searchHotelRates({
+        checkin: CHECKIN,
+        checkout: CHECKOUT,
+        adults: 2,
+        countryCode: cc,
+        cityName: city,
+        currency: "USD",
+      });
+      return { rates, ms: Date.now() - t0 };
+    } catch (e) {
+      if ((e as Error).message.includes("429") && a === 1) {
+        await sleep(4000);
+        continue;
+      }
+      throw e;
+    }
+  }
+  return { rates: [], ms: 0 };
 }
 
 async function main() {
@@ -73,45 +75,38 @@ async function main() {
   }
   console.log(`✓ LITEAPI_KEY detected. ${CHECKIN} → ${CHECKOUT}, 2 adults.\n`);
 
-  for (const m of MARKETS) {
-    console.log(`══ ${m.label} ══`);
-    try {
-      const { rates, ms } = await searchWithRetry(m);
-      const hotels = await listHotels({
-        countryCode: m.countryCode,
-        cityName: m.cityName,
-        limit: 100,
-      });
-      const nameById = new Map(hotels.map((h) => [h.id, h.name]));
-      const priced = rates
-        .filter((r) => r.cheapestTotal != null)
-        .map((r) => ({ ...r, name: r.name ?? nameById.get(r.hotelId) ?? r.hotelId }))
-        .sort((a, b) => (b.cheapestTotal ?? 0) - (a.cheapestTotal ?? 0));
-
-      console.log(`  ⏱  search round-trip: ${(ms / 1000).toFixed(1)}s`);
-      if (priced.length === 0) {
-        console.log("  (no bookable rates)\n");
-        await sleep(1500);
-        continue;
+  for (const t of TARGETS) {
+    console.log(`══ ${t.label} ══`);
+    let found = false;
+    for (const city of t.cities) {
+      try {
+        const hotels = await listWithRetry(t.cc, city);
+        const hits = hotels.filter((h) =>
+          t.look.some((k) => h.name.toLowerCase().includes(k)),
+        );
+        console.log(`  [${city}] ${hotels.length} hotels in LiteAPI's DB`);
+        if (hits.length) {
+          found = true;
+          hits.forEach((h) => console.log(`    ★ FOUND: ${h.name} (${h.id})`));
+        }
+        await sleep(1200);
+      } catch (e) {
+        console.error(`  [${city}] ✗ ${(e as Error).message}`);
       }
-      console.log(
-        `  ${rates.length} hotels · range $${priced[priced.length - 1].cheapestTotal} → $${priced[0].cheapestTotal} (2 nights)`,
-      );
-      console.log("  PRICIEST:");
-      priced.slice(0, 5).forEach((r) => console.log(`    • ${r.name} — $${r.cheapestTotal}`));
-
-      const lux = hotels.filter((h) => isLuxury(h.name));
-      console.log(`  LUXURY NAMES (${lux.length} of ${hotels.length} listed):`);
-      if (lux.length === 0) console.log("    — none matched —");
-      lux.slice(0, 12).forEach((h) => console.log(`    ★ ${h.name}`));
-    } catch (e) {
-      console.error(`  ✗ ${(e as Error).message}`);
     }
-    console.log("");
-    await sleep(1500); // pace requests to dodge the sandbox rate limit
-  }
 
-  console.log("Read the ⏱ times: that's how fast LiteAPI books vs. the agent's ~8 min.");
+    // Price the first city variant if anything was listed.
+    try {
+      const { rates, ms } = await ratesWithRetry(t.cc, t.cities[0]);
+      const priced = rates.filter((r) => r.cheapestTotal != null);
+      console.log(`  ⏱ rate search: ${(ms / 1000).toFixed(1)}s · ${priced.length} bookable for these dates`);
+    } catch (e) {
+      console.error(`  ✗ rates: ${(e as Error).message}`);
+    }
+
+    console.log(found ? "  → IN LiteAPI ✓\n" : "  → NOT found in LiteAPI (agent's job)\n");
+    await sleep(1500);
+  }
 }
 
 main().catch((e) => {
