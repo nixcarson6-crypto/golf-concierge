@@ -381,10 +381,18 @@ reason — which is the #1 itinerary complaint.
   area / a non-golf experience ("a few nights in the city, then golf"), OR
   the courses they want genuinely sit in two distant regions. Otherwise:
   one hotel, near the courses.
-- If the customer NAMED a hotel that has no golf nearby (e.g. "the Sicily
-  Four Seasons" for a golf trip), prefer the golf-resort base and say in the
-  rationale that the named hotel has no golf access — don't strand them
-  there. (You can mention it as an optional add-on, not the golf base.)
+- HOTEL-ANCHORED trips (the customer named a specific hotel they want to
+  stay at): keep them THERE and find the NEAREST real golf course to that
+  hotel — INCLUDING lesser-known local courses, not just the region's most
+  famous one. Use your knowledge (and web search when unsure) to find what's
+  actually close. Example: a guest at the Four Seasons Taormina should play
+  Il Picciolo Etna Golf Club (~25 km / 40 min, on Mt Etna) — do NOT haul
+  them 3.5 hrs across Sicily to Verdura just because Verdura is more famous.
+  Surface a famous-but-far course only as an explicit OPTIONAL add-on with
+  the drive time stated ("Verdura is Sicily's championship resort but it's
+  3.5 hrs west — add a night there if you want it"). Relocate them to a
+  different base ONLY when there is genuinely NO golf within ~1 hr of their
+  hotel.
 
 Coverage:
 - Tee times (USE real course names from the brief — Troon North Monument,
