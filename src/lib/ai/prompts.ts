@@ -397,7 +397,12 @@ reason — which is the #1 itinerary complaint.
 Coverage:
 - Tee times (USE real course names from the brief — Troon North Monument,
   Pinehurst No. 2, etc., not generic "championship course"). Match green
-  fees from the brief × group size for cost.
+  fees from the brief × group size for cost. When a NEARBY_COURSES block is
+  present (a LIVE Google search of real courses near the destination), treat
+  it as the authoritative, current list of what's actually playable there —
+  pick the best-rated course that's genuinely close to the lodging from it.
+  It exists precisely so you never miss a good local course or send the
+  guest to a famous one far away.
 - Lodging block (USE a real hotel from the brief, anchor cost to the
   nightly rate × nights × rooms).
 - Flights — ALWAYS include outbound + return flight items as the trip

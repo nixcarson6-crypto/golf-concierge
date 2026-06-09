@@ -10,6 +10,10 @@ import {
   findDestination,
 } from "@/lib/data/destinations";
 import { db } from "@/lib/db";
+import {
+  searchGolfCoursesNear,
+  formatCoursesForPrompt,
+} from "@/lib/places/golf-search";
 
 export type ItineraryAgentInput = {
   tripId: string;
@@ -69,8 +73,18 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
         ? `CONVERSATION_CONTEXT (from earlier turns):\n${convo.content}\n\n`
         : "";
 
+      // LIVE nearby-course search — REAL golf courses near this destination
+      // (Google ratings + addresses), so the AI picks the best LOCAL course
+      // instead of relying on memory. This is the fix for it once sending a
+      // Taormina guest 3.5 hrs to Verdura while missing Il Picciolo 40 min
+      // away. Best-effort: empty section if the search returns nothing.
+      const nearbyCourses = await searchGolfCoursesNear(input.destination);
+      const courseSection = nearbyCourses.length
+        ? `NEARBY_COURSES (LIVE Google search near "${input.destination}", ranked with ratings — these are REAL courses that actually exist here. STRONGLY prefer the best-rated course that's genuinely CLOSE to the lodging; do NOT haul the guest to a famous course far away when a good one is nearby):\n${formatCoursesForPrompt(nearbyCourses)}\n\n`
+        : "";
+
       const userMessage = isRefine
-        ? `${briefSection}${memberSection}${convoSection}Constraints:\n${JSON.stringify(
+        ? `${briefSection}${courseSection}${memberSection}${convoSection}Constraints:\n${JSON.stringify(
             input.constraints,
             null,
             2,
@@ -79,7 +93,7 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
             null,
             2,
           )}\n\nRefinement instruction:\n${input.refinementInstruction ?? "(none — adapt to updated constraints)"}\n\nProduce the new full itinerary now. List substitutions in 'changes'.`
-        : `${briefSection}${memberSection}${convoSection}Constraints:\n${JSON.stringify(
+        : `${briefSection}${courseSection}${memberSection}${convoSection}Constraints:\n${JSON.stringify(
             input.constraints,
             null,
             2,
