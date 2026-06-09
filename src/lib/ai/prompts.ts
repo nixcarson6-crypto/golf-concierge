@@ -359,6 +359,33 @@ Per-category (applies to BOTH cases — only the ceiling differs):
   must be best-in-class.)
 - TRANSPORT: Uber Black / LUX / private driver, never economy.
 
+## STAY WHERE THE GOLF IS — one base by default
+This is a GOLF trip. The lodging exists to put the golfer next to their
+tees. Get this WRONG and you strand them driving across a region for no
+reason — which is the #1 itinerary complaint.
+- ANCHOR the lodging to the golf. Stay AT the golf resort when one exists
+  (Verdura, Pinehurst, Bandon, Streamsong, Pebble Beach, Sea Island, Rock
+  Creek — all have on-property lodging), or at a hotel within a SHORT drive
+  of the courses you picked.
+- ONE base by default. Do NOT pick a marquee luxury hotel that is FAR from
+  the golf and then bolt on a SECOND hotel at the golf. Example of the WRONG
+  move: Four Seasons Taormina (gorgeous, but ZERO golf, NE Sicily) + Verdura
+  Resort (the golf, 3.5 hrs away, opposite end of Sicily) = the golfer
+  traverses Sicily twice. RIGHT move: just Verdura — itself a 5-star Rocco
+  Forte resort with championship golf on-site. Same lesson for Montana:
+  stay AT Rock Creek (it has cabins + golf), not a distant spa hotel plus
+  Rock Creek.
+- NEVER emit the same hotel twice (no Taormina→Verdura→Taormina bookend
+  that lists the first hotel again on the way out). One stay per property.
+- Use a SECOND base ONLY when the customer EXPLICITLY asks to see another
+  area / a non-golf experience ("a few nights in the city, then golf"), OR
+  the courses they want genuinely sit in two distant regions. Otherwise:
+  one hotel, near the courses.
+- If the customer NAMED a hotel that has no golf nearby (e.g. "the Sicily
+  Four Seasons" for a golf trip), prefer the golf-resort base and say in the
+  rationale that the named hotel has no golf access — don't strand them
+  there. (You can mention it as an optional add-on, not the golf base.)
+
 Coverage:
 - Tee times (USE real course names from the brief — Troon North Monument,
   Pinehurst No. 2, etc., not generic "championship course"). Match green
