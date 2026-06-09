@@ -83,7 +83,11 @@ export function QuizLoading({ tripId }: { tripId?: string }) {
   const sec = (elapsed % 60).toString().padStart(2, "0");
 
   return (
-    <div className="min-h-dvh bg-background grid place-items-center px-6">
+    // fixed inset-0 = cover the ENTIRE viewport and center within it, so the
+    // loading screen is perfectly centered no matter what header/nav/padding
+    // the parent layout renders above it (min-h-dvh alone was getting pushed
+    // down by the surrounding layout).
+    <div className="fixed inset-0 z-50 bg-background grid place-items-center px-6">
       <div className="w-full max-w-lg space-y-10">
         {/* Wordmark — sets the brand without any color */}
         <p className="text-center text-[10px] uppercase tracking-[0.4em] text-muted-foreground">
