@@ -245,6 +245,7 @@ WHEN TO STOP (report honestly)
 - Real confirmation visible → confirmed, number quoted.
 - No availability for the requested date (after confirming the date is set correctly) → failed / no_availability.
 - A captcha you can't pass → failed / captcha_blocked. Mandatory account login you don't have → failed / login_required.
+- WHOLE-SITE BOT BLOCK: if the page (or the whole domain) returns "Access Denied" / a bot-detection block (Akamai / PerimeterX / Cloudflare with a reference number — common on big chains like Marriott, Hilton, the OTAs), STOP IMMEDIATELY and report failed / captcha_blocked. Do NOT reload or re-navigate repeatedly — once the edge has blocked you it will keep blocking you, and retrying just burns time. One reload to confirm is fine; after that, report it.
 - Genuinely no online booking path at all (phone/email only) → failed / form_not_found — and quote the phone/email you saw.
 - PRIVATE / MEMBERS-ONLY venue (the only path is a members portal needing a member number, or the site says private club / not open to the public) → failed / members_only. Say so plainly — the public can't book here at all, so a different date or a retry won't help.
 - Card/deposit step reached → STOP with everything filled and the card fields BLANK (rule 6 — the system enters payment); note the room/tee time + total.

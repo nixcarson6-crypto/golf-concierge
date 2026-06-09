@@ -269,7 +269,7 @@ export async function runBrowserBooking(args: {
       // session means a fresh residential IP + clean fingerprint, which
       // is exactly what flips a captcha/bot-wall failure into a success
       // on the next try.
-      const attemptOnce = async () => {
+      const attemptOnce = async (attempt: number) => {
         try {
           if (useStagehand) {
             const { runStagehandBooking, browserbaseRegionFor } = await import(
@@ -291,7 +291,12 @@ export async function runBrowserBooking(args: {
               system: goal.system,
               task: goal.firstUserMessage,
               solveCaptchas: captchaOn,
-              advancedStealth: stealthOn,
+              // Escalate to advanced stealth on RETRIES. The first attempt
+              // uses the configured default; retries exist for exactly the
+              // bot-wall / captcha failures (Akamai 'Access Denied' on chains
+              // like Marriott), and stealth + a fresh residential IP is what
+              // actually slips past those — so give the retry its best shot.
+              advancedStealth: stealthOn || attempt > 1,
               timeoutMs: 600_000,
               maxSteps,
               // Run the browser in the region nearest the venue so each of
@@ -361,7 +366,7 @@ export async function runBrowserBooking(args: {
           );
           await sleep(1500);
         }
-        const r = await attemptOnce();
+        const r = await attemptOnce(attempt);
         outcome = r.outcome;
         finalScreenshot = r.finalScreenshot;
         const reason =
