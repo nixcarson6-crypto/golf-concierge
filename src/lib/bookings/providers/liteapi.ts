@@ -81,8 +81,66 @@ export async function listHotels(args: {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Rate search                                                                 */
+/* Name → hotelId resolution                                                   */
 /* -------------------------------------------------------------------------- */
+
+// Generic words that shouldn't count as a "match" on their own — otherwise
+// "Comfort Inn" would match "Inn at Spanish Bay". A real match needs a
+// DISTINCTIVE shared token (splendido / adare / phoenician / seasons).
+const GENERIC_TOKENS = new Set([
+  "the", "a", "an", "and", "by", "at", "of", "hotel", "hotels", "resort",
+  "resorts", "spa", "inn", "lodge", "suites", "suite", "collection", "golf",
+  "club", "country", "house", "grand", "palace", "villa", "rooms", "place",
+]);
+
+function nameTokens(name: string): Set<string> {
+  return new Set(
+    name
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length > 3 && !GENERIC_TOKENS.has(t)),
+  );
+}
+
+/**
+ * Resolve an itinerary hotel name to a LiteAPI hotelId. Lists the city's
+ * hotels and matches on DISTINCTIVE shared tokens (so "Comfort Inn" doesn't
+ * masquerade as "Inn at Spanish Bay"). Returns the best match, or null when
+ * LiteAPI doesn't carry the property → caller falls back to the browser agent.
+ */
+export async function resolveHotelId(args: {
+  name: string;
+  cityName: string;
+  countryCode: string;
+}): Promise<{ id: string; name: string } | null> {
+  // Strip a trailing room/suite descriptor ("Splendido — Belmond Suite").
+  const cleanName = args.name.split(/[—–-]/)[0]?.trim() || args.name;
+  const wanted = nameTokens(cleanName);
+  if (wanted.size === 0) return null;
+
+  let hotels: LiteHotel[];
+  try {
+    hotels = await listHotels({ countryCode: args.countryCode, cityName: args.cityName, limit: 100 });
+  } catch {
+    return null;
+  }
+
+  let best: { id: string; name: string } | null = null;
+  let bestScore = 0;
+  for (const h of hotels) {
+    const have = nameTokens(h.name);
+    let shared = 0;
+    for (const t of wanted) if (have.has(t)) shared++;
+    if (shared > bestScore) {
+      bestScore = shared;
+      best = h;
+    }
+  }
+  // Require at least one distinctive shared token.
+  return bestScore >= 1 ? best : null;
+}
 
 export type LiteRate = {
   hotelId: string;

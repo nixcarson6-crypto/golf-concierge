@@ -459,6 +459,9 @@ enum BookingProvider {
   UBER_FOR_BUSINESS
   BLACKLANE
   MANUAL
+  // LiteAPI bedbank — instant hotel booking via API (primary hotel path;
+  // the browser agent is the fallback for properties LiteAPI doesn't carry).
+  LITEAPI
   // Autonomous Claude browser agent that books on a vendor's own website
   // and pays with a single-use Stripe Issuing virtual card.
   BROWSER_AGENT

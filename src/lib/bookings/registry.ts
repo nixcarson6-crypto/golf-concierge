@@ -62,6 +62,8 @@ export function providerLabel(provider: BookingProvider): string {
       return "Booking.com";
     case "AMADEUS":
       return "Amadeus";
+    case "LITEAPI":
+      return "Instant booking";
     case "DUFFEL":
       return "Duffel";
     case "OPENTABLE":
