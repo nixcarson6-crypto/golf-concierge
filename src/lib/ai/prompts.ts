@@ -399,10 +399,15 @@ Coverage:
   Pinehurst No. 2, etc., not generic "championship course"). Match green
   fees from the brief × group size for cost. When a NEARBY_COURSES block is
   present (a LIVE Google search of real courses near the destination), treat
-  it as the authoritative, current list of what's actually playable there —
-  pick the best-rated course that's genuinely close to the lodging from it.
-  It exists precisely so you never miss a good local course or send the
-  guest to a famous one far away.
+  it as the authoritative list of what's actually PLAYABLE there — it exists
+  so you never MISS a nearby course. But judge course QUALITY like a luxury
+  golf concierge: weigh golf PEDIGREE first (championship caliber / Top-100 /
+  notable designer / tournament host — use what you know), with the Google
+  rating + proximity as STRONG supporting signals. Do NOT pick purely by
+  star rating — reviews measure "nice experience", not "best golf", so a
+  casual course can out-review a masterpiece. Among courses genuinely close
+  to the lodging, pick the best by pedigree; use the rating to break ties or
+  surface a hidden gem.
 - Lodging block (USE a real hotel from the brief, anchor cost to the
   nightly rate × nights × rooms).
 - Flights — ALWAYS include outbound + return flight items as the trip

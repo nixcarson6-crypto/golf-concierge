@@ -80,7 +80,7 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
       // away. Best-effort: empty section if the search returns nothing.
       const nearbyCourses = await searchGolfCoursesNear(input.destination);
       const courseSection = nearbyCourses.length
-        ? `NEARBY_COURSES (LIVE Google search near "${input.destination}", ALREADY RANKED best-review-first — these are REAL courses that exist here. If the customer did NOT name a specific course, DEFAULT to the TOP entry (the best-reviewed) that's genuinely close to the lodging. Never haul the guest to a famous course far away when a higher-reviewed one is nearby):\n${formatCoursesForPrompt(nearbyCourses)}\n\n`
+        ? `NEARBY_COURSES (LIVE Google search near "${input.destination}" — REAL courses that exist here, listed best-review-first with Google ratings. Use this for COVERAGE so you never miss a nearby course, and as a STRONG supporting signal. But judge course QUALITY like a luxury golf concierge: weigh golf PEDIGREE first (championship caliber / Top-100 ranking / notable designer / tournament history — use what you know), with the Google rating + proximity as strong support. Do NOT auto-pick purely by stars — reviews measure "nice day out", not "best golf", so a casual course can out-review a masterpiece. Among courses genuinely CLOSE to the lodging, pick the best by pedigree; use the rating to break ties or surface a hidden gem. Never haul the guest to a famous course far away when a comparable one is nearby):\n${formatCoursesForPrompt(nearbyCourses)}\n\n`
         : "";
 
       const userMessage = isRefine
