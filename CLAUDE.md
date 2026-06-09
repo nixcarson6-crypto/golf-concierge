@@ -102,7 +102,8 @@ otherwise read `.env` only, not `.env.local`.
 | Yelp Fusion | ✅ | Restaurant data only — can't book |
 | Stripe | ❌ | Bottleneck for any real money flow. Sign up takes 30 min |
 | Resend | ❌ | Invite/confirmation emails |
-| Hotelbeds | ⏳ emailed | Hotel inventory |
+| LiteAPI | ✅ sandbox | PRIMARY hotel booking API — wired (`LITEAPI_KEY`). Search-by-hotelId → prebook → book; agent fallback for uncovered. `pnpm check:liteapi` |
+| Hotelbeds | ⏳ emailed | Hotel inventory — apply via developer.hotelbeds.com (self-serve test keys). 2nd hotel API. |
 | OpenTable | ⏳ emailed | Real restaurant reservations |
 | GolfNow | ❌ | Apply ASAP — biggest US tee-time inventory |
 | Lightspeed Golf (Chronogolf) | ⏳ intake form filed | Independent courses |
@@ -421,6 +422,49 @@ unchecked item, and walk him through that application. Update the
 checkbox (`[ ]` → `[x]`) and commit when each one is submitted.
 
 **Today's session ("apply for APIs day"):**
+
+### Tier 0 — HOTEL APIs (the priority — instant, reliable hotel booking)
+
+**Architecture (decided June 2026):** hotels book **API-first** via a bedbank,
+with the **browser agent as fallback** for properties no API carries
+(Aman, Pinehurst/Pebble/Bandon resort-direct). Selection is API-BLIND — the
+itinerary AI picks the BEST hotel for the customer; we only choose
+API-vs-agent at booking time. Each new hotel API slots into the same
+`BookingProvider` registry pattern as LiteAPI (resolve name→id → rate-by-id
+→ prebook → book → persist; any miss → agent). Adding more bedbanks just
+shrinks the agent's share.
+
+- [x] **LiteAPI** — WIRED + validated (sandbox). `LITEAPI_KEY` in
+      `.env.local`. Covers most luxury in real markets (Florence Four
+      Seasons/St. Regis, Milan, Splendido Portofino/Belmond) in 3–9s; misses
+      Aman + US golf-resort-direct (agent's job). `pnpm check:liteapi`
+      validates the full booking flow. **Key learning: search rates BY
+      hotelId, not city name (city search is unreliable).**
+- [ ] **Hotelbeds (HBX Group / APItude)** — APPLY FIRST, fastest real path.
+      `developer.hotelbeds.com` → register → usually self-serve TEST/sandbox
+      keys, then apply for production. Deep European + leisure luxury (great
+      for the Italy/Croatia/Ireland trips). Was "emailed — pending"; the dev
+      portal test API is the faster door. Draft copy below.
+- [ ] **Expedia Rapid (EPS)** — apply in parallel; deepest inventory
+      (~700k+) but vets for traffic. `expediapartnersolutions.com` → Rapid
+      API → Get started. Same draft copy, swap the supplier name.
+- [~] **Booking.com** — DEPRIORITIZED. Their booking (Demand) API is
+      partner-gated + hard pre-launch (wants traffic we don't have). The
+      affiliate program is gettable but that's clickout, not API-booking.
+      Revisit post-launch with real traffic.
+- [~] **Tablet Hotels** — NOT viable: it's a curated CONSUMER luxury brand
+      (Michelin-owned), no third-party booking API. If we want deeper luxury
+      beyond Hotelbeds, target **RateHawk / Emerging Travel Group** instead
+      (luxury-decent, B2B-friendly).
+
+#### Draft application copy — Hotelbeds / Expedia Rapid (Carson's voice)
+> Pyltrix (pyltrix.com) is an AI luxury golf-travel concierge — customers
+> answer a short quiz and our AI builds and books a complete trip: flights,
+> lodging, tee times, dining, transport, end-to-end. We want [Hotelbeds /
+> Expedia Rapid] as a core hotel-supply source for our luxury leisure trips.
+> Pre-launch; first bookings Q3 2026, conservatively 20–50 room-nights/month
+> at launch, scaling with trip volume. Payments via Stripe; entity: LLC in
+> formation.
 
 ### Tier 1 — Golf inventory
 
