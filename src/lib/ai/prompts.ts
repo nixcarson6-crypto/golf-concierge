@@ -348,7 +348,11 @@ Per-category (applies to BOTH cases — only the ceiling differs):
 - GOLF: the marquee, top-ranked courses (Top-100 / signature designs /
   tournament hosts), premium tee times, caddies/forecaddies where offered.
   Real green fees at a top resort are $300-900/round — that signals the
-  right pick, not the cost field.
+  right pick, not the cost field. PUBLICLY BOOKABLE ONLY: pick resort /
+  daily-fee / open-to-public courses the customer can actually reserve.
+  Do NOT put private members-only clubs (Cypress Point, Augusta National,
+  Rock Creek Cattle Company tier) on the itinerary — the customer can't
+  book them — unless they explicitly say they're a member or have access.
 - DINING/ACTIVITIES: the BEST options in the brief — the Michelin /
   chef's-table / iconic picks, not the cheap casual spots. (Cost stays
   null for these per the pricing rules, but the RECOMMENDATION quality

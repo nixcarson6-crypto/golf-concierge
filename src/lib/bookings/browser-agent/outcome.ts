@@ -22,6 +22,7 @@ import { z } from "zod";
 export const FAILURE_CODES = [
   "declined_card", // vendor checkout rejected the (virtual) card
   "no_availability", // requested date/time/party not bookable
+  "members_only", // private members-only club — public can't book at all
   "captcha_blocked", // unsolvable CAPTCHA / bot wall
   "login_required", // mandatory account login we don't have
   "form_not_found", // no online booking form (phone/email-only venue)

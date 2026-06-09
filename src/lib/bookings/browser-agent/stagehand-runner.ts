@@ -114,6 +114,7 @@ const stagehandOutcomeSchema = z.object({
     .enum([
       "declined_card",
       "no_availability",
+      "members_only",
       "captcha_blocked",
       "login_required",
       "form_not_found",
@@ -245,6 +246,7 @@ WHEN TO STOP (report honestly)
 - No availability for the requested date (after confirming the date is set correctly) → failed / no_availability.
 - A captcha you can't pass → failed / captcha_blocked. Mandatory account login you don't have → failed / login_required.
 - Genuinely no online booking path at all (phone/email only) → failed / form_not_found — and quote the phone/email you saw.
+- PRIVATE / MEMBERS-ONLY venue (the only path is a members portal needing a member number, or the site says private club / not open to the public) → failed / members_only. Say so plainly — the public can't book here at all, so a different date or a retry won't help.
 - Card/deposit step reached → STOP with everything filled and the card fields BLANK (rule 6 — the system enters payment); note the room/tee time + total.
 - Going in circles with no progress → needs_review describing exactly where you're stuck.
 
@@ -990,6 +992,8 @@ function classifyFromAgentMessage(
   const m = (msg ?? "").toLowerCase();
   if (/no (rooms?|availability|times?|slots?)|sold out|fully booked|unavailable/i.test(m))
     return "failed";
+  if (/members?[- ]?only|private (members'?|club)|member(ship)? (number|required|portal)|not open to the public/i.test(m))
+    return "failed";
   if (/captcha|are you (a )?human|bot detection|cloudflare/i.test(m))
     return "failed";
   if (/must (sign in|log in)|account required|login required/i.test(m))
@@ -1005,6 +1009,7 @@ function reasonFromAgentMessage(
   msg: string,
 ):
   | "no_availability"
+  | "members_only"
   | "captcha_blocked"
   | "login_required"
   | "form_not_found"
@@ -1013,6 +1018,8 @@ function reasonFromAgentMessage(
   const m = (msg ?? "").toLowerCase();
   if (/no (rooms?|availability|times?|slots?)|sold out|fully booked|unavailable/i.test(m))
     return "no_availability";
+  if (/members?[- ]?only|private (members'?|club)|member(ship)? (number|required|portal)|not open to the public/i.test(m))
+    return "members_only";
   if (/captcha|are you (a )?human|bot detection|cloudflare/i.test(m))
     return "captcha_blocked";
   if (/must (sign in|log in)|account required|login required/i.test(m))

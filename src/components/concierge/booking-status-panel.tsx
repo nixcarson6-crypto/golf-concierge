@@ -567,6 +567,12 @@ export function BookingStatusPanel({
                   // move is to offer a comparable alternative, not a dead end.
                   const isSoldOut =
                     kind === "failed" && failureReason === "no_availability";
+                  // Private members-only club (e.g. Rock Creek Cattle Co.):
+                  // the public can't book it AT ALL, ever. Same recovery —
+                  // tell the customer plainly and offer a bookable alternative.
+                  const isMembersOnly =
+                    kind === "failed" && failureReason === "members_only";
+                  const needsAlternative = isSoldOut || isMembersOnly;
                   // Hotels, golf, and car rentals are agent-bookable.
                   const canBook =
                     isAgentBookable(item.type, item.title, item.description) &&
@@ -676,8 +682,13 @@ export function BookingStatusPanel({
                           )}
                         </button>
                       </div>
-                      {isSoldOut && (
-                        <div className="pl-9 pr-2.5 pb-2 -mt-0.5">
+                      {needsAlternative && (
+                        <div className="pl-9 pr-2.5 pb-2 -mt-0.5 space-y-1">
+                          <p className="text-[11px] text-muted-foreground leading-snug">
+                            {isMembersOnly
+                              ? `${item.title} is a private members-only club — the public can't book it.`
+                              : `${item.title} is sold out for your dates.`}
+                          </p>
                           <button
                             type="button"
                             onClick={() => void findAlternative(item)}
@@ -687,12 +698,12 @@ export function BookingStatusPanel({
                             {findingAltId === item.id ? (
                               <>
                                 <Loader2 className="size-3.5 animate-spin" />
-                                Finding an available option…
+                                Finding a bookable option…
                               </>
                             ) : (
                               <>
                                 <Sparkles className="size-3.5" />
-                                Sold out — find an available alternative
+                                Find a bookable alternative
                               </>
                             )}
                           </button>
