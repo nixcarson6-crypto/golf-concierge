@@ -416,7 +416,30 @@ async function persistItineraryOnce(tripId: string, ai: ItineraryAI) {
         ...i,
         cost: PRICEABLE.has(i.type) ? i.cost : null,
       }));
-    const recomputedTotal = cleanItems.reduce(
+    // HARD GUARANTEE — never list the same hotel twice. The AI sometimes
+    // emits a property as two LODGING items (a Taormina→Verdura→Taormina
+    // bookend that repeats the first hotel, or two suites at one resort).
+    // Collapse LODGING items pointing at the SAME property to the first
+    // occurrence. (Two GENUINELY different hotels keep different keys and
+    // both survive — keeping them near the golf is the prompt's job; this
+    // only kills the literal duplicate the customer should never see.)
+    const seenHotels = new Set<string>();
+    const dedupedItems = cleanItems.filter((i) => {
+      if (i.type !== "LODGING") return true;
+      const key = (i.title ?? "")
+        .toLowerCase()
+        .split(/[—–-]/)[0] // drop a "— Junior Suite" room descriptor
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+      if (!key) return true;
+      if (seenHotels.has(key)) {
+        console.warn(`[persistItinerary] dropped duplicate hotel "${i.title}".`);
+        return false;
+      }
+      seenHotels.add(key);
+      return true;
+    });
+    const recomputedTotal = dedupedItems.reduce(
       (sum, i) => sum + (i.cost ?? 0),
       0,
     );
@@ -440,7 +463,7 @@ async function persistItineraryOnce(tripId: string, ai: ItineraryAI) {
         perPersonCost: recomputedPerPerson * 100,
         diff: ai.changes?.length ? { changes: ai.changes } : undefined,
         items: {
-          create: cleanItems.map((i, idx) => ({
+          create: dedupedItems.map((i, idx) => ({
             type: i.type,
             title: i.title,
             description: i.description ?? null,
