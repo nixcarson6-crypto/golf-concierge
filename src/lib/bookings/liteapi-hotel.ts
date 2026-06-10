@@ -44,17 +44,32 @@ function parseLocation(loc: string | null): { city: string; countryCode: string 
   if (!loc) return null;
   const parts = loc.split(",").map((p) => p.trim()).filter(Boolean);
   if (parts.length === 0) return null;
-  const city = parts[0];
   const last = parts[parts.length - 1].toLowerCase();
 
   let countryCode = COUNTRY_ISO[last] ?? null;
+  // Drop the country part from consideration once identified.
+  const working = countryCode ? parts.slice(0, -1) : [...parts];
   if (!countryCode) {
     // "NC 28374" / "CA 93953" → US; or any US state token anywhere.
     const tokens = parts.map((p) => p.toLowerCase().split(/\s+/)[0]);
     if (tokens.some((t) => US_STATES.has(t))) countryCode = "US";
   }
   if (!countryCode) return null;
-  return { city, countryCode };
+
+  // CITY ≠ parts[0]. Google Places hands us FULL street addresses
+  // ("10100 Dream Tree Blvd, Lake Buena Vista, FL 32836, USA") and taking
+  // parts[0] made us search LiteAPI for hotels in the city of "10100 Dream
+  // Tree Blvd" → no match → needless agent fallback (the Four Seasons 8-min
+  // booking). Walk from the END: skip anything with digits (street numbers,
+  // "FL 32836", postcodes) and bare state codes — the first clean part from
+  // the right is the city.
+  for (let i = working.length - 1; i >= 0; i--) {
+    const p = working[i];
+    if (/\d/.test(p)) continue;
+    if (US_STATES.has(p.toLowerCase())) continue;
+    return { city: p, countryCode };
+  }
+  return null;
 }
 
 export type LiteApiBookingResult = { booked: boolean; reason?: string };
@@ -73,15 +88,29 @@ export async function tryLiteApiHotelBooking(args: {
   if (!args.checkin || !args.checkout) return { booked: false, reason: "missing dates" };
   if (!args.traveler.email) return { booked: false, reason: "missing traveler email" };
   const loc = parseLocation(args.location);
-  if (!loc) return { booked: false, reason: "couldn't parse city/country" };
+  if (!loc) {
+    console.warn(
+      `[liteapi-hotel] couldn't parse city/country from "${args.location}" — agent fallback.`,
+    );
+    return { booked: false, reason: "couldn't parse city/country" };
+  }
 
   try {
+    console.log(
+      `[liteapi-hotel] resolving "${args.hotelName}" in ${loc.city}, ${loc.countryCode}…`,
+    );
     const hotel = await resolveHotelId({
       name: args.hotelName,
       cityName: loc.city,
       countryCode: loc.countryCode,
     });
-    if (!hotel) return { booked: false, reason: "not in LiteAPI" };
+    if (!hotel) {
+      console.warn(
+        `[liteapi-hotel] no match for "${args.hotelName}" in ${loc.city}, ${loc.countryCode} — agent fallback.`,
+      );
+      return { booked: false, reason: "not in LiteAPI" };
+    }
+    console.log(`[liteapi-hotel] matched → ${hotel.name} (${hotel.id}); fetching rates…`);
 
     const rates = await searchHotelRates({
       checkin: args.checkin,
