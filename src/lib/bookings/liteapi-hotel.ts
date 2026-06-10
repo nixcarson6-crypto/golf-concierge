@@ -119,10 +119,32 @@ export async function tryLiteApiHotelBooking(args: {
       hotelIds: [hotel.id],
       countryCode: loc.countryCode,
     });
-    const offer = rates.find((r) => r.cheapestOfferId);
-    if (!offer?.cheapestOfferId) return { booked: false, reason: "no rate for dates" };
+    const hotelRates = rates.find((r) => r.offers.length > 0);
+    if (!hotelRates) return { booked: false, reason: "no rate for dates" };
 
-    const pre = await prebook(offer.cheapestOfferId);
+    // Try up to 5 rates, cheapest first. Individual rates can 400 at prebook
+    // ("no prebook availability" — stale or non-prebookable); the next room
+    // type usually locks fine. Giving up after ONE attempt was sending
+    // bookable hotels to the 8-minute browser agent.
+    let pre: Awaited<ReturnType<typeof prebook>> | null = null;
+    let lockedTotal: number | null = null;
+    for (const cand of hotelRates.offers.slice(0, 5)) {
+      try {
+        pre = await prebook(cand.offerId);
+        lockedTotal = cand.total;
+        break;
+      } catch (e) {
+        console.warn(
+          `[liteapi-hotel] prebook failed on a rate (${(e as Error).message.slice(0, 110)}) — trying next rate…`,
+        );
+      }
+    }
+    if (!pre) {
+      return {
+        booked: false,
+        reason: `no prebookable rate (tried ${Math.min(5, hotelRates.offers.length)})`,
+      };
+    }
     const result = await book({
       prebookId: pre.prebookId,
       holder: {
@@ -140,10 +162,10 @@ export async function tryLiteApiHotelBooking(args: {
     });
 
     const costCents =
-      offer.cheapestTotal != null
-        ? Math.round(offer.cheapestTotal * 100)
-        : pre.total != null
-          ? Math.round(pre.total * 100)
+      pre.total != null
+        ? Math.round(pre.total * 100)
+        : lockedTotal != null
+          ? Math.round(lockedTotal * 100)
           : null;
 
     await db.booking.update({

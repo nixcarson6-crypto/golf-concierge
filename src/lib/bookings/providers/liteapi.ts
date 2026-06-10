@@ -150,6 +150,9 @@ export type LiteRate = {
   /** Cheapest total for the stay in `currency`, major units, or null. */
   cheapestTotal: number | null;
   currency: string;
+  /** ALL offers (one per room type), cheapest first — prebook fallbacks
+   *  for when an individual rate 400s with "no prebook availability". */
+  offers: Array<{ offerId: string; total: number | null }>;
 };
 
 /**
@@ -200,25 +203,32 @@ type LiteRawHotel = {
 };
 
 function summarizeHotel(h: LiteRawHotel, fallbackCurrency: string): LiteRate {
-  let cheapestOfferId: string | null = null;
-  let cheapestTotal: number | null = null;
   let currency = fallbackCurrency;
+  // Collect EVERY offer (one per room type), cheapest first — not just the
+  // single cheapest. Prebook can 400 on an individual rate ("no prebook
+  // availability" — stale/non-prebookable), and the right response is to
+  // try the NEXT rate, not give up on the whole hotel.
+  const offers: Array<{ offerId: string; total: number | null }> = [];
   for (const rt of h.roomTypes ?? []) {
+    if (!rt.offerId) continue;
+    let rtCheapest: number | null = null;
     for (const rate of rt.rates ?? []) {
       const total = rate.retailRate?.total?.[0]?.amount ?? null;
-      if (total != null && (cheapestTotal == null || total < cheapestTotal)) {
-        cheapestTotal = total;
-        cheapestOfferId = rt.offerId ?? null;
+      if (total != null && (rtCheapest == null || total < rtCheapest)) {
+        rtCheapest = total;
         currency = rate.retailRate?.total?.[0]?.currency ?? currency;
       }
     }
+    offers.push({ offerId: rt.offerId, total: rtCheapest });
   }
+  offers.sort((a, b) => (a.total ?? Infinity) - (b.total ?? Infinity));
   return {
     hotelId: String(h.hotelId ?? h.id ?? ""),
     name: h.name,
-    cheapestOfferId,
-    cheapestTotal,
+    cheapestOfferId: offers[0]?.offerId ?? null,
+    cheapestTotal: offers[0]?.total ?? null,
     currency,
+    offers,
   };
 }
 
