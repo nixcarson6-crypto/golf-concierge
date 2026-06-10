@@ -38,8 +38,14 @@ import type { CardProvider } from "./agent";
  *  mechanics (lean prompt, tight DOM-settle, skip redundant calls,
  *  enough steps to finish) — NOT by downgrading the model. Override with
  *  STAGEHAND_MODEL per-deploy. */
+// Haiku as the PLANNER too (execution was already Haiku). The per-step
+// thinking time is what blew the 3-minute budget on heavy hotel sites
+// (~8-12s/step on Sonnet vs ~3-5s on Haiku), and the booking smarts now
+// live in the prescriptive playbooks/prompts, not model deliberation.
+// Set STAGEHAND_MODEL=anthropic/claude-sonnet-4-6 to restore the slower,
+// more deliberate planner if quality ever dips.
 const STAGEHAND_MODEL =
-  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-sonnet-4-6";
+  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-haiku-4-5";
 // Default step cap. A restaurant/tee-time/spa reservation (navigate →
 // reservations → date → party → time slot → name/email/phone → submit →
 // confirmation) legitimately takes ~15-25 steps, so 35 is plenty AND
