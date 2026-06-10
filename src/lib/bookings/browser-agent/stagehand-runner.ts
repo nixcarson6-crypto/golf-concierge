@@ -59,7 +59,10 @@ const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 35;
 // big page, short enough that a genuine hang fails fast, hands the agent the
 // "try a different description" hint, and lets it recover + keep making
 // progress. Tunable per-deploy via STAGEHAND_TOOL_TIMEOUT_MS.
-const TOOL_TIMEOUT_MS = Number(optionalEnv("STAGEHAND_TOOL_TIMEOUT_MS")) || 25_000;
+// 15s: inside a 3-minute booking budget, a single hung action may not cost
+// more than ~8% of the clock. A legit action lands well under 15s; a hang
+// recovers fast and the agent moves on.
+const TOOL_TIMEOUT_MS = Number(optionalEnv("STAGEHAND_TOOL_TIMEOUT_MS")) || 15_000;
 
 // Default Browserbase region when we can't infer one from the venue.
 const DEFAULT_REGION = optionalEnv("BROWSERBASE_REGION") || "us-west-2";
