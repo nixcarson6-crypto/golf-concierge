@@ -603,6 +603,11 @@ export function cleanDestination(raw: string | null | undefined): string | null 
   );
   s = s.replace(/\s+for\s+(?:a\s+)?(?:weekend|week|trip|vacation|getaway|few\s+days|long\s+weekend|guys'?\s+trip|buddies'?\s+trip).*$/i, "");
   s = s.replace(/\s+with\s+.*$/i, "");
+  // Strip a trailing first-person desire clause that got glued onto the
+  // place when a connector split ate the verb's "to" — "Positano I want
+  // [to play golf]" → "Positano". Without this the junk lands in the
+  // trip TITLE ("Positano I Want").
+  s = s.replace(/\s+(?:i|we)\s+(?:want|wanna|need|would|like|hope|wish|love|just)\b.*$/i, "");
   // Strip terminal punctuation.
   s = s.replace(/[.!?,;:]+$/g, "").trim();
   // Multi-destination input ("Pinehurst for 5 days then Broadmoor for 4")
@@ -673,6 +678,14 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     // its own destination and the agent picks a random place for it.
     /^(the\s+)?rest\s+of\b/i,
     /^(just\s+)?(chill|relax|unwind|rest|wing\s+it|hang\s+out|do\s+nothing|free\s+time|whatever\s+else)\b/i,
+    // Bare travel-connector fragments stranded by the "to" splitter:
+    // "austria then HEAD OVER TO positano" splits on then/to and leaves
+    // "head over" (or the one-word "headover") as its own "leg". It then
+    // becomes a phantom destination — the agent once hallucinated a
+    // Ritz-Carlton DALLAS (the user's origin city!) for it. \s* covers
+    // the no-space dictation form.
+    /^(?:head|hop|go|move|fly|drive|travel|press|carry)\s*(?:over|on|out|down|up|across|along|onwards?)$/i,
+    /^(?:continue|onwards?|next|afterwards?|after\s+that)$/i,
   ];
   if (garbagePatterns.some((re) => re.test(s))) return null;
   // Sentence-shape rejections:
