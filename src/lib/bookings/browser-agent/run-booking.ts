@@ -327,13 +327,16 @@ export async function runBrowserBooking(args: {
               // like Marriott), and stealth + a fresh residential IP is what
               // actually slips past those — so give the retry its best shot.
               advancedStealth: stealthOn || attempt > 1,
-              // Hard per-attempt cap. The agent is for the long-tail venues
-              // LiteAPI can't book; an 8-min grind that may not even finish
-              // is worse than a fast clean fallback. Cap at 3 min (tunable
-              // via BROWSER_AGENT_TIMEOUT_MS). A booking that can't complete
-              // in 3 min isn't going to — surface the fallback instead.
+              // Hard per-attempt cap, sized per booking type. Hotels run the
+              // longest flow (splash → widget → dates → guests → search →
+              // room → rate → guest form) — ~30+ steps ≈ 3.5 min on a GOOD
+              // run, so a flat 3-min cap kept clipping them at the finish
+              // line (Borgo Egnazia died one step short, twice). Hotels get
+              // 4 min; everything else (golf/transport: short flows) stays
+              // at 3. BROWSER_AGENT_TIMEOUT_MS overrides both.
               timeoutMs:
-                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) || 180_000,
+                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
+                (item.type === "LODGING" ? 240_000 : 180_000),
               maxSteps,
               // Run the browser in the region nearest the venue so each of
               // the ~25 actions has a short round-trip (an Italian hotel
