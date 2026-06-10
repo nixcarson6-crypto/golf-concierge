@@ -106,7 +106,7 @@ otherwise read `.env` only, not `.env.local`.
 | Hotelbeds | ⏳ emailed | Hotel inventory — apply via developer.hotelbeds.com (self-serve test keys). 2nd hotel API. |
 | OpenTable | ⏳ emailed | Real restaurant reservations |
 | GolfNow | ❌ | Apply ASAP — biggest US tee-time inventory |
-| Lightspeed Golf (Chronogolf) | ⏳ intake form filed | Independent courses |
+| Lightspeed Golf (Chronogolf) | ⏳ intake filed + dev-partner application in progress | PRIORITY tee-time API (Partner API v2, books into the course's own tee sheet). Apply: lightspeedhq.com/partners/developers/ |
 | CarTrawler | ⏳ applied — **PARKED** | Pivoted to Uber-first; CarTrawler is fallback if/when approved |
 | Trawick | 📝 filling out forms | Travel insurance |
 | Uber Guest Rides API | ⏳ Central API access requested | The actual ground-transport integration. developer.uber.com/dashboard. Sandbox lets you build pre-approval — production needs the U4B grant |
@@ -468,19 +468,18 @@ shrinks the agent's share.
 
 ### Tier 1 — Golf inventory
 
-**⛳ DECISION (Carson, June 2026): golf needs NO APIs — book direct via
-the browser agent on each course's OWN website.** Real-world proof:
-Carson booked a course in Italy through Golfscape (an aggregator); at
-the pro shop they couldn't find the tee time — the aggregator booking
-never propagated to the course's own system. Booking directly on the
-course's site means the course SEES it in their system = secure +
-reliable. This is already how Pyltrix works (golf → full browser agent
-→ course's own site, no aggregator). So GolfNow / TeeOff / Supreme
-Golf / Golfscape / BRS are DE-PRIORITIZED — they're optional
-convenience for live availability lookups at best, and the Golfscape
-failure undercuts even that. Don't chase golf APIs pre-launch; the
-agent covers it. (Pending applications below can sit; no follow-up
-needed.)
+**⛳ STRATEGY UPDATED (Carson, June 9 2026): golf goes API-FIRST, agent
+fallback — same architecture as hotels.** The agent proved it CAN book tee
+times but is too slow (minutes per round vs seconds); after LiteAPI showed
+how good API-first feels, Carson reversed the earlier "no golf APIs" call.
+Priority door: **Lightspeed Golf Partner API v2**
+(partner-api.docs.chronogolf.com — OAuth, registered partner apps; apply
+via lightspeedhq.com/partners/developers/ + follow up on the previously
+filed Chronogolf intake). It books DIRECTLY into the course's own tee
+sheet, which also answers the old Golfscape objection (aggregator booking
+never reached the pro shop — Lightspeed IS the course's system). Supreme
+Golf remains the aggregator option for breadth. Agent keeps covering
+courses on no-API platforms.
 
 - [x] **GolfNow** (NBC Sports) — applied via direct email (not on CJ
       or Awin despite earlier assumption).
