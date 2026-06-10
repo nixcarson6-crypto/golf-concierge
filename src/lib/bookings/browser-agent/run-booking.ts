@@ -327,7 +327,13 @@ export async function runBrowserBooking(args: {
               // like Marriott), and stealth + a fresh residential IP is what
               // actually slips past those — so give the retry its best shot.
               advancedStealth: stealthOn || attempt > 1,
-              timeoutMs: 600_000,
+              // Hard per-attempt cap. The agent is for the long-tail venues
+              // LiteAPI can't book; an 8-min grind that may not even finish
+              // is worse than a fast clean fallback. Cap at 3 min (tunable
+              // via BROWSER_AGENT_TIMEOUT_MS). A booking that can't complete
+              // in 3 min isn't going to — surface the fallback instead.
+              timeoutMs:
+                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) || 180_000,
               maxSteps,
               // Run the browser in the region nearest the venue so each of
               // the ~25 actions has a short round-trip (an Italian hotel
@@ -387,7 +393,12 @@ export async function runBrowserBooking(args: {
       // use virtual card + the 2s auth webhook guarantee at most one
       // charge even if a retry somehow re-reached checkout, so retrying
       // is safe.
-      const RETRYABLE = new Set(["captcha_blocked", "timeout", "ambiguous"]);
+      // NOTE: "timeout" is deliberately NOT retryable. A venue that can't be
+      // booked inside the 3-min cap won't finish on a retry either — retrying
+      // just stacks 3 + 3 + 3 = 9 min, the exact grind we're killing. Timeout
+      // → straight to the clean fallback. Captcha/ambiguous still retry (they
+      // fail fast now and a fresh IP/stealth session genuinely flips them).
+      const RETRYABLE = new Set(["captcha_blocked", "ambiguous"]);
       const MAX_ATTEMPTS = Number(optionalEnv("BROWSER_AGENT_MAX_ATTEMPTS")) || 3;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         if (attempt > 1) {

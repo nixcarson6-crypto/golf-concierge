@@ -98,6 +98,9 @@ const definitions = {
   // "false" disables the CDP heavy-resource blocklist (analytics/ads/video
   // the DOM agent never needs). Default on — it speeds every page load.
   BROWSER_AGENT_BLOCK_HEAVY: { required: false },
+  // Hard per-attempt wall-clock for a browser-agent booking (ms). Default
+  // 180000 (3 min) — a venue that can't book in 3 min falls back cleanly.
+  BROWSER_AGENT_TIMEOUT_MS: { required: false },
   // Images are blocked during the agent run by DEFAULT (biggest page-load
   // win). Set "false" to restore a pristine confirmation screenshot at the
   // cost of speed.
