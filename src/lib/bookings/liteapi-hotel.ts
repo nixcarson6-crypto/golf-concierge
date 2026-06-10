@@ -57,19 +57,44 @@ function parseLocation(loc: string | null): { city: string; countryCode: string 
   if (!countryCode) return null;
 
   // CITY ≠ parts[0]. Google Places hands us FULL street addresses
-  // ("10100 Dream Tree Blvd, Lake Buena Vista, FL 32836, USA") and taking
-  // parts[0] made us search LiteAPI for hotels in the city of "10100 Dream
-  // Tree Blvd" → no match → needless agent fallback (the Four Seasons 8-min
-  // booking). Walk from the END: skip anything with digits (street numbers,
-  // "FL 32836", postcodes) and bare state codes — the first clean part from
-  // the right is the city.
+  // ("10100 Dream Tree Blvd, Lake Buena Vista, FL 32836, USA" or the
+  // European "Via Gesù 6/8, 20121 Milano MI, Italy"). Walk from the END
+  // and, within each part, strip postal/number tokens and 2-letter
+  // state/province codes — what's left of "20121 Milano MI" is "Milano",
+  // and "FL 32836" strips to nothing (skip). A bare has-digits test threw
+  // the European city away with its postcode. Part 0 is the street/venue
+  // in multi-part addresses — never treat it as the city.
   for (let i = working.length - 1; i >= 0; i--) {
-    const p = working[i];
-    if (/\d/.test(p)) continue;
-    if (US_STATES.has(p.toLowerCase())) continue;
-    return { city: p, countryCode };
+    if (i === 0 && working.length > 1) break;
+    const words = working[i]
+      .split(/\s+/)
+      .filter((w) => !/\d/.test(w) && !(w.length === 2 && w === w.toUpperCase()));
+    if (words.length === 0) continue;
+    const candidate = words.join(" ");
+    if (US_STATES.has(candidate.toLowerCase())) continue;
+    return { city: candidate, countryCode };
   }
   return null;
+}
+
+/** LiteAPI's index uses ENGLISH city names — "Milan" returns ~100 hotels,
+ *  "Milano" returns 2. Map the local names Google addresses use to the
+ *  English form LiteAPI knows; we try the alias first, then the original. */
+const CITY_ALIASES: Record<string, string> = {
+  milano: "Milan",
+  venezia: "Venice",
+  roma: "Rome",
+  firenze: "Florence",
+  napoli: "Naples",
+  torino: "Turin",
+  genova: "Genoa",
+  padova: "Padua",
+  "münchen": "Munich",
+  wien: "Vienna",
+  praha: "Prague",
+  lisboa: "Lisbon",
+  sevilla: "Seville",
+  "københavn": "Copenhagen",
 }
 
 export type LiteApiBookingResult = { booked: boolean; reason?: string };
@@ -96,17 +121,24 @@ export async function tryLiteApiHotelBooking(args: {
   }
 
   try {
+    // Try the English alias first (LiteAPI's index), then the local name.
+    const alias = CITY_ALIASES[loc.city.toLowerCase()];
+    const cityCandidates = alias ? [alias, loc.city] : [loc.city];
     console.log(
-      `[liteapi-hotel] resolving "${args.hotelName}" in ${loc.city}, ${loc.countryCode}…`,
+      `[liteapi-hotel] resolving "${args.hotelName}" in ${cityCandidates.join(" / ")}, ${loc.countryCode}…`,
     );
-    const hotel = await resolveHotelId({
-      name: args.hotelName,
-      cityName: loc.city,
-      countryCode: loc.countryCode,
-    });
+    let hotel: Awaited<ReturnType<typeof resolveHotelId>> = null;
+    for (const cityName of cityCandidates) {
+      hotel = await resolveHotelId({
+        name: args.hotelName,
+        cityName,
+        countryCode: loc.countryCode,
+      });
+      if (hotel) break;
+    }
     if (!hotel) {
       console.warn(
-        `[liteapi-hotel] no match for "${args.hotelName}" in ${loc.city}, ${loc.countryCode} — agent fallback.`,
+        `[liteapi-hotel] no match for "${args.hotelName}" in ${cityCandidates.join(" / ")}, ${loc.countryCode} — agent fallback.`,
       );
       return { booked: false, reason: "not in LiteAPI" };
     }
