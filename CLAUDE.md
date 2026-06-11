@@ -451,9 +451,15 @@ shrinks the agent's share.
       Palma). Production keys: apply once live. Deep European + leisure
       luxury (Italy/Croatia/Ireland trips). Also has Activities + Transfers
       APIs on the same account — future upside.
-- [ ] **Expedia Rapid (EPS)** — apply in parallel; deepest inventory
-      (~700k+) but vets for traffic. `expediapartnersolutions.com` → Rapid
-      API → Get started. Same draft copy, swap the supplier name.
+- [x] **Expedia Rapid (EPS)** — applied June 2026 via the expediagroup.com
+      partner form (business type: Online Travel Agency) — **DENIED**
+      (pre-launch, no traffic; the predicted outcome). Reapply post-launch
+      with real booking volume; they vet hard on turnover.
+- [ ] **RateHawk (Emerging Travel Group)** — applying June 2026, the
+      gettable Expedia alternative (B2B-friendly, accepts pre-launch
+      agencies). ratehawk.com → register as Travel agency → request API
+      test credentials from the dashboard / assigned account manager.
+      Would slot in as the 3rd hotel API in the same provider chain.
 - [~] **Booking.com** — DEPRIORITIZED. Their booking (Demand) API is
       partner-gated + hard pre-launch (wants traffic we don't have). The
       affiliate program is gettable but that's clickout, not API-booking.
