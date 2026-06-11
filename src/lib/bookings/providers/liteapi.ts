@@ -104,11 +104,34 @@ function nameTokens(name: string): Set<string> {
   );
 }
 
+// City-name spelling pairs so "Milano" in a hotel name is recognised as the
+// city "Milan" (and vice versa). Mirrors providers/hotelbeds.ts.
+const PLACE_ALIASES: Record<string, string> = {
+  milano: "milan", firenze: "florence", roma: "rome", venezia: "venice",
+  napoli: "naples", torino: "turin", genova: "genoa", sevilla: "seville",
+  lisboa: "lisbon", münchen: "munich", muenchen: "munich", wien: "vienna",
+  praha: "prague", köln: "cologne", koeln: "cologne",
+};
+
+function canonPlace(t: string): string {
+  return PLACE_ALIASES[t] ?? t;
+}
+
 /**
  * Resolve an itinerary hotel name to a LiteAPI hotelId. Lists the city's
  * hotels and matches on DISTINCTIVE shared tokens (so "Comfort Inn" doesn't
- * masquerade as "Inn at Spanish Bay"). Returns the best match, or null when
- * LiteAPI doesn't carry the property → caller falls back to the browser agent.
+ * masquerade as "Inn at Spanish Bay").
+ *
+ * City-name tokens are WEAK evidence: every hotel in Milan has "Milano"
+ * somewhere, so a match must share a STRONG token — a real brand word
+ * ("Seasons", "Regis", "Splendido"). Without this, "Four Seasons Hotel
+ * Milano" could resolve to any hotel with "Milano" in its name — a
+ * wrong-hotel booking, the worst failure mode we have. When the venue name
+ * is built ONLY of place words ("Hotel Portofino"), every wanted token
+ * must match instead.
+ *
+ * Returns the best match, or null when LiteAPI doesn't carry the property
+ * → caller falls back to the browser agent.
  */
 export async function resolveHotelId(args: {
   name: string;
@@ -127,19 +150,33 @@ export async function resolveHotelId(args: {
     return null;
   }
 
+  const placeTokens = new Set(
+    [...nameTokens(args.cityName)].map(canonPlace),
+  );
+  const strongWanted = new Set(
+    [...wanted].filter((t) => !placeTokens.has(canonPlace(t))),
+  );
+
   let best: { id: string; name: string } | null = null;
   let bestScore = 0;
   for (const h of hotels) {
-    const have = nameTokens(h.name);
+    const have = new Set([...nameTokens(h.name)].map(canonPlace));
     let shared = 0;
-    for (const t of wanted) if (have.has(t)) shared++;
-    if (shared > bestScore) {
+    let strongShared = 0;
+    for (const t of wanted) {
+      if (have.has(canonPlace(t))) {
+        shared++;
+        if (strongWanted.has(t)) strongShared++;
+      }
+    }
+    const qualifies =
+      strongWanted.size > 0 ? strongShared >= 1 : shared === wanted.size;
+    if (qualifies && shared > bestScore) {
       bestScore = shared;
       best = h;
     }
   }
-  // Require at least one distinctive shared token.
-  return bestScore >= 1 ? best : null;
+  return best;
 }
 
 export type LiteRate = {

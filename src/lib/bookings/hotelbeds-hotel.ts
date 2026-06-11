@@ -52,7 +52,7 @@ export async function tryHotelbedsHotelBooking(args: {
       adults: Math.max(1, args.adults),
       geolocation: { latitude: geo.lat, longitude: geo.lng, radiusKm: 5 },
     });
-    const hotel = matchHotelByName(hotels, args.hotelName);
+    const hotel = matchHotelByName(hotels, args.hotelName, args.location);
     if (!hotel) return { booked: false, reason: "not in Hotelbeds" };
     const cheapest = hotel.rates[0];
     if (!cheapest) return { booked: false, reason: "no rate for dates" };

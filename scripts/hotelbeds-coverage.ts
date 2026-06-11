@@ -76,7 +76,8 @@ async function main() {
 
   let hits = 0;
   for (const target of targets) {
-    const name = target.split(",")[0].trim();
+    const [name, ...locParts] = target.split(",").map((s) => s.trim());
+    const location = locParts.join(", ") || null;
     process.stdout.write(`• ${target}\n`);
     const geo = await geocode(target);
     if (!geo) {
@@ -90,7 +91,7 @@ async function main() {
         adults: 2,
         geolocation: { latitude: geo.lat, longitude: geo.lng, radiusKm: 5 },
       });
-      const match = matchHotelByName(hotels, name);
+      const match = matchHotelByName(hotels, name, location);
       if (match && match.rates[0]) {
         hits++;
         const r = match.rates[0];

@@ -194,28 +194,70 @@ function nameTokens(name: string): Set<string> {
   );
 }
 
+// City-name spelling pairs so "Milano" in a hotel name is recognised as the
+// place "Milan" from the location string (and vice versa).
+const PLACE_ALIASES: Record<string, string> = {
+  milano: "milan", firenze: "florence", roma: "rome", venezia: "venice",
+  napoli: "naples", torino: "turin", genova: "genoa", sevilla: "seville",
+  lisboa: "lisbon", münchen: "munich", muenchen: "munich", wien: "vienna",
+  praha: "prague", köln: "cologne", koeln: "cologne",
+};
+
+function canonPlace(t: string): string {
+  return PLACE_ALIASES[t] ?? t;
+}
+
 /**
- * Find the availability hotel matching a venue name. Returns the best match
- * by distinctive shared tokens, or null when Hotelbeds doesn't carry the
- * property → caller falls back to the next provider / browser agent.
+ * Find the availability hotel matching a venue name.
+ *
+ * Tokens that name the PLACE (city/region words from `location`) are WEAK
+ * evidence: every hotel in Milan has "Milano" somewhere, so a match must
+ * share at least one STRONG token — a real brand word ("Seasons", "Regis",
+ * "Splendido"). Without this rule, "Four Seasons Hotel Milano" matched
+ * "Hotel Milano Regency" — a wrong-hotel booking, the worst failure mode
+ * we have. When the venue name is built ONLY of place words ("Hotel
+ * Portofino"), we require every wanted token to match instead.
+ *
+ * Returns null when Hotelbeds doesn't carry the property → caller falls
+ * back to the next provider / browser agent.
  */
-export function matchHotelByName(hotels: HbHotel[], name: string): HbHotel | null {
+export function matchHotelByName(
+  hotels: HbHotel[],
+  name: string,
+  location?: string | null,
+): HbHotel | null {
   // Strip a trailing room/suite descriptor ("Splendido — Belmond Suite").
   const cleanName = name.split(/[—–-]/)[0]?.trim() || name;
   const wanted = nameTokens(cleanName);
   if (wanted.size === 0) return null;
+
+  const placeTokens = new Set(
+    [...nameTokens(location ?? "")].map(canonPlace),
+  );
+  const strongWanted = new Set(
+    [...wanted].filter((t) => !placeTokens.has(canonPlace(t))),
+  );
+
   let best: HbHotel | null = null;
   let bestScore = 0;
   for (const h of hotels) {
-    const have = nameTokens(h.name);
+    const have = new Set([...nameTokens(h.name)].map(canonPlace));
     let shared = 0;
-    for (const t of wanted) if (have.has(t)) shared++;
-    if (shared > bestScore) {
+    let strongShared = 0;
+    for (const t of wanted) {
+      if (have.has(canonPlace(t))) {
+        shared++;
+        if (strongWanted.has(t)) strongShared++;
+      }
+    }
+    const qualifies =
+      strongWanted.size > 0 ? strongShared >= 1 : shared === wanted.size;
+    if (qualifies && shared > bestScore) {
       bestScore = shared;
       best = h;
     }
   }
-  return bestScore >= 1 ? best : null;
+  return best;
 }
 
 /* -------------------------------------------------------------------------- */
