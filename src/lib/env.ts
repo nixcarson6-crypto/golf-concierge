@@ -44,7 +44,11 @@ const definitions = {
   RESEND_API_KEY: { required: false },
   RESEND_FROM_EMAIL: {
     required: false,
-    default: "Golf Concierge <concierge@example.com>",
+    // Resend's shared test sender works with just an API key (no domain
+    // verification) but only delivers to the account owner's own address —
+    // perfect for `pnpm check:email`. Swap to "Pyltrix <hello@pyltrix.com>"
+    // once the pyltrix.com domain is verified in the Resend dashboard.
+    default: "Pyltrix <onboarding@resend.dev>",
   },
 
   INNGEST_EVENT_KEY: { required: false },

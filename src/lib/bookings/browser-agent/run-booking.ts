@@ -24,6 +24,7 @@
 
 import { db } from "@/lib/db";
 import { optionalEnv } from "@/lib/env";
+import { sendEmail, renderBookingConfirmationEmail } from "@/lib/email";
 import { audit } from "@/lib/audit";
 import { withAgentRun } from "@/lib/ai/orchestrator";
 import { withSession, navigate } from "./runtime";
@@ -517,6 +518,42 @@ export async function runBrowserBooking(args: {
           status: verified.status,
         },
       });
+
+      // Proof email — when the agent really booked a venue, send the
+      // customer the same "Booked ✓" reassurance with the venue's own
+      // confirmation. Best-effort; no-ops without RESEND_API_KEY and never
+      // blocks the run.
+      if (verified.status === "CONFIRMED" && traveler.email) {
+        try {
+          const appUrl =
+            optionalEnv("NEXT_PUBLIC_APP_URL") ?? "https://pyltrix.com";
+          const charged =
+            verified.amountChargedCents != null && verified.amountChargedCents > 0;
+          const mail = renderBookingConfirmationEmail({
+            name: traveler.givenName || null,
+            tripLabel: item.title,
+            lines: [
+              {
+                title: item.title,
+                detail: charged
+                  ? `$${(verified.amountChargedCents! / 100).toFixed(2)} charged`
+                  : "Reserved",
+                confirmationCode: verified.confirmationCode,
+                paymentMode: charged ? "pay_now" : "pay_at_property",
+              },
+            ],
+            tripUrl: `${appUrl}/trips/${args.tripId}`,
+          });
+          await sendEmail({
+            to: traveler.email,
+            subject: mail.subject,
+            html: mail.html,
+            text: mail.text,
+          });
+        } catch (e) {
+          console.warn("[browser-booking] confirmation email failed:", e);
+        }
+      }
 
       // Final SSE refetch so the dialog flips immediately.
       try {

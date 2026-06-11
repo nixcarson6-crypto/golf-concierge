@@ -20,6 +20,7 @@
     "check:agent": "dotenv -e .env.local -- tsx scripts/agent-dryrun.ts",
     "check:browser": "dotenv -e .env.local -- tsx scripts/browser-smoke.ts",
     "check:stripe": "dotenv -e .env.local -- tsx scripts/check-stripe.ts",
+    "check:email": "dotenv -e .env.local -- tsx scripts/check-email.ts",
     "check:liteapi": "dotenv -e .env.local -- tsx scripts/check-liteapi.ts",
     "check:hotelbeds": "dotenv -e .env.local -- tsx scripts/check-hotelbeds.ts",
     "hotelbeds:coverage": "dotenv -e .env.local -- tsx scripts/hotelbeds-coverage.ts",

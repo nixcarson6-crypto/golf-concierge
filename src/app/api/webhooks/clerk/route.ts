@@ -2,7 +2,8 @@ import { headers } from "next/headers";
 import { Webhook } from "svix";
 import type { WebhookEvent } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { env } from "@/lib/env";
+import { env, optionalEnv } from "@/lib/env";
+import { sendEmail, renderWelcomeEmail } from "@/lib/email";
 
 export const runtime = "nodejs";
 
@@ -39,6 +40,12 @@ export async function POST(req: Request) {
           ?.email_address ?? u.email_addresses[0]?.email_address;
       if (!primaryEmail) break;
       const name = [u.first_name, u.last_name].filter(Boolean).join(" ").trim() || u.username || null;
+      // Detect a genuinely-new signup so we send the welcome email exactly
+      // once — Clerk fires user.updated on every profile change too.
+      const existing = await db.user.findUnique({
+        where: { clerkUserId: u.id },
+        select: { id: true },
+      });
       await db.user.upsert({
         where: { clerkUserId: u.id },
         create: {
@@ -53,6 +60,14 @@ export async function POST(req: Request) {
           imageUrl: u.image_url,
         },
       });
+      if (evt.type === "user.created" && !existing) {
+        // Best-effort welcome email; never block the webhook on mail.
+        const appUrl = optionalEnv("NEXT_PUBLIC_APP_URL") ?? "https://pyltrix.com";
+        const mail = renderWelcomeEmail({ name, appUrl: `${appUrl}/trips/new` });
+        sendEmail({ to: primaryEmail, subject: mail.subject, html: mail.html, text: mail.text }).catch(
+          (e) => console.warn("[clerk-webhook] welcome email failed:", e),
+        );
+      }
       break;
     }
     case "user.deleted": {

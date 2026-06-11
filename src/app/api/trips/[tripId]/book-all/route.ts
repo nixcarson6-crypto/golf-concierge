@@ -21,6 +21,13 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { nudge } from "@/lib/events";
+import { optionalEnv } from "@/lib/env";
+import {
+  sendEmail,
+  renderBookingConfirmationEmail,
+  type ConfirmationLine,
+} from "@/lib/email";
+import { tripDisplayLabel } from "@/lib/trip-display";
 import { bookFlightOffer } from "@/lib/bookings/providers/duffel-book";
 import { recordFlightBooking } from "@/lib/bookings/record-flight";
 import type {
@@ -303,6 +310,44 @@ export async function POST(
     } catch (err) {
       console.warn("[book-all] trip status update failed:", err);
     }
+  }
+
+  // Confirmation email — the product's payoff: every booked/pencilled item
+  // and its confirmation code in one place. Best-effort; a mail failure must
+  // never fail the booking response. No-ops without RESEND_API_KEY.
+  try {
+    const confirmable = outcomes.filter(
+      (o) => o.status === "booked" || o.status === "pencilled",
+    );
+    if (confirmable.length > 0 && me.email) {
+      const lines: ConfirmationLine[] = confirmable.map((o) => ({
+        title: o.title,
+        detail: o.detail,
+        confirmationCode: o.confirmationCode,
+        // Flights are charged now; everything else (hotel/golf/transport
+        // stubs) settles at the property until those partner charges go live.
+        paymentMode: o.category === "flight" ? "pay_now" : "pay_at_property",
+      }));
+      const tripLabel = tripDisplayLabel({
+        title: trip.title,
+        destination: trip.destination,
+      });
+      const appUrl = optionalEnv("NEXT_PUBLIC_APP_URL") ?? "https://pyltrix.com";
+      const mail = renderBookingConfirmationEmail({
+        name: me.name ?? me.legalGivenName,
+        tripLabel,
+        lines,
+        tripUrl: `${appUrl}/trips/${tripId}`,
+      });
+      await sendEmail({
+        to: me.email,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+      });
+    }
+  } catch (err) {
+    console.warn("[book-all] confirmation email failed:", err);
   }
 
   return new Response(
