@@ -51,6 +51,12 @@
       }
       a { color: inherit; text-decoration: none; }
       .tnum { font-variant-numeric: tabular-nums; }
+      svg.ic {
+        width: 16px; height: 16px;
+        fill: none; stroke: currentColor; stroke-width: 1.75;
+        stroke-linecap: round; stroke-linejoin: round;
+        flex-shrink: 0;
+      }
 
       /* ── Nav ─────────────────────────────────────────────────────── */
       nav {
@@ -84,13 +90,26 @@
       .nav-cta:hover { opacity: 0.85; }
 
       /* ── Hero ────────────────────────────────────────────────────── */
-      .hero { padding: 96px 0 104px; }
+      .hero { position: relative; padding: 96px 0 104px; overflow: hidden; }
+      .hero::before {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background: radial-gradient(70% 55% at 72% 0%, var(--sunken) 0%, transparent 62%);
+      }
+      .hero::after {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background-image: linear-gradient(to right, var(--line-2) 1px, transparent 1px);
+        background-size: 120px 100%;
+        opacity: 0.5;
+      }
+      .hero .container { position: relative; z-index: 1; }
       .hero-grid {
         display: grid; grid-template-columns: 1.05fr 0.95fr;
         gap: 72px; align-items: center;
       }
       .eyebrow {
         display: inline-flex; align-items: center; gap: 9px;
+        padding: 7px 15px; border: 1px solid var(--line); border-radius: 999px;
+        background: var(--bg);
         font-size: 11px; font-weight: 600; letter-spacing: 0.28em;
         text-transform: uppercase; color: var(--ink-2);
       }
@@ -133,9 +152,24 @@
       }
       .signup button:hover { opacity: 0.85; }
       .signup-note { margin-top: 13px; font-size: 12px; color: var(--ink-3); }
+      .assure {
+        margin-top: 30px; display: flex; flex-wrap: wrap;
+        gap: 10px 26px; list-style: none;
+      }
+      .assure li {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-size: 13px; color: var(--ink-2);
+      }
+      .assure svg.ic { width: 14px; height: 14px; stroke-width: 2; color: var(--ink); }
 
       /* ── Hero mockup ─────────────────────────────────────────────── */
+      .mockup-wrap { position: relative; }
+      .mockup-wrap::before {
+        content: ""; position: absolute; inset: -24px; border-radius: 32px;
+        background: rgba(10, 10, 10, 0.03); filter: blur(24px);
+      }
       .mockup {
+        position: relative;
         border-radius: 22px; background: var(--bg);
         border: 1px solid var(--line);
         box-shadow: 0 1px 2px rgba(10, 10, 10, 0.03),
@@ -143,7 +177,7 @@
         overflow: hidden;
       }
       .mockup-head {
-        display: flex; align-items: center; justify-content: space-between;
+        display: flex; align-items: baseline; justify-content: space-between;
         padding: 18px 22px; border-bottom: 1px solid var(--line-2);
       }
       .mockup-head .destination {
@@ -154,7 +188,7 @@
         font-size: 10px; color: var(--ink-3); letter-spacing: 0.1em;
         text-transform: uppercase;
       }
-      .mockup-body { padding: 8px 22px 18px; }
+      .mockup-body { padding: 4px 22px 14px; }
       .mockup-row {
         display: flex; align-items: center; gap: 13px; padding: 11px 0;
         border-bottom: 1px solid var(--line-2);
@@ -165,13 +199,20 @@
         background: var(--sunken); border: 1px solid var(--line-2);
         display: grid; place-items: center; flex-shrink: 0; color: var(--ink);
       }
-      .mockup-icon svg { width: 16px; height: 16px; stroke-width: 1.7; }
       .mockup-row-body { flex: 1; min-width: 0; }
-      .mockup-row-title { font-size: 13px; font-weight: 500; }
+      .mockup-row-title {
+        font-size: 13px; font-weight: 500;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
       .mockup-row-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
       .mockup-row-price {
         font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
       }
+      .mockup-booked {
+        display: inline-flex; align-items: center; gap: 5px;
+        font-size: 11.5px; font-weight: 600;
+      }
+      .mockup-booked svg.ic { width: 14px; height: 14px; stroke-width: 2; }
       .mockup-total {
         display: flex; align-items: baseline; justify-content: space-between;
         padding: 16px 22px; background: var(--ink); color: #fff;
@@ -184,9 +225,30 @@
         font-family: "Fraunces", serif; font-weight: 600; font-size: 22px;
         font-variant-numeric: tabular-nums;
       }
+      .mockup-caption {
+        margin-top: 16px; text-align: center;
+        font-size: 12px; color: var(--ink-3);
+      }
+
+      /* ── Destinations strip ──────────────────────────────────────── */
+      .strip {
+        padding: 22px 0; background: var(--sunken);
+        border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+      }
+      .strip .container {
+        display: flex; flex-wrap: wrap; align-items: center;
+        justify-content: center; gap: 12px 38px;
+      }
+      .strip .place {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-size: 12px; font-weight: 500; letter-spacing: 0.2em;
+        text-transform: uppercase; color: var(--ink-2);
+      }
+      .strip .place svg.ic { width: 13px; height: 13px; opacity: 0.5; }
 
       /* ── Section scaffolding ─────────────────────────────────────── */
       section.band { padding: 104px 0; border-top: 1px solid var(--line); }
+      section.band.first { border-top: none; }
       .band-eyebrow {
         font-size: 11px; font-weight: 600; letter-spacing: 0.28em;
         text-transform: uppercase; color: var(--ink-3); margin-bottom: 18px;
@@ -204,11 +266,21 @@
         border: 1px solid var(--line); border-radius: 20px; overflow: hidden;
       }
       .cell { background: var(--bg); padding: 34px 30px; }
-      .cell .num {
-        font-family: "Fraunces", serif; font-size: 26px; color: var(--ink-3);
-        font-variant-numeric: tabular-nums;
+      .cell-top {
+        display: flex; align-items: center; justify-content: space-between;
       }
-      .cell h3 { font-size: 21px; margin: 22px 0 10px; }
+      .icon-tile {
+        width: 44px; height: 44px; border-radius: 12px;
+        background: var(--sunken); border: 1px solid var(--line-2);
+        display: grid; place-items: center; color: var(--ink);
+      }
+      .icon-tile svg.ic { width: 19px; height: 19px; }
+      .cell .num {
+        font-family: "Fraunces", serif; font-size: 26px; color: var(--line);
+        font-variant-numeric: tabular-nums;
+        color: var(--ink-3); opacity: 0.55;
+      }
+      .cell h3 { font-size: 21px; margin: 24px 0 10px; }
       .cell p { font-size: 14px; color: var(--ink-2); }
 
       /* ── Feature grid ────────────────────────────────────────────── */
@@ -218,31 +290,81 @@
         border: 1px solid var(--line); border-radius: 20px; overflow: hidden;
       }
       .feat { background: var(--bg); padding: 30px; }
+      .feat .icon-tile { width: 40px; height: 40px; border-radius: 10px; }
+      .feat .icon-tile svg.ic { width: 17px; height: 17px; }
       .feat h3 {
         font-family: "Inter", sans-serif; font-weight: 600; font-size: 15px;
-        letter-spacing: -0.01em;
+        letter-spacing: -0.01em; margin-top: 20px;
       }
       .feat p { margin-top: 10px; font-size: 13.5px; color: var(--ink-2); }
 
-      /* ── Partners ────────────────────────────────────────────────── */
-      .partners-band {
-        padding: 56px 0; background: var(--sunken);
-        border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+      /* ── Proof section ───────────────────────────────────────────── */
+      .proof-grid {
+        display: grid; grid-template-columns: 1.05fr 0.95fr;
+        gap: 72px; align-items: center;
       }
-      .partners-label {
-        text-align: center; font-size: 11px; font-weight: 600;
-        letter-spacing: 0.24em; text-transform: uppercase;
-        color: var(--ink-3); margin-bottom: 30px;
+      .proof-list { list-style: none; margin-top: 34px; }
+      .proof-list li {
+        display: flex; gap: 15px; padding: 13px 0;
       }
-      .partners-grid {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-        gap: 26px 32px; align-items: center; justify-items: center;
+      .proof-bullet {
+        width: 30px; height: 30px; border-radius: 999px;
+        border: 1px solid var(--line); flex-shrink: 0;
+        display: grid; place-items: center; margin-top: 1px;
       }
-      .partner-name {
-        font-family: "Fraunces", serif; font-weight: 500; font-size: 18px;
-        color: var(--ink); opacity: 0.55; transition: opacity 0.15s ease;
+      .proof-bullet svg.ic { width: 14px; height: 14px; stroke-width: 2; }
+      .proof-list .t { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
+      .proof-list .b { font-size: 13.5px; color: var(--ink-2); margin-top: 2px; }
+      .proof-copy h2 { font-size: clamp(30px, 3.6vw, 48px); }
+      .proof-copy .lede {
+        margin-top: 22px; font-size: 16px; color: var(--ink-2); max-width: 520px;
       }
-      .partner-name:hover { opacity: 1; }
+      .proof-copy .lede em {
+        font-style: normal; font-weight: 600; color: var(--ink);
+      }
+
+      .confirm-wrap { position: relative; }
+      .confirm-wrap::before {
+        content: ""; position: absolute; inset: -24px; border-radius: 32px;
+        background: rgba(10, 10, 10, 0.03); filter: blur(24px);
+      }
+      .confirm {
+        position: relative;
+        border-radius: 22px; background: var(--bg);
+        border: 1px solid var(--line); padding: 26px;
+        box-shadow: 0 1px 2px rgba(10, 10, 10, 0.03),
+          0 40px 80px -32px rgba(10, 10, 10, 0.22);
+      }
+      .confirm-head { display: flex; align-items: center; gap: 13px; }
+      .confirm-badge {
+        width: 40px; height: 40px; border-radius: 999px;
+        background: var(--ink); color: #fff;
+        display: grid; place-items: center; flex-shrink: 0;
+      }
+      .confirm-badge svg.ic { width: 19px; height: 19px; stroke-width: 2; }
+      .confirm-head .t { font-size: 14.5px; font-weight: 600; letter-spacing: -0.01em; }
+      .confirm-head .m { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+      .confirm dl {
+        margin-top: 22px; border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+      .confirm dl > div {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 0; border-bottom: 1px solid var(--line-2);
+        font-size: 13.5px;
+      }
+      .confirm dl > div:last-child { border-bottom: none; }
+      .confirm dt { color: var(--ink-2); }
+      .confirm dd { font-weight: 500; }
+      .confirm .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12.5px; letter-spacing: 0.06em;
+      }
+      .confirm-note {
+        margin-top: 18px; display: flex; gap: 9px;
+        font-size: 12px; color: var(--ink-3); line-height: 1.5;
+      }
+      .confirm-note svg.ic { width: 14px; height: 14px; margin-top: 1px; }
 
       /* ── Inverted band (quote + CTA) ─────────────────────────────── */
       .invert { background: var(--ink); color: #fff; }
@@ -262,7 +384,18 @@
       }
       .quote-by strong { font-weight: 600; opacity: 1; }
 
-      .cta-band { padding: 120px 0; text-align: center; }
+      .cta-band {
+        position: relative; padding: 120px 0; text-align: center;
+        overflow: hidden;
+      }
+      .cta-band::before {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background-image:
+          linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px);
+        background-size: 64px 64px;
+      }
+      .cta-band .narrow { position: relative; }
       .cta-band h2 { font-size: clamp(36px, 5vw, 60px); letter-spacing: -0.04em; }
       .cta-band p {
         margin: 24px auto 0; max-width: 500px; font-size: 17px; opacity: 0.7;
@@ -301,7 +434,8 @@
         section.band { padding: 64px 0; }
         .band-header { margin-bottom: 36px; }
         .grid-3, .grid-feat { grid-template-columns: 1fr; }
-        .partners-band { padding: 44px 0; }
+        .proof-grid { grid-template-columns: 1fr; gap: 52px; }
+        .strip .container { gap: 10px 22px; }
         .quote-band { padding: 80px 0; }
         .cta-band { padding: 88px 0; }
         .signup { flex-direction: column; }
@@ -345,59 +479,100 @@
             <p class="signup-note" id="signup-msg">
               No spam. One email when we open the beta.
             </p>
+            <ul class="assure">
+              <li>
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+                Real prices, never guessed
+              </li>
+              <li>
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+                Venue-direct reservations
+              </li>
+              <li>
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 7 17l-5-5"/><path d="m22 10-7.5 7.5L13 16"/></svg>
+                Swap anything before you book
+              </li>
+            </ul>
           </div>
 
           <!-- Generated-trip mockup -->
-          <div class="mockup" aria-hidden="true">
-            <div class="mockup-head">
-              <div class="destination">Pinehurst</div>
-              <div class="dates">Jul 3–7 · 4 players</div>
+          <div>
+            <div class="mockup-wrap">
+              <div class="mockup" aria-hidden="true">
+                <div class="mockup-head">
+                  <div class="destination">Pinehurst</div>
+                  <div class="dates">Jul 3–7 · 4 players</div>
+                </div>
+                <div class="mockup-body">
+                  <div class="mockup-row">
+                    <span class="mockup-icon"><svg class="ic" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg></span>
+                    <div class="mockup-row-body">
+                      <div class="mockup-row-title">American · DFW ⇄ RDU</div>
+                      <div class="mockup-row-meta">Nonstop · business class</div>
+                    </div>
+                    <div class="mockup-row-price">$2,840</div>
+                  </div>
+                  <div class="mockup-row">
+                    <span class="mockup-icon"><svg class="ic" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>
+                    <div class="mockup-row-body">
+                      <div class="mockup-row-title">Pinehurst No. 2 · championship round</div>
+                      <div class="mockup-row-meta">Sunday tee time, 8:50 AM</div>
+                    </div>
+                    <div class="mockup-row-price">$1,720</div>
+                  </div>
+                  <div class="mockup-row">
+                    <span class="mockup-icon"><svg class="ic" viewBox="0 0 24 24"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg></span>
+                    <div class="mockup-row-body">
+                      <div class="mockup-row-title">The Carolina Hotel · 4 nights</div>
+                      <div class="mockup-row-meta">Suite · published rate</div>
+                    </div>
+                    <div class="mockup-row-price">$3,640</div>
+                  </div>
+                  <div class="mockup-row">
+                    <span class="mockup-icon"><svg class="ic" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/></svg></span>
+                    <div class="mockup-row-body">
+                      <div class="mockup-row-title">Drum &amp; Quill · welcome dinner</div>
+                      <div class="mockup-row-meta">Reserved · 7:30 PM</div>
+                    </div>
+                    <span class="mockup-booked"><svg class="ic" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg> Booked</span>
+                  </div>
+                  <div class="mockup-row">
+                    <span class="mockup-icon"><svg class="ic" viewBox="0 0 24 24"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg></span>
+                    <div class="mockup-row-body">
+                      <div class="mockup-row-title">Uber Black · all transfers</div>
+                      <div class="mockup-row-meta">RDU ⇄ resort, on call</div>
+                    </div>
+                    <span class="mockup-booked"><svg class="ic" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg> Booked</span>
+                  </div>
+                </div>
+                <div class="mockup-total">
+                  <span class="label">Trip total · estimate</span>
+                  <span class="amount">$8,200</span>
+                </div>
+              </div>
             </div>
-            <div class="mockup-body">
-              <div class="mockup-row">
-                <span class="mockup-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg></span>
-                <div class="mockup-row-body">
-                  <div class="mockup-row-title">American · DFW ⇄ RDU</div>
-                  <div class="mockup-row-meta">Nonstop · business class</div>
-                </div>
-                <div class="mockup-row-price">$2,840</div>
-              </div>
-              <div class="mockup-row">
-                <span class="mockup-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>
-                <div class="mockup-row-body">
-                  <div class="mockup-row-title">Pinehurst No. 2 · championship round</div>
-                  <div class="mockup-row-meta">Sunday tee time, 8:50 AM</div>
-                </div>
-                <div class="mockup-row-price">$1,720</div>
-              </div>
-              <div class="mockup-row">
-                <span class="mockup-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg></span>
-                <div class="mockup-row-body">
-                  <div class="mockup-row-title">The Carolina Hotel · 4 nights</div>
-                  <div class="mockup-row-meta">Suite · published rate</div>
-                </div>
-                <div class="mockup-row-price">$3,640</div>
-              </div>
-              <div class="mockup-row">
-                <span class="mockup-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/></svg></span>
-                <div class="mockup-row-body">
-                  <div class="mockup-row-title">Drum &amp; Quill · welcome dinner</div>
-                  <div class="mockup-row-meta">Reserved · 7:30 PM</div>
-                </div>
-                <div class="mockup-row-price">Booked</div>
-              </div>
-            </div>
-            <div class="mockup-total">
-              <span class="label">Trip total · estimate</span>
-              <span class="amount">$8,200</span>
-            </div>
+            <p class="mockup-caption">
+              A trip Pyltrix built and booked — every line is a real reservation.
+            </p>
           </div>
         </div>
       </div>
     </header>
 
+    <!-- ── Destinations strip ───────────────────────────────────────── -->
+    <div class="strip" aria-label="Destinations">
+      <div class="container">
+        <span class="place"><svg class="ic" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg> Pinehurst</span>
+        <span class="place"><svg class="ic" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg> Pebble Beach</span>
+        <span class="place"><svg class="ic" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg> St Andrews</span>
+        <span class="place"><svg class="ic" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg> Bandon Dunes</span>
+        <span class="place"><svg class="ic" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg> Adare Manor</span>
+        <span class="place"><svg class="ic" viewBox="0 0 24 24"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg> Portofino</span>
+      </div>
+    </div>
+
     <!-- ── How it works ─────────────────────────────────────────────── -->
-    <section class="band">
+    <section class="band first">
       <div class="container">
         <div class="band-header">
           <div class="band-eyebrow">How it works</div>
@@ -409,17 +584,26 @@
         </div>
         <div class="grid-3">
           <div class="cell">
-            <div class="num">01</div>
+            <div class="cell-top">
+              <span class="icon-tile"><svg class="ic" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg></span>
+              <span class="num">01</span>
+            </div>
             <h3>Answer the quiz</h3>
             <p>A few quick questions — where, when, who, the vibe, the budget. Five minutes, no forms.</p>
           </div>
           <div class="cell">
-            <div class="num">02</div>
+            <div class="cell-top">
+              <span class="icon-tile"><svg class="ic" viewBox="0 0 24 24"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg></span>
+              <span class="num">02</span>
+            </div>
             <h3>AI builds the trip</h3>
             <p>Flights, lodging, tee times, dining, and transport — a complete day-by-day itinerary with real, current prices.</p>
           </div>
           <div class="cell">
-            <div class="num">03</div>
+            <div class="cell-top">
+              <span class="icon-tile"><svg class="ic" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><path d="M21 14V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8"/><path d="M3 10h18"/><path d="m16 20 2 2 4-4"/></svg></span>
+              <span class="num">03</span>
+            </div>
             <h3>We book it all</h3>
             <p>One tap. Our concierge agent reserves everything on your behalf and hands you the confirmations.</p>
           </div>
@@ -436,28 +620,107 @@
         </div>
         <div class="grid-feat">
           <div class="feat">
+            <span class="icon-tile"><svg class="ic" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M14 8H8"/><path d="M16 12H8"/><path d="M13 16H8"/></svg></span>
             <h3>Real prices, never guessed</h3>
             <p>Live flight fares, published hotel and green-fee rates, ride costs from actual driving distance. If we can't confirm it, we don't show it.</p>
           </div>
           <div class="feat">
+            <span class="icon-tile"><svg class="ic" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg></span>
             <h3>Fastest routes, automatically</h3>
             <p>Flights ranked by speed and stops, not just price — the nonstop a private concierge would put you on.</p>
           </div>
           <div class="feat">
+            <span class="icon-tile"><svg class="ic" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg></span>
             <h3>Books the long tail</h3>
             <p>Independent courses, beach clubs, spas, boat tours — anything with a booking page, reserved directly on the venue's own site.</p>
           </div>
           <div class="feat">
+            <span class="icon-tile"><svg class="ic" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/></svg></span>
             <h3>Marquee dining, handled</h3>
             <p>The restaurants you actually want, reserved or one tap away — no phone tag, no guesswork.</p>
           </div>
           <div class="feat">
+            <span class="icon-tile"><svg class="ic" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span>
             <h3>Proof you can see</h3>
             <p>Every booking returns a real confirmation number and the venue's own confirmation page. Zero-click peace of mind.</p>
           </div>
           <div class="feat">
+            <span class="icon-tile"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M21 21v-5h-5"/></svg></span>
             <h3>Swap anything, instantly</h3>
             <p>Don't love a pick? Tap for an alternative. The plan and the totals rebuild on the spot.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Booked means booked ──────────────────────────────────────── -->
+    <section class="band">
+      <div class="container">
+        <div class="proof-grid">
+          <div class="proof-copy">
+            <div class="band-eyebrow">Booked means booked</div>
+            <h2>Every reservation comes with receipts.</h2>
+            <p class="lede">
+              When Pyltrix books a venue, you get the venue's own
+              confirmation — number, amount, and a capture of their
+              confirmation page. The reservation sits in <em>their</em>
+              system under your name, so the front desk already knows
+              you're coming.
+            </p>
+            <ul class="proof-list">
+              <li>
+                <span class="proof-bullet"><svg class="ic" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M14 8H8"/><path d="M16 12H8"/><path d="M13 16H8"/></svg></span>
+                <div>
+                  <div class="t">The venue's own confirmation number</div>
+                  <div class="b">Not a Pyltrix reference — the code their front desk looks up.</div>
+                </div>
+              </li>
+              <li>
+                <span class="proof-bullet"><svg class="ic" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+                <div>
+                  <div class="t">A capture of the confirmation page</div>
+                  <div class="b">You see exactly what we saw the moment the booking completed.</div>
+                </div>
+              </li>
+              <li>
+                <span class="proof-bullet"><svg class="ic" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span>
+                <div>
+                  <div class="t">The venue emails you directly</div>
+                  <div class="b">Their confirmation lands in your inbox alongside ours.</div>
+                </div>
+              </li>
+            </ul>
+          </div>
+
+          <div class="confirm-wrap">
+            <div class="confirm" aria-hidden="true">
+              <div class="confirm-head">
+                <span class="confirm-badge"><svg class="ic" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+                <div>
+                  <div class="t">Booked — Pinehurst No. 2</div>
+                  <div class="m">Confirmed directly on the course's tee sheet</div>
+                </div>
+              </div>
+              <dl>
+                <div>
+                  <dt>Confirmation</dt>
+                  <dd class="mono">PH2-88341</dd>
+                </div>
+                <div>
+                  <dt>Amount charged</dt>
+                  <dd class="tnum">$1,720.00</dd>
+                </div>
+                <div>
+                  <dt>Under name</dt>
+                  <dd>Party of 4 · lead golfer</dd>
+                </div>
+              </dl>
+              <p class="confirm-note">
+                <svg class="ic" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+                The venue emails you their own confirmation too — two
+                independent records of every booking.
+              </p>
+            </div>
           </div>
         </div>
       </div>
