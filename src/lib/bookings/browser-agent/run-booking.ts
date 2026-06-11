@@ -210,14 +210,13 @@ export async function runBrowserBooking(args: {
   const goal = buildGoal(task);
 
   // ---------------------------------------------------------- 3.5 (API-first)
-  // HOTELS: try LiteAPI before the browser agent. If LiteAPI carries the
-  // property, this books it in seconds and we're done; if not (Aman /
-  // Pinehurst-direct / any error), it returns booked:false and we fall
-  // straight through to the agent. The itinerary AI already picked the best
-  // hotel with no knowledge of LiteAPI — this only changes HOW we book it.
+  // HOTELS: try the bedbank APIs before the browser agent — LiteAPI first,
+  // then Hotelbeds. If either carries the property, this books it in seconds
+  // and we're done; any miss/error falls through to the next provider and
+  // finally the agent. The itinerary AI already picked the best hotel with
+  // no knowledge of API coverage — this only changes HOW we book it.
   if (item.type === "LODGING") {
-    const { tryLiteApiHotelBooking } = await import("../liteapi-hotel");
-    const api = await tryLiteApiHotelBooking({
+    const hotelArgs = {
       bookingId: booking.id,
       itineraryItemId: item.id,
       hotelName: item.title,
@@ -226,17 +225,25 @@ export async function runBrowserBooking(args: {
       checkout: task.isoCheckOut,
       adults: task.traveler.partySize,
       traveler,
-    });
-    if (api.booked) {
-      console.log(`[book] ${item.title} booked via LiteAPI — skipping agent.`);
-      try {
-        await postInternalNudge({ tripId: args.tripId });
-      } catch {}
-      return;
+    };
+    const { tryLiteApiHotelBooking } = await import("../liteapi-hotel");
+    const { tryHotelbedsHotelBooking } = await import("../hotelbeds-hotel");
+    const providers = [
+      { name: "LiteAPI", fn: tryLiteApiHotelBooking },
+      { name: "Hotelbeds", fn: tryHotelbedsHotelBooking },
+    ];
+    for (const p of providers) {
+      const api = await p.fn(hotelArgs);
+      if (api.booked) {
+        console.log(`[book] ${item.title} booked via ${p.name} — skipping agent.`);
+        try {
+          await postInternalNudge({ tripId: args.tripId });
+        } catch {}
+        return;
+      }
+      console.log(`[book] ${p.name} didn't book ${item.title} (${api.reason}).`);
     }
-    console.log(
-      `[book] LiteAPI didn't book ${item.title} (${api.reason}) — using browser agent.`,
-    );
+    console.log(`[book] No API carried ${item.title} — using browser agent.`);
   }
 
   const cardProvider = buildCardProviderForBooking({

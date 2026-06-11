@@ -21,6 +21,7 @@
     "check:browser": "dotenv -e .env.local -- tsx scripts/browser-smoke.ts",
     "check:stripe": "dotenv -e .env.local -- tsx scripts/check-stripe.ts",
     "check:liteapi": "dotenv -e .env.local -- tsx scripts/check-liteapi.ts",
+    "check:hotelbeds": "dotenv -e .env.local -- tsx scripts/check-hotelbeds.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

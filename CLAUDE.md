@@ -440,11 +440,17 @@ shrinks the agent's share.
       Aman + US golf-resort-direct (agent's job). `pnpm check:liteapi`
       validates the full booking flow. **Key learning: search rates BY
       hotelId, not city name (city search is unreliable).**
-- [ ] **Hotelbeds (HBX Group / APItude)** — APPLY FIRST, fastest real path.
-      `developer.hotelbeds.com` → register → usually self-serve TEST/sandbox
-      keys, then apply for production. Deep European + leisure luxury (great
-      for the Italy/Croatia/Ireland trips). Was "emailed — pending"; the dev
-      portal test API is the faster door. Draft copy below.
+- [x] **Hotelbeds (HBX Group / APItude)** — WIRED (sandbox, June 2026).
+      Self-serve test key obtained at developer.hotelbeds.com (no form!).
+      `HOTELBEDS_API_KEY` + `HOTELBEDS_SECRET` in `.env.local`; per-request
+      SHA-256 signature auth. Provider mirrors LiteAPI: availability by
+      GEOLOCATION (Google-geocode the hotel, search a 5 km radius, match by
+      name — skips destination-code mapping) → checkrates if RECHECK → book
+      → cancel. Hotels now book LiteAPI → Hotelbeds → browser agent.
+      `pnpm check:hotelbeds` validates end-to-end (books + cancels near
+      Palma). Production keys: apply once live. Deep European + leisure
+      luxury (Italy/Croatia/Ireland trips). Also has Activities + Transfers
+      APIs on the same account — future upside.
 - [ ] **Expedia Rapid (EPS)** — apply in parallel; deepest inventory
       (~700k+) but vets for traffic. `expediapartnersolutions.com` → Rapid
       API → Get started. Same draft copy, swap the supplier name.

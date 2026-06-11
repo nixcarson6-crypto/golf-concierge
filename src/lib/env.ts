@@ -55,6 +55,8 @@ const definitions = {
   DUFFEL_API_KEY: { required: false },
   HOTELBEDS_API_KEY: { required: false },
   HOTELBEDS_SECRET: { required: false },
+  // "test" (default — api.test.hotelbeds.com) or "production".
+  HOTELBEDS_ENV: { required: false, default: "test" },
   OPENTABLE_API_KEY: { required: false },
   UBER_FOR_BUSINESS_TOKEN: { required: false },
   // Uber Guest Rides API (developer.uber.com). Sandbox works the moment
