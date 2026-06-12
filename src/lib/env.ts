@@ -86,6 +86,13 @@ const definitions = {
   BROWSERBASE_API_KEY: { required: false },
   BROWSERBASE_PROJECT_ID: { required: false },
   BROWSERBASE_REGION: { required: false, default: "us-east-1" },
+  // Which browser infra the agent runs on: "browserbase" (default) or
+  // "steel" (steel.dev). Both sets of keys can live in .env.local at once;
+  // this switch picks which one actually runs, so you can flip back with
+  // one word if either is flaky.
+  BROWSER_PROVIDER: { required: false, default: "browserbase" },
+  // Steel.dev API key — only used when BROWSER_PROVIDER=steel.
+  STEEL_API_KEY: { required: false },
   // "true" to enable paid Browserbase features (advancedStealth + proxies +
   // captcha solving). Default off so the agent runs on the free tier.
   BROWSERBASE_PREMIUM: { required: false },

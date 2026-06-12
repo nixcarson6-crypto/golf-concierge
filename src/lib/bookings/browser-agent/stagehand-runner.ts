@@ -300,56 +300,89 @@ NEVER STOP SILENTLY. If you can see a Reserve/Book/Submit button that fits the t
 export async function runStagehandBooking(
   opts: RunStagehandOptions,
 ): Promise<RunStagehandResult> {
-  const apiKey = env("BROWSERBASE_API_KEY");
-  const projectId = env("BROWSERBASE_PROJECT_ID");
   // Use the lean DOM-native prompt, NOT the heavy vision-era goal.system
   // that run-booking passes (kept on opts.system for the computer-use
   // fallback). This is the single biggest speed + cost win.
   const system = STAGEHAND_SYSTEM;
 
-  const stagehand = new Stagehand({
-    env: "BROWSERBASE",
-    apiKey,
-    projectId,
-    model: {
-      modelName: STAGEHAND_MODEL as never,
-      apiKey: env("ANTHROPIC_API_KEY"),
-    },
-    systemPrompt: system,
-    // Self-healing: Stagehand re-resolves a selector if the page shifted,
-    // instead of failing the action. Big reliability win on dynamic sites.
-    selfHeal: true,
-    // Block the agent's actions until Browserbase finishes solving any
-    // captcha — so the agent doesn't try to click through a challenge.
-    waitForCaptchaSolves: opts.solveCaptchas,
-    // Shorter DOM-settle (default ~3s) shaves time off every step where
-    // the page is already stable. 1000ms is enough for most booking
-    // widgets to paint; the self-heal + per-action waits cover the rest.
-    domSettleTimeout: 1000,
-    // We pass agent callbacks (onStepFinish → live progress) and an abort
-    // signal (our wall-clock timeout) to agent.execute(). Stagehand
-    // requires experimental: true + disableAPI: true to use those — the
-    // server-side Stagehand API path doesn't support them. disableAPI
-    // just runs the LLM directly (no Stagehand-cloud caching), which is
-    // exactly what we want: fresh session per booking, no shared cache.
-    experimental: true,
-    disableAPI: true,
-    verbose: 0,
-    browserbaseSessionCreateParams: {
-      projectId,
-      browserSettings: {
-        viewport: {
-          width: AGENT_VIEWPORT.width,
-          height: AGENT_VIEWPORT.height,
-        },
-        ...(opts.solveCaptchas ? { solveCaptchas: true } : {}),
-        ...(opts.advancedStealth ? { advancedStealth: true } : {}),
+  // Pick the browser infra. BROWSER_PROVIDER=steel runs on steel.dev (CDP
+  // connection); anything else uses Browserbase. Both key sets can coexist
+  // in .env.local — this just selects which one runs, so flipping back is
+  // one word. Steel returns a session we must release in `finally`.
+  const provider = (optionalEnv("BROWSER_PROVIDER") ?? "browserbase").toLowerCase();
+  const useSteel = provider === "steel";
+
+  let steelSession: SteelSession | null = null;
+  let stagehand: Stagehand;
+
+  if (useSteel) {
+    steelSession = await createSteelSession({
+      solveCaptcha: opts.solveCaptchas,
+      timeoutMs: opts.timeoutMs,
+    });
+    stagehand = new Stagehand({
+      env: "LOCAL",
+      // Connect Stagehand to the Steel browser over CDP instead of launching
+      // a local Chromium or using Browserbase.
+      localBrowserLaunchOptions: { cdpUrl: steelSession.connectUrl } as never,
+      model: {
+        modelName: STAGEHAND_MODEL as never,
+        apiKey: env("ANTHROPIC_API_KEY"),
       },
-      ...(opts.solveCaptchas ? { proxies: true } : {}),
-      region: opts.region ?? DEFAULT_REGION,
-      timeout: Math.ceil(opts.timeoutMs / 1000) + 60,
-    } as never,
-  });
+      systemPrompt: system,
+      selfHeal: true,
+      domSettleTimeout: 1000,
+      experimental: true,
+      disableAPI: true,
+      verbose: 0,
+    });
+  } else {
+    const apiKey = env("BROWSERBASE_API_KEY");
+    const projectId = env("BROWSERBASE_PROJECT_ID");
+    stagehand = new Stagehand({
+      env: "BROWSERBASE",
+      apiKey,
+      projectId,
+      model: {
+        modelName: STAGEHAND_MODEL as never,
+        apiKey: env("ANTHROPIC_API_KEY"),
+      },
+      systemPrompt: system,
+      // Self-healing: Stagehand re-resolves a selector if the page shifted,
+      // instead of failing the action. Big reliability win on dynamic sites.
+      selfHeal: true,
+      // Block the agent's actions until Browserbase finishes solving any
+      // captcha — so the agent doesn't try to click through a challenge.
+      waitForCaptchaSolves: opts.solveCaptchas,
+      // Shorter DOM-settle (default ~3s) shaves time off every step where
+      // the page is already stable. 1000ms is enough for most booking
+      // widgets to paint; the self-heal + per-action waits cover the rest.
+      domSettleTimeout: 1000,
+      // We pass agent callbacks (onStepFinish → live progress) and an abort
+      // signal (our wall-clock timeout) to agent.execute(). Stagehand
+      // requires experimental: true + disableAPI: true to use those — the
+      // server-side Stagehand API path doesn't support them. disableAPI
+      // just runs the LLM directly (no Stagehand-cloud caching), which is
+      // exactly what we want: fresh session per booking, no shared cache.
+      experimental: true,
+      disableAPI: true,
+      verbose: 0,
+      browserbaseSessionCreateParams: {
+        projectId,
+        browserSettings: {
+          viewport: {
+            width: AGENT_VIEWPORT.width,
+            height: AGENT_VIEWPORT.height,
+          },
+          ...(opts.solveCaptchas ? { solveCaptchas: true } : {}),
+          ...(opts.advancedStealth ? { advancedStealth: true } : {}),
+        },
+        ...(opts.solveCaptchas ? { proxies: true } : {}),
+        region: opts.region ?? DEFAULT_REGION,
+        timeout: Math.ceil(opts.timeoutMs / 1000) + 60,
+      } as never,
+    });
+  }
 
   // Hard wall-clock — abort the agent if it runs long.
   const controller = new AbortController();
@@ -359,10 +392,11 @@ export async function runStagehandBooking(
 
   try {
     console.log(
-      `[stagehand] init… model=${STAGEHAND_MODEL} region=${opts.region ?? DEFAULT_REGION} captcha=${opts.solveCaptchas} stealth=${opts.advancedStealth}`,
+      `[stagehand] init… provider=${provider} model=${STAGEHAND_MODEL} region=${opts.region ?? DEFAULT_REGION} captcha=${opts.solveCaptchas} stealth=${opts.advancedStealth}`,
     );
     await stagehand.init();
-    const sessionUrl = stagehand.browserbaseSessionURL ?? null;
+    const sessionUrl =
+      steelSession?.viewerUrl ?? stagehand.browserbaseSessionURL ?? null;
     console.log(`[stagehand] ✓ session ready (${elapsed()}) ${sessionUrl ?? ""}`);
 
     // Navigate to the venue first so the agent starts on the right page.
@@ -713,7 +747,85 @@ export async function runStagehandBooking(
   } finally {
     clearTimeout(wallClock);
     await stagehand.close().catch(() => {});
+    // Steel sessions persist until released or they hit their timeout — free
+    // it now so we're not paying for an idle browser.
+    if (steelSession) await releaseSteelSession(steelSession.id).catch(() => {});
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Steel.dev session lifecycle (used when BROWSER_PROVIDER=steel)              */
+/* -------------------------------------------------------------------------- */
+
+type SteelSession = {
+  id: string;
+  /** CDP websocket URL Stagehand connects to. */
+  connectUrl: string;
+  /** Human-viewable live session URL (for logs / debugging). */
+  viewerUrl: string | null;
+};
+
+const STEEL_API_BASE = "https://api.steel.dev/v1";
+
+/**
+ * Create a Steel browser session and return the CDP connect URL Stagehand
+ * attaches to. Throws a tagged error (with Steel's own message) on failure so
+ * a misconfig surfaces loudly instead of silently falling back. Mirrors the
+ * Browserbase session settings we use (viewport, captcha, proxy, timeout).
+ */
+async function createSteelSession(args: {
+  solveCaptcha: boolean;
+  timeoutMs: number;
+}): Promise<SteelSession> {
+  const key = env("STEEL_API_KEY");
+  const res = await fetch(`${STEEL_API_BASE}/sessions`, {
+    method: "POST",
+    headers: {
+      "Steel-Api-Key": key,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      solveCaptcha: args.solveCaptcha,
+      useProxy: args.solveCaptcha, // proxy pairs with captcha-solving, as on BB
+      dimensions: { width: AGENT_VIEWPORT.width, height: AGENT_VIEWPORT.height },
+      // Steel expects the session timeout in ms; give it our wall-clock + slack.
+      timeout: args.timeoutMs + 60_000,
+    }),
+  });
+  const text = await res.text();
+  let json: Record<string, unknown>;
+  try {
+    json = text ? JSON.parse(text) : {};
+  } catch {
+    json = { raw: text };
+  }
+  if (!res.ok) {
+    const msg =
+      (json.error as string) ?? (json.message as string) ?? text.slice(0, 240);
+    throw new Error(`[steel] create session → ${res.status}: ${msg}`);
+  }
+  const id = String(json.id ?? json.sessionId ?? "");
+  if (!id) throw new Error("[steel] create session returned no id");
+  // Steel's documented external-automation connect URL. Prefer an explicit
+  // websocket/connect field if the API returns one; otherwise build it.
+  const connectUrl =
+    (json.websocketUrl as string) ||
+    (json.connectUrl as string) ||
+    `wss://connect.steel.dev?apiKey=${encodeURIComponent(key)}&sessionId=${id}`;
+  const viewerUrl =
+    (json.sessionViewerUrl as string) ?? (json.debugUrl as string) ?? null;
+  console.log(`[steel] ✓ session ${id} created ${viewerUrl ?? ""}`);
+  return { id, connectUrl, viewerUrl };
+}
+
+/** Release a Steel session so we stop paying for an idle browser. */
+async function releaseSteelSession(id: string): Promise<void> {
+  const key = optionalEnv("STEEL_API_KEY");
+  if (!key) return;
+  await fetch(`${STEEL_API_BASE}/sessions/${encodeURIComponent(id)}/release`, {
+    method: "POST",
+    headers: { "Steel-Api-Key": key },
+  });
 }
 
 /**
