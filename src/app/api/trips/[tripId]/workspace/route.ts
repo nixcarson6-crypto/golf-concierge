@@ -158,6 +158,11 @@ export async function GET(
         dateOfBirth: me.dateOfBirth?.toISOString().slice(0, 10) ?? null,
         gender: me.gender,
         phone: me.phone,
+        addressLine1: me.addressLine1,
+        addressCity: me.addressCity,
+        addressState: me.addressState,
+        addressPostalCode: me.addressPostalCode,
+        addressCountry: me.addressCountry,
       },
     },
     messages: messages.map((m) => ({

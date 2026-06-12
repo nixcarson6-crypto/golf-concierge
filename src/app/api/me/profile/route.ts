@@ -17,6 +17,11 @@ const bodySchema = z.object({
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   gender: z.enum(["m", "f"]).optional(),
   phone: z.string().regex(/^\+\d{8,15}$/).optional(),
+  addressLine1: z.string().min(1).max(120).optional(),
+  addressCity: z.string().min(1).max(80).optional(),
+  addressState: z.string().min(1).max(80).optional(),
+  addressPostalCode: z.string().min(1).max(20).optional(),
+  addressCountry: z.string().length(2).optional(),
 });
 
 export async function PATCH(req: NextRequest) {

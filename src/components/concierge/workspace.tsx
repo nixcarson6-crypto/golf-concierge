@@ -108,6 +108,11 @@ export type WorkspaceMe = {
     dateOfBirth: string | null;
     gender: string | null;
     phone: string | null;
+    addressLine1?: string | null;
+    addressCity?: string | null;
+    addressState?: string | null;
+    addressPostalCode?: string | null;
+    addressCountry?: string | null;
   };
 };
 

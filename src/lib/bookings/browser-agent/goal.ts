@@ -206,7 +206,18 @@ export function buildGoal(
     `- Title/honorific: ${t.gender === "f" ? "Ms." : "Mr."} — use EXACTLY this in any Title/Salutation dropdown. It is GIVEN; never deliberate over it.`,
   );
   lines.push(`- Email: ${t.email}`);
-  lines.push(`- Phone: ${t.phone}`);
+  lines.push(
+    `- Phone: ${t.phone} — if the phone field has a COUNTRY-CODE dropdown, FIRST set the country to match this number's prefix (+1 → United States), THEN type only the national digits. Never leave a wrong default country (a real run submitted a US number under +90 Turkey).`,
+  );
+  if (t.addressLine1) {
+    lines.push(
+      `- Home address (for any address/billing fields): ${t.addressLine1}, ${t.addressCity ?? ""}${t.addressState ? ", " + t.addressState : ""} ${t.addressPostalCode ?? ""}, ${t.addressCountry ?? "US"} — fill street/city/state/zip/country fields with EXACTLY these. Skip any "find your address" autocomplete and type into the manual fields directly.`,
+    );
+  } else {
+    lines.push(
+      `- Home address: NOT PROVIDED. If the form REQUIRES a street address, stop and report needs_review with the message "Add your home address to your traveler profile so we can complete venue checkouts." Do NOT invent a street address.`,
+    );
+  }
   if (t.homeAirport) {
     lines.push(
       `- Residence (for country / state / city fields): the traveller flies from ${t.homeAirport} — use that airport's metro area (e.g. DFW → Dallas, Texas, United States). Pick the matching state/country in dropdowns without deliberating.`,

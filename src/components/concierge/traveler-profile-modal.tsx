@@ -58,6 +58,11 @@ export function TravelerProfileModal({
     gender: "" | "m" | "f";
     email: string;
     phone_number: string;
+    address_line1: string;
+    address_city: string;
+    address_state: string;
+    address_postal: string;
+    address_country: string;
   };
 
   const initial = React.useMemo<Form>(
@@ -69,6 +74,11 @@ export function TravelerProfileModal({
         profile.gender === "m" || profile.gender === "f" ? profile.gender : "",
       email: defaultEmail ?? "",
       phone_number: normalizePhone(profile.phone),
+      address_line1: profile.addressLine1 ?? "",
+      address_city: profile.addressCity ?? "",
+      address_state: profile.addressState ?? "",
+      address_postal: profile.addressPostalCode ?? "",
+      address_country: profile.addressCountry ?? "US",
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [open],
@@ -111,6 +121,13 @@ export function TravelerProfileModal({
     if (form.gender === "m" || form.gender === "f") payload.gender = form.gender;
     if (/^\+\d{8,15}$/.test(form.phone_number))
       payload.phone = form.phone_number;
+    if (form.address_line1.trim()) payload.addressLine1 = form.address_line1.trim();
+    if (form.address_city.trim()) payload.addressCity = form.address_city.trim();
+    if (form.address_state.trim()) payload.addressState = form.address_state.trim();
+    if (form.address_postal.trim())
+      payload.addressPostalCode = form.address_postal.trim();
+    if (/^[A-Za-z]{2}$/.test(form.address_country.trim()))
+      payload.addressCountry = form.address_country.trim().toUpperCase();
 
     if (Object.keys(payload).length === 0) {
       toast.error("Fill in at least one field before saving.");
@@ -224,6 +241,49 @@ export function TravelerProfileModal({
                 value={form.phone_number}
                 onChange={(v) => update("phone_number", v)}
                 placeholder="+12125550100"
+              />
+            </div>
+          </section>
+
+          <section className="space-y-2 pt-3 border-t border-border/40">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              Home address
+              <span className="ml-2 normal-case tracking-normal text-muted-foreground/80">
+                — hotels require it at checkout
+              </span>
+            </p>
+            <Field
+              label="Street address"
+              value={form.address_line1}
+              onChange={(v) => update("address_line1", v)}
+              placeholder="123 Fairway Dr"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <Field
+                label="City"
+                value={form.address_city}
+                onChange={(v) => update("address_city", v)}
+                placeholder="Pottsboro"
+              />
+              <Field
+                label="State / Province"
+                value={form.address_state}
+                onChange={(v) => update("address_state", v)}
+                placeholder="Texas"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Field
+                label="ZIP / Postal code"
+                value={form.address_postal}
+                onChange={(v) => update("address_postal", v)}
+                placeholder="75076"
+              />
+              <Field
+                label="Country (2-letter)"
+                value={form.address_country}
+                onChange={(v) => update("address_country", v)}
+                placeholder="US"
               />
             </div>
           </section>

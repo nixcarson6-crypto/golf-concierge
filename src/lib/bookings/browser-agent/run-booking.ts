@@ -84,6 +84,11 @@ export async function runBrowserBooking(args: {
         dateOfBirth: true,
         gender: true,
         defaultOriginAirport: true,
+        addressLine1: true,
+        addressCity: true,
+        addressState: true,
+        addressPostalCode: true,
+        addressCountry: true,
       },
     }),
     // Lazy import keeps the Google Places client out of the cold path on
@@ -147,6 +152,11 @@ export async function runBrowserBooking(args: {
     dateOfBirth: user.dateOfBirth
       ? user.dateOfBirth.toISOString().slice(0, 10)
       : null,
+    addressLine1: user.addressLine1 ?? null,
+    addressCity: user.addressCity ?? null,
+    addressState: user.addressState ?? null,
+    addressPostalCode: user.addressPostalCode ?? null,
+    addressCountry: user.addressCountry ?? null,
     gender: user.gender ?? null,
     // Residence proxy: the trip's origin airport (or the user's sticky home
     // airport). Forms demanding state/country of residence use its metro.

@@ -30,6 +30,15 @@ export type TravelerIdentity = {
   /** Origin airport IATA (e.g. "DFW"). Residence proxy: when a form wants
    *  city/state/country of residence we use this airport's metro. */
   homeAirport?: string | null;
+  /** Home address from the traveler profile — checkout address fields
+   *  (Belmond/Marriott require street + city + state + postcode). The
+   *  agent never invents an address; when these are null and a street is
+   *  REQUIRED, it reports needs_review asking the customer to add one. */
+  addressLine1?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressPostalCode?: string | null;
+  addressCountry?: string | null;
   /** Number of people on the reservation. */
   partySize: number;
 };
