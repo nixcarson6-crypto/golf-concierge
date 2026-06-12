@@ -339,14 +339,14 @@ export async function runBrowserBooking(args: {
               // longest flow (splash → widget → dates → guests → search →
               // room → rate → guest form) — ~30+ steps. Hotels get 6 min
               // (Sonnet plans more reliably but a touch slower per step, and
-              // reaching the payment step reliably beats shaving a minute);
-              // everything else (golf/transport: short flows) stays at 3.
-              // Gleneagles proved 4 min clips a complex resort at the rooms
-              // grid; The Lodge 30A burned 5 min stuck on a calendar.
+              // reaching the payment step reliably beats shaving a minute).
+              // Golf/transport get 4 — Laguna Phuket's booking widget hit the
+              // old 3-min cap at step 18 while still working; Carson's bar is
+              // "payment step in ≤4 min" for golf too, so give it the full 4.
               // BROWSER_AGENT_TIMEOUT_MS overrides both.
               timeoutMs:
                 Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
-                (item.type === "LODGING" ? 360_000 : 180_000),
+                (item.type === "LODGING" ? 360_000 : 240_000),
               maxSteps,
               // Run the browser in the region nearest the venue so each of
               // the ~25 actions has a short round-trip (an Italian hotel
