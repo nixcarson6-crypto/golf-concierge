@@ -38,7 +38,7 @@
 
     --border: 47 21% 86%;           /* warm hairline #E3E0D5 */
     --input: 47 21% 84%;
-    --ring: 152 36% 18%;
+    --ring: 51 19% 7%;            /* ink focus rings — green clashed on inputs */
 
     /* Legacy accent tokens — green family so any component still
      * referencing copper/navy/emerald lands on-brand. */
@@ -78,6 +78,27 @@
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Focus styling for every text control: kill the browser's native blue
+   * outline and use a clean ink border instead (Carson: blue clashes with
+   * the green system; black for ALL inputs). !important so it wins over
+   * any component-level focus classes. */
+  input:focus,
+  input:focus-visible,
+  textarea:focus,
+  textarea:focus-visible,
+  select:focus,
+  select:focus-visible {
+    outline: none !important;
+    border-color: hsl(var(--foreground)) !important;
+    box-shadow: 0 0 0 1px hsl(var(--foreground)) !important;
+  }
+  input,
+  textarea,
+  select {
+    caret-color: hsl(var(--foreground));
+    accent-color: hsl(var(--foreground));
   }
 
   ::selection {
