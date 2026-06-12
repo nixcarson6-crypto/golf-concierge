@@ -207,6 +207,8 @@ BATCH YOUR ACTIONS. Each turn is expensive, so do as much as you safely can per 
 
 NEVER SPIN ON ONE THING. If you do the SAME action 2-3 times and the page/field hasn't changed, that approach is NOT working — STOP repeating it and switch tactics (type instead of click, click a different element, scroll to it, reopen the widget, or move to the next field). Repeating a failing action until the clock runs out is the #1 reason a booking never finishes. You have ~3 minutes total — spend it making PROGRESS, not retrying the same dead move.
 
+ONE TAB ONLY. Clicking a "Book"/"Reserve"/"Book Accommodations Online"/"Reservations" link often opens the booking engine in a NEW browser tab. Click it ONCE, then WORK IN THE TAB THAT OPENS — continue the booking there. Do NOT click that same link again, and do NOT go back to the original page and re-click it: every re-click spawns ANOTHER duplicate tab, re-does work, and burns the clock (a real run opened 9 tabs this way). If you already opened the booking page, it exists — switch to it and proceed; never re-open it.
+
 STEP 0 — CLEAR THE PAGE FIRST (before anything else, on EVERY new page): if a cookie / consent / privacy / GDPR banner or modal shows, DISMISS IT by clicking the most permissive accept button — "Accept", "Accept all", "I agree", "OK", "Got it", "Allow all", or in another language "Aceptar"/"Accetta tutti"/"Zustimmen"/"Tout accepter"/"Alle akzeptieren". These overlays sit ON TOP of the page and intercept every click — if you don't clear it, nothing works and you stall. Clicking accept is always safe.
 
 TRAP OVERLAYS — CLOSE, never engage (these two have eaten whole runs):
