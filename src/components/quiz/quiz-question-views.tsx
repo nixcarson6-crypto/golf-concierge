@@ -36,9 +36,9 @@ export function SingleSelectView({
               onClick={() => onAnswer(opt.value)}
               className={cn(
                 "group relative text-left rounded-xl border bg-background px-5 py-4 transition-all duration-150",
-                "hover:border-foreground hover:shadow-[0_1px_0_0_hsl(var(--foreground))]",
+                "hover:border-accent hover:shadow-[0_1px_0_0_hsl(var(--accent))]",
                 selected
-                  ? "border-foreground shadow-[0_1px_0_0_hsl(var(--foreground))]"
+                  ? "border-accent shadow-[0_1px_0_0_hsl(var(--accent))]"
                   : "border-border",
               )}
             >
@@ -47,7 +47,7 @@ export function SingleSelectView({
               <span
                 className={cn(
                   "absolute right-4 top-4 size-2 rounded-full transition-all",
-                  selected ? "bg-foreground scale-100" : "bg-transparent scale-0",
+                  selected ? "bg-accent scale-100" : "bg-transparent scale-0",
                 )}
               />
               <div className="flex items-start gap-3 pr-4">
@@ -165,9 +165,9 @@ export function MultiSelectView({
               onClick={() => toggle(opt.value)}
               className={cn(
                 "group relative text-left rounded-xl border bg-background px-5 py-4 transition-all duration-150",
-                "hover:border-foreground",
+                "hover:border-accent",
                 isSelected
-                  ? "border-foreground shadow-[0_1px_0_0_hsl(var(--foreground))]"
+                  ? "border-accent shadow-[0_1px_0_0_hsl(var(--accent))]"
                   : "border-border",
               )}
             >
@@ -175,7 +175,7 @@ export function MultiSelectView({
               <span
                 className={cn(
                   "absolute right-4 top-4 size-2 rounded-full transition-all",
-                  isSelected ? "bg-foreground scale-100" : "bg-transparent scale-0",
+                  isSelected ? "bg-accent scale-100" : "bg-transparent scale-0",
                 )}
               />
               <div className="flex items-start gap-3 pr-4">

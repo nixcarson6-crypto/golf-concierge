@@ -112,7 +112,7 @@ export function QuizLoading({ tripId }: { tripId?: string }) {
             looking 'vibe-coded'. */}
         <div className="space-y-3">
           <div className="relative h-px w-full bg-border overflow-hidden">
-            <div className="absolute inset-y-0 w-1/3 bg-foreground animate-build-sweep" />
+            <div className="absolute inset-y-0 w-1/3 bg-accent animate-build-sweep" />
           </div>
           <div className="flex items-center justify-between text-[11px] uppercase tracking-widest text-muted-foreground tabular-nums">
             <span>Live</span>

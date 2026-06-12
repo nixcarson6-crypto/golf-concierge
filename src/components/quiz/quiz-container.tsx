@@ -255,7 +255,7 @@ export function QuizContainer({ tripId }: { tripId: string }) {
             </button>
             <div className="flex-1 h-px bg-border overflow-hidden">
               <div
-                className="h-full bg-foreground transition-all duration-300 ease-out"
+                className="h-full bg-accent transition-all duration-300 ease-out"
                 style={{ width: `${progressPct}%` }}
               />
             </div>

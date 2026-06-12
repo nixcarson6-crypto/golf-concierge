@@ -1391,7 +1391,7 @@ function FlightRefineChips({ tripId }: { tripId: string }) {
               // want the UI to morph mid-click. A tiny inline dot before
               // the label signals 'working' without changing the text.
               isRefining
-                ? "border-foreground bg-foreground text-background"
+                ? "border-accent bg-accent text-accent-foreground"
                 : "border-border bg-background text-foreground hover:border-foreground",
               otherRefining && "opacity-40 cursor-not-allowed",
             )}

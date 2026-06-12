@@ -137,7 +137,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         <Button
           onClick={() => setConfirmOpen(true)}
           disabled={submitting}
-          className="w-full h-12 rounded-2xl bg-foreground text-background hover:bg-foreground/90 text-base font-semibold"
+          className="w-full h-12 rounded-2xl bg-accent text-accent-foreground hover:bg-accent/90 text-base font-semibold"
         >
           {submitting ? (
             <>
@@ -222,7 +222,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
           <Button
             onClick={approvePrice}
             disabled={submitting}
-            className="w-full h-11 rounded-xl bg-foreground text-background hover:bg-foreground/90 font-semibold"
+            className="w-full h-11 rounded-xl bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
           >
             {submitting ? (
               <Loader2 className="size-4 mr-2 animate-spin" />

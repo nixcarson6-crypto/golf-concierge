@@ -21,8 +21,8 @@
     --popover: 43 64% 98%;
     --popover-foreground: 51 19% 7%;
 
-    --primary: 51 19% 7%;           /* ink */
-    --primary-foreground: 45 31% 95%;
+    --primary: 152 36% 18%;         /* fairway green — every default button */
+    --primary-foreground: 0 0% 100%;
 
     --secondary: 50 10% 16%;
     --secondary-foreground: 45 31% 95%;

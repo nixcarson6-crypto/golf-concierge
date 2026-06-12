@@ -114,7 +114,7 @@ export function BookingConfirmDialog({
             Cancel
           </Button>
           <Button
-            className="flex-1 h-11 rounded-xl bg-foreground text-background hover:bg-foreground/90 font-semibold"
+            className="flex-1 h-11 rounded-xl bg-accent text-accent-foreground hover:bg-accent/90 font-semibold"
             onClick={() => void onConfirm()}
             disabled={busy}
           >

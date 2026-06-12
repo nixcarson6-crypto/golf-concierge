@@ -143,7 +143,7 @@ function StatusBadge({ kind }: { kind: RowStatus }) {
   switch (kind) {
     case "confirmed":
       return (
-        <span className="grid size-5 place-items-center rounded-full bg-foreground text-background shrink-0">
+        <span className="grid size-5 place-items-center rounded-full bg-accent text-accent-foreground shrink-0">
           <Check className="size-3" strokeWidth={3} />
         </span>
       );
@@ -496,8 +496,8 @@ export function BookingStatusPanel({
             onClick={() => setConfirmAllOpen(true)}
             disabled={bookingAll || bookingId !== null}
             className={cn(
-              "w-full h-11 rounded-xl bg-foreground text-background text-sm font-semibold",
-              "hover:bg-foreground/90 transition disabled:opacity-60 disabled:cursor-not-allowed",
+              "w-full h-11 rounded-xl bg-accent text-accent-foreground text-sm font-semibold",
+              "hover:bg-accent/90 transition disabled:opacity-60 disabled:cursor-not-allowed",
               "inline-flex items-center justify-center gap-2",
             )}
           >
@@ -755,7 +755,7 @@ export function BookingStatusPanel({
       {/* Footer — the trophy state */}
       {allDone && (
         <footer className="px-5 py-4 border-t border-border/60 flex items-center gap-2.5">
-          <span className="grid size-7 place-items-center rounded-lg bg-foreground text-background shrink-0">
+          <span className="grid size-7 place-items-center rounded-lg bg-accent text-accent-foreground shrink-0">
             <PartyPopper className="size-4" />
           </span>
           <div className="min-w-0">
