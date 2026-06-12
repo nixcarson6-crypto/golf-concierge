@@ -69,11 +69,25 @@ export async function POST(
   const looksMultiDest =
     /\s+(?:then|and\s+then|plus|after\s+that|followed\s+by)\s+/i.test(rawDest) ||
     /(?:for\s+\d+\s+(?:day|night)s?.+(?:for\s+\d+\s+(?:day|night)s?))/i.test(rawDest);
+  // ALWAYS preserve the user's original phrasing in notes when cleaning
+  // changed it. The cleaner strips "and stay at the Aman" to get the place
+  // name — but that clause names the REQUIRED hotel, and dropping it sent a
+  // customer who asked for the Aman to One&Only Portonovi. The itinerary
+  // agent must see the raw words.
+  const cleaningDroppedWords =
+    rawDest.length > 0 &&
+    cleanedPrimary != null &&
+    rawDest.toLowerCase() !== cleanedPrimary.toLowerCase();
+  const originalPhrasingNote = looksMultiDest
+    ? `Multi-destination request — user originally wrote: "${rawDest}". Plan a multi-leg trip respecting the split they described. Primary destination for downstream APIs is "${cleanedPrimary ?? rawDest}".`
+    : cleaningDroppedWords
+      ? `User originally wrote: "${rawDest}". If this names a specific hotel/resort/lodge (e.g. "the Aman", "St. Regis", "stay at X"), that EXACT property is the REQUIRED lodging — do not substitute any other hotel. Honor any other specifics in it (courses, vibe, who's coming).`
+      : null;
   const constraints = {
     ...rawConstraints,
     destination: cleanedPrimary,
-    notes: looksMultiDest
-      ? `Multi-destination request — user originally wrote: "${rawDest}". Plan a multi-leg trip respecting the split they described. Primary destination for downstream APIs is "${cleanedPrimary ?? rawDest}". ${rawConstraints.notes ?? ""}`.trim()
+    notes: originalPhrasingNote
+      ? `${originalPhrasingNote} ${rawConstraints.notes ?? ""}`.trim()
       : rawConstraints.notes,
   };
   const newTitle = autoTitle({ currentTitle: trip.title, constraints });

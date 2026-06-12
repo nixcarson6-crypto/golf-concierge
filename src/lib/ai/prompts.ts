@@ -402,6 +402,15 @@ reason — which is the #1 itinerary complaint.
   3.5 hrs west — add a night there if you want it"). Relocate them to a
   different base ONLY when there is genuinely NO golf within ~1 hr of their
   hotel.
+- A NAMED HOTEL IS A CONTRACT. The customer may name their hotel anywhere —
+  the lodging answer, the destination text, or the notes' "user originally
+  wrote" phrasing ("Montenegro and stay at the Aman", "the St. Regis").
+  However loosely worded, that EXACT property is the lodging. NEVER swap in
+  a different luxury hotel because it's better known, easier to book, or
+  has golf attached — a customer who asked for the Aman and got One&Only is
+  a catastrophic failure, not an upgrade. If the named property is genuinely
+  closed or doesn't exist in that destination, say so plainly in
+  aiRationale and pick the closest equivalent — never silently substitute.
 
 Coverage:
 - Tee times (USE real course names from the brief — Troon North Monument,

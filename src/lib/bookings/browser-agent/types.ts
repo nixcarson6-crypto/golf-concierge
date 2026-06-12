@@ -168,10 +168,22 @@ export function buildBookingTask(args: {
     isoCheckOut: isoOut,
     displayCheckOut: toDisplayDate(end),
     nights: nights && nights > 0 ? nights : null,
-    budgetCents: normalizeBudget(request.budget),
-    budgetUsd: centsToUsd(normalizeBudget(request.budget)),
+    // The item's price is the AI's ESTIMATE, not a customer-set budget —
+    // treating it as a hard ceiling made the agent refuse real prices the
+    // estimate undershot (Portonovi: $16.2K estimated, $20.2K real →
+    // refused twice). Estimates get 25% headroom; the Review & confirm
+    // dialog already shows the customer the price before anything books,
+    // so the ceiling's job is stopping runaway charges, not enforcing a
+    // guess.
+    budgetCents: withEstimateHeadroom(normalizeBudget(request.budget)),
+    budgetUsd: centsToUsd(withEstimateHeadroom(normalizeBudget(request.budget))),
     accountPassword: args.accountPassword ?? null,
   };
+}
+
+function withEstimateHeadroom(cents: number | null): number | null {
+  if (cents == null) return null;
+  return Math.round(cents * 1.25);
 }
 
 function normalizePartySize(n: number | null | undefined): number | null {
