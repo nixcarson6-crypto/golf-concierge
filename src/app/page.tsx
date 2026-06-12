@@ -70,24 +70,24 @@ export default async function LandingPage() {
         />
         <div className="container relative grid items-center gap-16 pt-16 pb-20 sm:pt-24 sm:pb-28 lg:grid-cols-[1.05fr_0.95fr]">
           <div>
-            <p className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
+            <p className="rise rise-1 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-[11px] uppercase tracking-[0.28em] text-accent">
               <span className="relative flex size-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-foreground/40" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-foreground" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/40" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
               </span>
               Launching soon · invite-only
             </p>
-            <h1 className="mt-8 text-display text-[2.85rem] leading-[1.03] tracking-[-0.03em] sm:text-6xl lg:text-[4.4rem]">
+            <h1 className="rise rise-2 mt-8 text-display text-[2.85rem] leading-[1.03] tracking-[-0.035em] sm:text-6xl lg:text-[4.4rem]">
               The trip you&apos;d ask a private concierge to plan —
-              <span className="text-muted-foreground"> booked end to end.</span>
+              <em className="text-accent font-light"> booked end to end.</em>
             </h1>
-            <p className="mt-7 max-w-xl text-base sm:text-lg text-muted-foreground leading-relaxed">
+            <p className="rise rise-3 mt-7 max-w-xl text-base sm:text-lg text-muted-foreground leading-relaxed">
               Answer a few questions. Pyltrix&apos;s AI builds a complete
               luxury golf trip — flights, lodging, tee times, dining,
               transport — then books the whole thing for you. You just show
               up.
             </p>
-            <div className="mt-10 flex flex-wrap items-center gap-3">
+            <div className="rise rise-4 mt-10 flex flex-wrap items-center gap-3">
               <Button asChild size="lg" className="h-12 px-7">
                 <Link href={primaryHref}>
                   Plan my trip <ArrowRight className="ml-1.5 size-4" />
@@ -97,10 +97,10 @@ export default async function LandingPage() {
                 <Link href="#how">How it works</Link>
               </Button>
             </div>
-            <ul className="mt-12 flex flex-wrap gap-x-7 gap-y-3 text-[13px] text-muted-foreground">
+            <ul className="rise rise-5 mt-12 flex flex-wrap gap-x-7 gap-y-3 text-[13px] text-muted-foreground">
               {ASSURANCES.map((a) => (
                 <li key={a} className="flex items-center gap-2">
-                  <CheckCheck className="size-3.5 text-foreground/70" />
+                  <CheckCheck className="size-3.5 text-accent" />
                   {a}
                 </li>
               ))}
@@ -108,12 +108,14 @@ export default async function LandingPage() {
           </div>
 
           {/* The product, not a screenshot: a real-shaped itinerary card. */}
-          <div className="relative mx-auto w-full max-w-[460px] lg:max-w-none">
+          <div className="rise rise-3 relative mx-auto w-full max-w-[460px] lg:max-w-none">
             <div
               aria-hidden
-              className="absolute -inset-6 rounded-[2rem] bg-foreground/[0.03] blur-2xl"
+              className="absolute -inset-6 rounded-[2rem] bg-accent/[0.06] blur-2xl"
             />
-            <TripCard />
+            <div className="float-soft">
+              <TripCard />
+            </div>
             <p className="mt-4 text-center text-xs text-muted-foreground">
               A trip Pyltrix built and booked — every line is a real
               reservation.
@@ -141,6 +143,46 @@ export default async function LandingPage() {
         </div>
       </section>
 
+      {/* -------------------------------------------------- watch it book */}
+      <section className="bg-[#121511] text-[#f2f1ea]">
+        <div className="container grid items-center gap-16 py-24 sm:py-28 lg:grid-cols-2">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.3em] text-[#7f8378]">
+              The booking engine
+            </p>
+            <h2 className="mt-4 text-display text-3xl sm:text-5xl tracking-tight leading-[1.06]">
+              Watch it book, line by line.
+            </h2>
+            <p className="mt-6 max-w-md text-base leading-relaxed text-[#b5b8ae]">
+              Pyltrix doesn&apos;t hand you links. Its booking agent works the
+              venue&apos;s own website — dates, party, room, your details — and
+              you can watch every step live until the reservation is real.
+            </p>
+          </div>
+          <div className="rounded-xl border border-[#2a2e28] bg-[#0c0f0b] shadow-[0_40px_80px_-40px_rgb(0_0_0/0.6)] overflow-hidden">
+            <div className="flex items-center gap-2 border-b border-[#2a2e28] px-4 py-3 font-mono text-[11px] text-[#7f8378]">
+              <span className="flex gap-1.5 mr-2">
+                <i className="block size-2 rounded-full bg-[#2e332c]" />
+                <i className="block size-2 rounded-full bg-[#2e332c]" />
+                <i className="block size-2 rounded-full bg-[#2e332c]" />
+              </span>
+              pyltrix · booking one&amp;only portonovi
+            </div>
+            <div className="px-5 py-5 font-mono text-[12.5px] leading-[2.15]">
+              {BOOKING_LOG.map((l, i) => (
+                <div key={l.msg} className={`rise rise-${Math.min(i + 1, 5)} flex gap-3.5 whitespace-nowrap`}>
+                  <span className="w-12 shrink-0 text-[#5d6157]">{l.t}</span>
+                  <span className="text-[#69b489]">✓</span>
+                  <span className={i === BOOKING_LOG.length - 1 ? "font-medium text-[#f2f1ea]" : "text-[#c9ccc0] overflow-hidden text-ellipsis"}>
+                    {l.msg}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ----------------------------------------------------- how it works */}
       <section id="how" className="container py-24 sm:py-28">
         <div className="max-w-2xl">
@@ -156,9 +198,9 @@ export default async function LandingPage() {
             <div key={step.title} className="bg-background p-8 sm:p-10">
               <div className="flex items-center justify-between">
                 <span className="grid size-11 place-items-center rounded-xl border border-border bg-surface-sunken/50">
-                  <step.icon className="size-5" strokeWidth={1.75} />
+                  <step.icon className="size-5 text-accent" strokeWidth={1.75} />
                 </span>
-                <p className="text-display text-2xl text-muted-foreground/50 tabular-nums">
+                <p className="text-display text-2xl text-accent/60 tabular-nums">
                   0{i + 1}
                 </p>
               </div>
@@ -186,10 +228,10 @@ export default async function LandingPage() {
           </div>
           <div className="mt-14 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border border border-border rounded-2xl overflow-hidden">
             {FEATURES.map((f) => (
-              <div key={f.title} className="group bg-background p-8">
+              <div key={f.title} className="group bg-background p-8 hover-lift">
                 <div className="flex items-start justify-between">
                   <span className="grid size-10 place-items-center rounded-lg border border-border bg-surface-sunken/50">
-                    <f.icon className="size-[18px]" strokeWidth={1.75} />
+                    <f.icon className="size-[18px] text-accent" strokeWidth={1.75} />
                   </span>
                   <ArrowUpRight className="size-4 text-muted-foreground/30 transition group-hover:text-foreground" />
                 </div>
@@ -229,7 +271,7 @@ export default async function LandingPage() {
               {PROOFS.map((p) => (
                 <li key={p.title} className="flex gap-3.5">
                   <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full border border-border">
-                    <p.icon className="size-3.5" strokeWidth={2} />
+                    <p.icon className="size-3.5 text-accent" strokeWidth={2} />
                   </span>
                   <div>
                     <p className="text-sm font-medium tracking-tight">
@@ -249,7 +291,7 @@ export default async function LandingPage() {
 
       {/* -------------------------------------------------------- closing CTA */}
       <section className="container pb-24">
-        <div className="relative overflow-hidden rounded-3xl bg-foreground px-8 py-16 text-background sm:px-16 sm:py-24 text-center">
+        <div className="relative overflow-hidden rounded-3xl bg-accent px-8 py-16 text-accent-foreground sm:px-16 sm:py-24 text-center">
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(to_right,currentColor_1px,transparent_1px),linear-gradient(to_bottom,currentColor_1px,transparent_1px)] [background-size:64px_64px]"
@@ -261,7 +303,7 @@ export default async function LandingPage() {
             <Button
               asChild
               size="lg"
-              className="h-12 px-7 bg-background text-foreground hover:bg-background/90"
+              className="h-12 px-7 bg-background text-foreground hover:bg-card"
             >
               <Link href={primaryHref}>
                 Plan my trip <ArrowRight className="ml-1.5 size-4" />
@@ -312,14 +354,14 @@ function TripCard() {
             {item.price ? (
               <p className="text-sm tabular-nums">{item.price}</p>
             ) : (
-              <p className="flex items-center gap-1 text-xs font-medium">
+              <p className="flex items-center gap-1 text-xs font-semibold text-accent">
                 <BadgeCheck className="size-3.5" /> Booked
               </p>
             )}
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between rounded-b-3xl bg-foreground px-7 py-5 text-background">
+      <div className="flex items-center justify-between rounded-b-3xl bg-accent px-7 py-5 text-accent-foreground">
         <p className="text-[11px] uppercase tracking-[0.2em] opacity-70">
           Trip total · estimate
         </p>
@@ -377,7 +419,7 @@ function ConfirmationCard() {
       />
       <div className="relative rounded-3xl border border-border bg-background p-7 shadow-[0_24px_80px_-24px_rgb(0_0_0/0.18)]">
         <div className="flex items-center gap-3">
-          <span className="grid size-10 place-items-center rounded-full bg-foreground text-background">
+          <span className="grid size-10 place-items-center rounded-full bg-accent text-accent-foreground">
             <BadgeCheck className="size-5" strokeWidth={2} />
           </span>
           <div>
@@ -392,7 +434,7 @@ function ConfirmationCard() {
         <dl className="mt-6 divide-y divide-border border-y border-border text-sm">
           <div className="flex items-center justify-between py-3">
             <dt className="text-muted-foreground">Confirmation</dt>
-            <dd className="font-mono text-[13px] tracking-wide">PH2-88341</dd>
+            <dd className="font-mono text-[13px] tracking-wide text-accent">PH2-88341</dd>
           </div>
           <div className="flex items-center justify-between py-3">
             <dt className="text-muted-foreground">Amount charged</dt>
@@ -416,6 +458,16 @@ function ConfirmationCard() {
 /* -------------------------------------------------------------------------- */
 /* Copy                                                                        */
 /* -------------------------------------------------------------------------- */
+
+const BOOKING_LOG = [
+  { t: "00:02", msg: "session ready · eu-central" },
+  { t: "00:05", msg: "cookie banner cleared" },
+  { t: "00:11", msg: "booking engine opened" },
+  { t: "00:58", msg: "dates set · Aug 11 → 20 · 2 adults" },
+  { t: "01:31", msg: "12 rooms found · cheapest selected" },
+  { t: "02:14", msg: "guest details filled" },
+  { t: "02:49", msg: "payment secured · reservation confirmed" },
+];
 
 const ASSURANCES = [
   "Real prices, never guessed",
@@ -504,7 +556,7 @@ const PROOFS = [
 function Wordmark({ small = false }: { small?: boolean }) {
   return (
     <span className="flex items-center gap-2">
-      <span className="grid size-7 place-items-center rounded-lg bg-foreground">
+      <span className="grid size-7 place-items-center rounded-lg bg-accent">
         <svg
           viewBox="0 0 24 24"
           className="size-4 text-background"

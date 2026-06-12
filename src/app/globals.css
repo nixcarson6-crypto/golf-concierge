@@ -4,60 +4,58 @@
 
 @layer base {
   :root {
-    /* Pure monochrome palette. White background, black ink. Every "accent"
-     * color (navy / copper / emerald) collapses to black so the whole app
-     * reads as quiet editorial print — no gold, no blue, no green. The
-     * only contrast lever is greyscale weight. */
-    --background: 0 0% 100%;        /* pure white */
-    --foreground: 0 0% 4%;          /* near-black ink */
+    /* Ivory paper + ink + ONE deep fairway-green accent — the same
+     * editorial system as the live pyltrix.com landing (Harvey/Slash/Ramp
+     * inspired). Warm paper instead of stark white; green carries every
+     * accent (CTAs, Booked ✓, totals); everything else is ink/greyscale. */
+    --background: 45 31% 95%;       /* ivory paper  #F6F4EE */
+    --foreground: 51 19% 7%;        /* warm ink     #16150F */
 
-    --surface: 0 0% 100%;
-    --surface-raised: 0 0% 100%;
-    --surface-sunken: 0 0% 96%;
+    --surface: 45 31% 95%;
+    --surface-raised: 43 64% 98%;   /* card cream   #FFFDF8 */
+    --surface-sunken: 45 21% 91%;   /* sunken paper #EFECE3 */
 
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 4%;
+    --card: 43 64% 98%;
+    --card-foreground: 51 19% 7%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 4%;
+    --popover: 43 64% 98%;
+    --popover-foreground: 51 19% 7%;
 
-    --primary: 0 0% 4%;             /* black */
-    --primary-foreground: 0 0% 100%;
+    --primary: 51 19% 7%;           /* ink */
+    --primary-foreground: 45 31% 95%;
 
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 50 10% 16%;
+    --secondary-foreground: 45 31% 95%;
 
-    --muted: 0 0% 94%;
-    --muted-foreground: 0 0% 38%;
+    --muted: 45 21% 91%;
+    --muted-foreground: 48 7% 38%;
 
-    --accent: 0 0% 4%;              /* black — was copper */
+    --accent: 152 36% 18%;          /* fairway green #1E4030 */
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 0% 4%;
+    --destructive: 0 62% 42%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 88%;
-    --input: 0 0% 90%;
-    --ring: 0 0% 4%;
+    --border: 47 21% 86%;           /* warm hairline #E3E0D5 */
+    --input: 47 21% 84%;
+    --ring: 152 36% 18%;
 
-    /* Legacy accent tokens — all collapsed to black/grey so any component
-     * still referencing them renders monochrome. Removing them entirely
-     * would require touching ~80 files; pointing them at black is the
-     * one-line sweep. */
-    --navy: 0 0% 4%;
-    --navy-muted: 0 0% 24%;
-    --copper: 0 0% 4%;
-    --copper-muted: 0 0% 24%;
-    --emerald: 0 0% 4%;
-    --emerald-muted: 0 0% 24%;
-    --warning: 0 0% 4%;
-    --success: 0 0% 4%;
+    /* Legacy accent tokens — green family so any component still
+     * referencing copper/navy/emerald lands on-brand. */
+    --navy: 152 36% 18%;
+    --navy-muted: 152 24% 30%;
+    --copper: 152 36% 18%;
+    --copper-muted: 152 24% 30%;
+    --emerald: 152 36% 18%;
+    --emerald-muted: 152 24% 30%;
+    --warning: 36 77% 34%;
+    --success: 152 36% 24%;
 
     --radius: 0.875rem;
 
     --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
     --font-display: "Fraunces", "Cormorant Garamond", Georgia, serif;
-    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   }
 
   .dark {
@@ -83,7 +81,7 @@
   }
 
   ::selection {
-    background-color: hsl(0 0% 4% / 0.12);
+    background-color: hsl(152 36% 18% / 0.18);
     color: hsl(var(--foreground));
   }
 
@@ -167,6 +165,36 @@
     );
     background-size: 200% 100%;
     @apply animate-shimmer;
+  }
+
+  /* ── Landing motion (respects prefers-reduced-motion via the global
+   *    utilities override below). Staggered entrances + a gentle float
+   *    for the hero card so the page feels alive without being busy. */
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes float-soft {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .rise {
+    opacity: 0;
+    animation: rise-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .rise-1 { animation-delay: 0.05s; }
+  .rise-2 { animation-delay: 0.15s; }
+  .rise-3 { animation-delay: 0.25s; }
+  .rise-4 { animation-delay: 0.35s; }
+  .rise-5 { animation-delay: 0.5s; }
+  .float-soft { animation: float-soft 7s ease-in-out infinite; }
+  .hover-lift {
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.25s ease;
+  }
+  .hover-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 20px 48px -24px hsl(51 19% 7% / 0.22);
   }
 }
 

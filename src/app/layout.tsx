@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Fraunces } from "next/font/google";
+import { Inter, Fraunces, IBM_Plex_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
@@ -13,6 +13,12 @@ const fraunces = Fraunces({
   variable: "--font-display",
   display: "swap",
   axes: ["opsz"],
+});
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-mono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -35,7 +41,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: "#F6F4EE",
   width: "device-width",
   initialScale: 1,
 };
@@ -44,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${fraunces.variable} dark`}
+      className={`${inter.variable} ${fraunces.variable} ${plexMono.variable} dark`}
       suppressHydrationWarning
     >
       <body className="min-h-dvh bg-background text-foreground antialiased">
