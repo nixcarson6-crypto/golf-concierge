@@ -516,6 +516,34 @@ export async function runStagehandBooking(
       );
     }
 
+    // FAST PATH: click the obvious booking CTA ("Book now" / "Reserve" /
+    // "Check availability") deterministically — one in-page DOM scan, no
+    // LLM call, no full-page read. Marketing homepages cost the agent its
+    // first 2-5 steps just finding this button (and mega-pages like
+    // aman.com blinded it entirely); a human's first move is the big BOOK
+    // button, so make it free. Best-effort: no match ⇒ the agent navigates
+    // as before.
+    try {
+      const entry = await clickBookingEntryDeterministically(page);
+      if (entry) {
+        console.log(
+          `[stagehand] ✓ booking CTA clicked deterministically ("${entry}") (${elapsed()})`,
+        );
+        await opts.onStep?.("Opening the booking page…");
+        // Give the click's navigation a beat to start so the agent's first
+        // read sees the booking engine, not the marketing page mid-unload.
+        await new Promise((r) => setTimeout(r, 1500));
+      } else {
+        console.log(
+          `[stagehand] no obvious booking CTA on landing page — agent will navigate (${elapsed()})`,
+        );
+      }
+    } catch (e) {
+      console.warn(
+        `[stagehand] booking-CTA fast path skipped: ${e instanceof Error ? e.message : e}`,
+      );
+    }
+
     // DOM-mode agent: act / fillForm / extract / goto via the page's
     // accessibility tree — no screenshots, no coordinate guessing.
     //
@@ -877,11 +905,14 @@ async function createSteelSession(args: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        // Minimal, safe body — let Steel default everything else. Extra
-        // fields (solveCaptcha/useProxy) were the likely 400 cause; we're
-        // testing speed here, not captcha, so keep the request lean.
+        // Lean body (extra fields caused 400s) + Steel's built-in ad/tracker
+        // blocker. Heavy luxury sites (aman.com: autoplay video, huge DOM)
+        // blinded the agent (ariaTree timeouts) and then CRASHED the tab
+        // ("no page available") — blocking at Steel's layer protects every
+        // tab, including ones our per-page CDP blocklist never touches.
         timeout: Math.min(Math.max(args.timeoutMs + 60_000, 60_000), 900_000),
         dimensions: { width: AGENT_VIEWPORT.width, height: AGENT_VIEWPORT.height },
+        blockAds: true,
       }),
       signal: ctrl.signal,
     });
@@ -1131,7 +1162,12 @@ const IMAGE_BLOCKLIST = [
 async function blockHeavyResources(page: unknown): Promise<void> {
   if (optionalEnv("BROWSER_AGENT_BLOCK_HEAVY") === "false") return;
   const cdp = page as CdpPage;
-  if (typeof cdp?.sendCDP !== "function") return;
+  if (typeof cdp?.sendCDP !== "function") {
+    console.warn(
+      "[stagehand] ✗ heavy-resource blocklist SKIPPED — page object has no sendCDP (videos/trackers will load; heavy sites may blind or crash the tab)",
+    );
+    return;
+  }
   // Images blocked by default for speed; opt OUT with =false (see IMAGE_BLOCKLIST).
   const urls =
     optionalEnv("BROWSER_AGENT_BLOCK_IMAGES") === "false"
@@ -1140,9 +1176,12 @@ async function blockHeavyResources(page: unknown): Promise<void> {
   try {
     await cdp.sendCDP("Network.enable");
     await cdp.sendCDP("Network.setBlockedURLs", { urls });
+    console.log(
+      `[stagehand] ✓ heavy-resource blocklist applied (${urls.length} patterns)`,
+    );
   } catch (e) {
     console.warn(
-      `[stagehand] heavy-resource block skipped: ${e instanceof Error ? e.message : e}`,
+      `[stagehand] ✗ heavy-resource block FAILED: ${e instanceof Error ? e.message : e}`,
     );
   }
 }
@@ -1182,6 +1221,77 @@ async function captureProofScreenshot(
  * label/selector it clicked, or null if it found nothing to dismiss (caller
  * then falls back to the LLM act()). Best-effort — never throws.
  */
+/**
+ * Deterministically click the page's obvious booking call-to-action —
+ * "Book now" / "Reserve" / "Check availability" — with one in-page DOM
+ * scan and zero LLM calls. Skips when the URL already looks like a booking
+ * engine. Two passes: explicit booking phrases first, then bare
+ * "Reserve"/"Reservations"/"Book". Returns the clicked label, or null.
+ * Best-effort — never throws.
+ */
+async function clickBookingEntryDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      // Already inside a booking engine? Don't touch anything.
+      if (
+        /reserv|book|rate|checkout|availability|search-results|ratelist/i.test(
+          location.pathname + location.search + location.host,
+        )
+      ) {
+        return null;
+      }
+      const PRIMARY =
+        /^(book now|reserve now|book online|book your stay|book a room|book accommodations? online|check availability|check rates|book a tee time|book tee times?|tee times? booking)$/i;
+      const SECONDARY = /^(reserve|reservations?|book|tee times?|stay)$/i;
+      const isVisible = (el: Element | null): boolean => {
+        if (!el) return false;
+        const rects = (el as HTMLElement).getClientRects();
+        if (!rects || rects.length === 0) return false;
+        const st = window.getComputedStyle(el as HTMLElement);
+        return (
+          st.visibility !== "hidden" &&
+          st.display !== "none" &&
+          Number(st.opacity || "1") > 0.05
+        );
+      };
+      const nodes = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "a, button, [role=button], input[type=button], input[type=submit]",
+        ),
+      );
+      const labelOf = (el: HTMLElement): string =>
+        (
+          el.innerText ||
+          el.textContent ||
+          (el as HTMLInputElement).value ||
+          el.getAttribute("aria-label") ||
+          ""
+        ).trim();
+      for (const re of [PRIMARY, SECONDARY]) {
+        for (const el of nodes) {
+          const txt = labelOf(el);
+          if (!txt || txt.length > 40) continue;
+          if (re.test(txt) && isVisible(el)) {
+            // Keep the navigation in THIS tab so the agent doesn't lose the
+            // page (target=_blank booking links otherwise spawn a tab the
+            // about-to-start agent isn't looking at).
+            if (el instanceof HTMLAnchorElement) el.target = "_self";
+            el.click();
+            return txt;
+          }
+        }
+      }
+      return null;
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function dismissConsentDeterministically(
   page: unknown,
 ): Promise<string | null> {
