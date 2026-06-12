@@ -812,11 +812,11 @@ async function createSteelSession(args: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        solveCaptcha: args.solveCaptcha,
-        useProxy: args.solveCaptcha, // proxy pairs with captcha-solving, as on BB
+        // Minimal, safe body — let Steel default everything else. Extra
+        // fields (solveCaptcha/useProxy) were the likely 400 cause; we're
+        // testing speed here, not captcha, so keep the request lean.
+        timeout: Math.min(Math.max(args.timeoutMs + 60_000, 60_000), 900_000),
         dimensions: { width: AGENT_VIEWPORT.width, height: AGENT_VIEWPORT.height },
-        // Steel expects the session timeout in ms; give it wall-clock + slack.
-        timeout: args.timeoutMs + 60_000,
       }),
       signal: ctrl.signal,
     });
@@ -835,9 +835,20 @@ async function createSteelSession(args: {
     json = { raw: text };
   }
   if (!res.ok) {
-    const msg =
-      (json.error as string) ?? (json.message as string) ?? text.slice(0, 240);
-    throw new Error(`[steel] create session → ${res.status}: ${msg}`);
+    // Surface Steel's FULL complaint — NestJS-style 400s put the useful
+    // detail in `message` (often an array of field errors), while `error`
+    // is just the generic "Bad Request" label. Always include the raw body
+    // so nothing is hidden.
+    const detail = Array.isArray(json.message)
+      ? json.message.join("; ")
+      : typeof json.message === "string"
+        ? json.message
+        : typeof json.error === "string"
+          ? json.error
+          : "";
+    throw new Error(
+      `[steel] create session → ${res.status}: ${detail || "(no message)"} | raw=${text.slice(0, 400)}`,
+    );
   }
   const id = String(json.id ?? json.sessionId ?? "");
   if (!id) throw new Error("[steel] create session returned no id");
