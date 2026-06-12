@@ -465,6 +465,8 @@ enum BookingProvider {
   // Hotelbeds (HBX Group APItude) bedbank — second hotel API, tried after
   // LiteAPI; deep European + leisure-luxury inventory.
   HOTELBEDS
+  // RateHawk / Emerging Travel Group — third hotel API in the chain.
+  RATEHAWK
   // Autonomous Claude browser agent that books on a vendor's own website
   // and pays with a single-use Stripe Issuing virtual card.
   BROWSER_AGENT

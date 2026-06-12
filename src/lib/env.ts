@@ -61,6 +61,10 @@ const definitions = {
   HOTELBEDS_SECRET: { required: false },
   // "test" (default — api.test.hotelbeds.com) or "production".
   HOTELBEDS_ENV: { required: false, default: "test" },
+  // RateHawk / Emerging Travel Group API (api.worldota.net) — 3rd hotel
+  // API. Basic auth pair from the ETG dashboard once Elsa enables access.
+  RATEHAWK_KEY_ID: { required: false },
+  RATEHAWK_API_KEY: { required: false },
   OPENTABLE_API_KEY: { required: false },
   UBER_FOR_BUSINESS_TOKEN: { required: false },
   // Uber Guest Rides API (developer.uber.com). Sandbox works the moment

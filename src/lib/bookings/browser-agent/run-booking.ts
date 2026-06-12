@@ -240,9 +240,11 @@ export async function runBrowserBooking(args: {
     };
     const { tryLiteApiHotelBooking } = await import("../liteapi-hotel");
     const { tryHotelbedsHotelBooking } = await import("../hotelbeds-hotel");
+    const { tryRateHawkHotelBooking } = await import("../ratehawk-hotel");
     const providers = [
       { name: "LiteAPI", fn: tryLiteApiHotelBooking },
       { name: "Hotelbeds", fn: tryHotelbedsHotelBooking },
+      { name: "RateHawk", fn: tryRateHawkHotelBooking },
     ];
     for (const p of providers) {
       const api = await p.fn(hotelArgs);

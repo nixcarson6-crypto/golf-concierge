@@ -24,6 +24,7 @@
     "check:liteapi": "dotenv -e .env.local -- tsx scripts/check-liteapi.ts",
     "check:hotelbeds": "dotenv -e .env.local -- tsx scripts/check-hotelbeds.ts",
     "hotelbeds:coverage": "dotenv -e .env.local -- tsx scripts/hotelbeds-coverage.ts",
+    "check:ratehawk": "dotenv -e .env.local -- tsx scripts/check-ratehawk.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

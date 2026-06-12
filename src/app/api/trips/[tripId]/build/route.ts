@@ -27,7 +27,7 @@ import {
 } from "@/lib/quiz/parse-legs";
 import { airportForDestination } from "@/lib/data/airport-lookup";
 import { rewriteFlightItemsFromOffer } from "@/lib/flights/rewrite-items";
-import { stripLocationSuffix } from "@/lib/trip-display";
+import { stripLocationSuffix, tripDisplayLabel } from "@/lib/trip-display";
 
 const bodySchema = z.object({
   answers: z.record(z.string(), z.unknown()),
@@ -793,6 +793,35 @@ export async function POST(
     }
   } catch (err) {
     console.error("[build] classify-reservations threw (non-fatal):", err);
+  }
+
+  // TITLE REPAIR: the display layer rejects sentence-looking titles and
+  // falls back to "Generating destination…" — which a customer saw on a
+  // fully BUILT trip because the saved title carried conversational tail
+  // text. If the current title wouldn't render, overwrite it (and the
+  // destination) with the cleaned chosen destination so the header always
+  // shows a real place on a built trip.
+  try {
+    const t = await db.trip.findUnique({
+      where: { id: tripId },
+      select: { title: true, destination: true },
+    });
+    const renders =
+      t && tripDisplayLabel({ title: t.title, destination: t.destination });
+    if (
+      chosenDestination &&
+      (!renders || renders === "Generating destination…")
+    ) {
+      await db.trip.update({
+        where: { id: tripId },
+        data: { title: chosenDestination, destination: chosenDestination },
+      });
+      console.log(
+        `[build] title repaired → "${chosenDestination}" (saved title didn't render).`,
+      );
+    }
+  } catch (e) {
+    console.warn("[build] title repair skipped:", e);
   }
 
   return new Response(

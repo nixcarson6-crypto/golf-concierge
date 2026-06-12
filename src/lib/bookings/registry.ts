@@ -66,6 +66,8 @@ export function providerLabel(provider: BookingProvider): string {
       return "Instant booking";
     case "HOTELBEDS":
       return "Instant booking";
+    case "RATEHAWK":
+      return "Instant booking";
     case "DUFFEL":
       return "Duffel";
     case "OPENTABLE":
