@@ -356,6 +356,30 @@ export async function runStagehandBooking(
   const provider = (optionalEnv("BROWSER_PROVIDER") ?? "browserbase").toLowerCase();
   const useSteel = provider === "steel";
 
+  // Hard wall-clock — abort the agent if it runs long.
+  const controller = new AbortController();
+  // HEAVY-PAGE WATCHDOG: ariaTree/extract timeouts mean the agent is BLIND
+  // (the page's DOM is too large to serialize inside the tool timeout).
+  // One or two can be ridden out; three+ means this site is unreadable and
+  // every further step is wasted clock (Sentosa, aman.com: the agent 'just
+  // sat there'). Count them via Stagehand's logger hook and abort early
+  // with an honest fallback instead.
+  let blindReads = 0;
+  let heavyAbort = false;
+  const watchdogLogger = (line: { message?: string; category?: string }) => {
+    const m = line?.message ?? "";
+    if (/ariaTree\(\) timed out|extract\(\) timed out/.test(m)) {
+      blindReads += 1;
+      if (blindReads >= 3 && !heavyAbort) {
+        heavyAbort = true;
+        console.warn(
+          `[stagehand] ✗ heavy-page watchdog: ${blindReads} blind reads — aborting run, falling back to website/phone`,
+        );
+        controller.abort();
+      }
+    }
+  };
+
   let steelSession: SteelSession | null = null;
   let stagehand: Stagehand;
 
@@ -394,6 +418,7 @@ export async function runStagehandBooking(
       experimental: true,
       disableAPI: true,
       verbose: 0,
+      logger: watchdogLogger as never,
     });
   } else {
     const apiKey = env("BROWSERBASE_API_KEY");
@@ -426,6 +451,7 @@ export async function runStagehandBooking(
       experimental: true,
       disableAPI: true,
       verbose: 0,
+      logger: watchdogLogger as never,
       browserbaseSessionCreateParams: {
         projectId,
         browserSettings: {
@@ -443,8 +469,9 @@ export async function runStagehandBooking(
     });
   }
 
-  // Hard wall-clock — abort the agent if it runs long.
-  const controller = new AbortController();
+  // Hard wall-clock — abort the agent if it runs long. (Declared with the
+  // heavy-page watchdog ABOVE the provider branch so both Stagehand
+  // constructions can reference the logger.)
   const wallClock = setTimeout(() => controller.abort(), opts.timeoutMs);
   const t0 = Date.now();
   const elapsed = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
@@ -484,6 +511,11 @@ export async function runStagehandBooking(
     // fonts, and captcha/recaptcha/turnstile are left untouched so layout,
     // confirmation reads, and the captcha-solver all keep working.
     await blockHeavyResources(page);
+    // DOM DIET: network blocking can't shrink MARKUP. Mega marketing pages
+    // (Sentosa, aman.com) carry videos/canvases/thousand-node decorative
+    // SVGs that blow the agent's page reads past the tool timeout — the
+    // agent goes blind. Strip the heavy nodes the booking flow never needs.
+    await slimHeavyDom(page);
 
     await opts.onStep?.(`Opening ${shortHost(opts.startUrl)}…`);
     await page.goto(opts.startUrl, {
@@ -546,6 +578,7 @@ export async function runStagehandBooking(
         // Give the click's navigation a beat to start so the agent's first
         // read sees the booking engine, not the marketing page mid-unload.
         await new Promise((r) => setTimeout(r, 1500));
+        await slimHeavyDom(page);
       } else {
         console.log(
           `[stagehand] no obvious booking CTA on landing page — agent will navigate (${elapsed()})`,
@@ -895,8 +928,10 @@ export async function runStagehandBooking(
     return {
       outcome: {
         status: "failed",
-        failureReason: aborted ? "timeout" : "ambiguous",
-        message: msg,
+        failureReason: heavyAbort ? "form_not_found" : aborted ? "timeout" : "ambiguous",
+        message: heavyAbort
+          ? "This venue's website is too heavy for automated booking — finish directly via the link or phone below."
+          : msg,
       },
       sessionUrl: null,
       finalScreenshot: null,
@@ -1232,6 +1267,39 @@ async function blockHeavyResources(page: unknown): Promise<void> {
     console.warn(
       `[stagehand] ✗ heavy-resource block FAILED: ${e instanceof Error ? e.message : e}`,
     );
+  }
+}
+
+/**
+ * Strip DOM weight the booking flow never needs — videos, canvases, and
+ * decorative SVGs with huge node counts. Network blocking stops downloads
+ * but not markup; these nodes are what blow ariaTree/extract past the tool
+ * timeout on mega marketing pages and leave the agent blind. Conservative
+ * on purpose: never touches forms, iframes (embedded booking engines live
+ * there), images, or hidden menus. Best-effort, never throws.
+ */
+async function slimHeavyDom(page: unknown): Promise<void> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return;
+  try {
+    const removed = await cdp.evaluate<number>(() => {
+      let n = 0;
+      document.querySelectorAll("video, audio, canvas").forEach((el) => {
+        el.remove();
+        n++;
+      });
+      document.querySelectorAll("svg").forEach((el) => {
+        if (el.querySelectorAll("*").length > 40) {
+          el.replaceWith(document.createElement("i"));
+          n++;
+        }
+      });
+      return n;
+    });
+    if (removed > 0)
+      console.log(`[stagehand] ✓ dom diet removed ${removed} heavy nodes`);
+  } catch {
+    /* best-effort */
   }
 }
 
