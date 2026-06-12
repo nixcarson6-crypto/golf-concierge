@@ -27,6 +27,7 @@ export const FAILURE_CODES = [
   "login_required", // mandatory account login we don't have
   "form_not_found", // no online booking form (phone/email-only venue)
   "budget_exceeded", // real price came in over the budget ceiling
+  "price_approval", // real price above estimate — waiting on customer approval
   "ambiguous", // can't safely tell what state the booking is in
   "timeout", // ran out of time / iterations
 ] as const;
@@ -46,6 +47,9 @@ export const bookingOutcomeSchema = z.object({
   amountChargedCents: z.number().nullish(),
   /** Required when status is "failed". */
   failureReason: failureCodeSchema.nullish(),
+  /** The real total quoted at the venue's checkout, in cents — set by the
+   *  price-approval gate so the UI can show "Approve & book — $X". */
+  priceCents: z.number().nullish(),
   /** One-sentence human summary of what happened. */
   message: z.string().default(""),
 });

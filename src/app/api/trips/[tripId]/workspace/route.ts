@@ -253,6 +253,10 @@ export async function GET(
                       typeof bMeta?.amountChargedCents === "number"
                         ? (bMeta.amountChargedCents as number)
                         : null,
+                    quotedPriceCents:
+                      typeof bMeta?.quotedPriceCents === "number"
+                        ? (bMeta.quotedPriceCents as number)
+                        : null,
                     agentProgress: run?.progress ?? null,
                     agentStatus: run?.status ?? null,
                   }

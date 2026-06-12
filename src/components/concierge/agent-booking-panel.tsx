@@ -90,6 +90,27 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
     }
   }
 
+  async function approvePrice() {
+    setSubmitting(true);
+    try {
+      const res = await fetch(
+        `/api/trips/${tripId}/items/${item.id}/approve-price`,
+        { method: "POST" },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        toast.error(err?.error ?? "Couldn't approve — try again.");
+        return;
+      }
+      toast.success("Approved — Pyltrix is completing the booking.");
+      void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   // Poll for status updates whenever a booking is mid-flight. The SSE
   // nudge bridge SHOULD push updates the moment the agent's progress
   // changes — but it requires INTERNAL_NUDGE_SECRET to be set AND the
@@ -170,6 +191,50 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
 
   // --- State: NEEDS_REVIEW -------------------------------------------------
   if (booking.status === "NEEDS_REVIEW") {
+    // Hybrid price-approval: the agent found the venue's REAL total above
+    // the reviewed estimate and paused before paying. Show the real number
+    // and a one-tap approve — on approval the agent re-runs with the gate
+    // lifted and completes the booking.
+    if (booking.failureReason === "price_approval" && booking.quotedPriceCents) {
+      const quoted = Math.round(booking.quotedPriceCents / 100);
+      const estimate = item.cost != null ? Math.round(item.cost / 100) : null;
+      return (
+        <div className="rounded-2xl border border-foreground/30 bg-foreground/5 p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="size-9 rounded-xl bg-foreground/10 grid place-items-center text-foreground shrink-0">
+              <ShieldCheck className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">
+                Found it — needs your OK on the price
+              </p>
+              <p className="text-xs text-foreground/80 mt-0.5">
+                The venue&apos;s real total is{" "}
+                <span className="font-semibold">${quoted.toLocaleString()}</span>
+                {estimate != null
+                  ? ` — above the $${estimate.toLocaleString()} estimate.`
+                  : "."}{" "}
+                Everything else is filled in and ready.
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={approvePrice}
+            disabled={submitting}
+            className="w-full h-11 rounded-xl bg-foreground text-background hover:bg-foreground/90 font-semibold"
+          >
+            {submitting ? (
+              <Loader2 className="size-4 mr-2 animate-spin" />
+            ) : null}
+            Approve &amp; book — ${quoted.toLocaleString()}
+          </Button>
+          <p className="text-[10px] text-muted-foreground text-center">
+            Or swap this item for something else — nothing is booked until you
+            approve.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border border-foreground/30 bg-foreground/5 px-4 py-3 space-y-1">
         <div className="flex items-center gap-2">

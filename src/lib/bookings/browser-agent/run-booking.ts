@@ -208,6 +208,17 @@ export async function runBrowserBooking(args: {
   }
 
   const task = buildBookingTask({ request, traveler, venue, accountPassword });
+
+  // HYBRID PRICE-APPROVAL GATE: by default the gate is the headroomed
+  // estimate (task.budgetCents). Once the customer has APPROVED the real
+  // price (approve-price endpoint writes approvedPriceCents), the gate is
+  // lifted entirely so the re-run pays without re-asking. No estimate
+  // (or $25k+ budget) ⇒ no gate.
+  const approvedPriceCents =
+    typeof bookingMeta.approvedPriceCents === "number"
+      ? (bookingMeta.approvedPriceCents as number)
+      : null;
+  const priceGateCents = approvedPriceCents != null ? null : task.budgetCents;
   const goal = buildGoal(task);
 
   // ---------------------------------------------------------- 3.5 (API-first)
@@ -340,13 +351,16 @@ export async function runBrowserBooking(args: {
               // room → rate → guest form) — ~30+ steps. Hotels get 6 min
               // (Sonnet plans more reliably but a touch slower per step, and
               // reaching the payment step reliably beats shaving a minute).
+              // LODGING 7 min: Marriott-class chain sites died ON the guest-info page
+              // at 6:01 — better to finish at 6:30 than abort at the finish line.
+              // Typical engines still complete in 3-4 and never feel the cap.
               // Golf/transport get 4 — Laguna Phuket's booking widget hit the
               // old 3-min cap at step 18 while still working; Carson's bar is
               // "payment step in ≤4 min" for golf too, so give it the full 4.
               // BROWSER_AGENT_TIMEOUT_MS overrides both.
               timeoutMs:
                 Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
-                (item.type === "LODGING" ? 360_000 : 240_000),
+                (item.type === "LODGING" ? 420_000 : 240_000),
               maxSteps,
               // Run the browser in the region nearest the venue so each of
               // the ~25 actions has a short round-trip (an Italian hotel
@@ -358,6 +372,7 @@ export async function runBrowserBooking(args: {
               // needs_review, no card entered) when Stripe isn't configured
               // or the customer hasn't saved a card.
               cardProvider,
+              priceGateCents,
               onStep: async (label) => {
                 await bridgeNudge(label);
               },
@@ -459,10 +474,18 @@ export async function runBrowserBooking(args: {
       // email (and a phone as a backstop). The customer then gets a
       // one-tap Call button AND a pre-drafted reservation email.
       const mined = extractContacts(outcome.message ?? "");
+      const rawReason = (outcome as { failureReason?: string | null }).failureReason ?? null;
+      const quotedPriceCents =
+        (outcome as { priceCents?: number | null }).priceCents ??
+        (existingMeta.quotedPriceCents as number | undefined) ??
+        null;
       const nextMeta: Record<string, unknown> = {
         ...existingMeta,
         vendorConfirmation: verified.evidence ?? null,
-        failureReason: verified.failureCode ?? null,
+        // For needs_review verdicts the verifier has no failure code — fall
+        // back to the agent's own reason so price_approval reaches the UI.
+        failureReason: verified.failureCode ?? rawReason,
+        quotedPriceCents,
         fallbackContact: {
           website: places.website ?? startUrl,
           phone: places.phone ?? mined.phone ?? null,

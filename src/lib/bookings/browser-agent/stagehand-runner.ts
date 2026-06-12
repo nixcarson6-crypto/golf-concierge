@@ -83,7 +83,11 @@ const MAX_STEPS = Number(optionalEnv("STAGEHAND_MAX_STEPS")) || 35;
 // 15s: inside a 3-minute booking budget, a single hung action may not cost
 // more than ~8% of the clock. A legit action lands well under 15s; a hang
 // recovers fast and the agent moves on.
-const TOOL_TIMEOUT_MS = Number(optionalEnv("STAGEHAND_TOOL_TIMEOUT_MS")) || 15_000;
+// 20s: Marriott-class pages kept aborting actions at 15s ("act() timed out
+// ... may continue executing in the background") and re-doing them — four
+// such aborts cost a run ~60s. 20s lands the slow-but-fine actions while
+// still bounding genuinely hung ones.
+const TOOL_TIMEOUT_MS = Number(optionalEnv("STAGEHAND_TOOL_TIMEOUT_MS")) || 20_000;
 
 // Default Browserbase region when we can't infer one from the venue.
 const DEFAULT_REGION = optionalEnv("BROWSERBASE_REGION") || "us-west-2";
@@ -175,6 +179,11 @@ export type RunStagehandOptions = {
    * payment step and reports needs_review — no card is ever entered.
    */
   cardProvider?: CardProvider;
+  /** Price-approval gate (cents): when the venue's real total at the card
+   *  step exceeds this, do NOT pay — return a price_approval outcome so the
+   *  customer can approve the real price first. null = no gate (customer
+   *  already approved, or no estimate exists / $25k+ budget). */
+  priceGateCents?: number | null;
   /** Live progress callback → wire to updateProgress for the UI. */
   onStep?: (label: string) => void | Promise<void>;
   /** Browserbase region (us-west-2 / us-east-1 / eu-central-1 /
@@ -630,8 +639,32 @@ export async function runStagehandBooking(
       }));
       if (pay.atPayment) {
         console.log(
-          `[stagehand] payment step detected (${elapsed()}) — total=${pay.amountCents != null ? `${pay.amountCents}c ${pay.currency ?? ""}` : "unknown"} — charging + paying`,
+          `[stagehand] payment step detected (${elapsed()}) — total=${pay.amountCents != null ? `${pay.amountCents}c ${pay.currency ?? ""}` : "unknown"}`,
         );
+        // HYBRID PRICE-APPROVAL GATE (Carson's design): the agent always
+        // FINISHES the work — but when the venue's real total runs above
+        // the customer-reviewed estimate (+headroom), we pause HERE, before
+        // any money moves, and hand the real number back for one-tap
+        // approval. Within the estimate → no interruption, auto-complete.
+        if (
+          opts.priceGateCents != null &&
+          pay.amountCents != null &&
+          pay.amountCents > opts.priceGateCents
+        ) {
+          console.log(
+            `[stagehand] price ${pay.amountCents}c above gate ${opts.priceGateCents}c — pausing for customer approval (${elapsed()})`,
+          );
+          return {
+            outcome: {
+              status: "needs_review",
+              failureReason: "price_approval",
+              priceCents: pay.amountCents,
+              message: `Everything is filled in and ready — the venue's real total is $${Math.round(pay.amountCents / 100).toLocaleString()}${pay.currency ? ` ${pay.currency}` : ""}, above the estimate. Approve the price and Pyltrix books it immediately.`,
+            },
+            sessionUrl,
+            finalScreenshot: null,
+          };
+        }
         await opts.onStep?.("Securing payment…");
         const card = await opts.cardProvider(pay.amountCents);
         if (card.status !== "ok") {

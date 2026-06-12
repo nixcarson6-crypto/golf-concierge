@@ -147,6 +147,9 @@ export type WorkspaceItemBooking = {
   vendorUrl: string | null;
   agentRunId: string | null;
   failureReason: string | null;
+  /** The venue's real total found at checkout (cents) — set when the agent
+   *  paused for price approval. */
+  quotedPriceCents?: number | null;
   fallbackContact: {
     website?: string | null;
     phone?: string | null;
