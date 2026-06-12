@@ -59,6 +59,7 @@ export async function ensureCardholder(userId: string): Promise<string> {
       phone: true,
       legalGivenName: true,
       legalFamilyName: true,
+      dateOfBirth: true,
     },
   });
   if (!user) throw new Error(`User ${userId} not found.`);
@@ -70,6 +71,21 @@ export async function ensureCardholder(userId: string): Promise<string> {
     user.name ||
     user.email ||
     "Pyltrix Traveler";
+  // Newer Issuing API versions require first/last name (and accept DOB) on
+  // the individual hash — the display name alone leaves the cardholder with
+  // "outstanding requirements" and card creation fails. Fall back to
+  // splitting whatever name we have.
+  const [fallbackFirst, ...fallbackRest] = displayName.split(/\s+/);
+  const firstName = user.legalGivenName?.trim() || fallbackFirst || "Pyltrix";
+  const lastName =
+    user.legalFamilyName?.trim() || fallbackRest.join(" ") || "Traveler";
+  const dob = user.dateOfBirth
+    ? {
+        day: user.dateOfBirth.getUTCDate(),
+        month: user.dateOfBirth.getUTCMonth() + 1,
+        year: user.dateOfBirth.getUTCFullYear(),
+      }
+    : undefined;
 
   // Stripe Issuing requires the cardholder to have accepted the Issuing
   // user terms before any card minted to them can activate. Without this
@@ -84,6 +100,9 @@ export async function ensureCardholder(userId: string): Promise<string> {
     phone_number: user.phone ?? undefined,
     billing: { address: { ...DEFAULT_BILLING } },
     individual: {
+      first_name: firstName,
+      last_name: lastName,
+      ...(dob ? { dob } : {}),
       card_issuing: {
         user_terms_acceptance: { date: nowSecs, ip: "127.0.0.1" },
       },

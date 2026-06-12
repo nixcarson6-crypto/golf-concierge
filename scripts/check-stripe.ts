@@ -72,9 +72,14 @@ async function main(): Promise<void> {
           country: "US",
         },
       },
-      // Required so issued cards can activate — without this the cardholder
+      // Required so issued cards can activate — without these the cardholder
       // is created with "outstanding requirements" and card create fails.
+      // Newer Issuing API versions want first/last name + DOB on the
+      // individual hash, not just the display name.
       individual: {
+        first_name: "Pyltrix",
+        last_name: "Traveler",
+        dob: { day: 1, month: 1, year: 1990 },
         card_issuing: {
           user_terms_acceptance: {
             date: Math.floor(Date.now() / 1000),
@@ -84,6 +89,17 @@ async function main(): Promise<void> {
       },
     });
     console.log(`   ✓ cardholder ${cardholder.id}`);
+    // Surface Stripe's own requirements verdict so a failure at step 3 is
+    // never a guessing game — this names the exact missing fields.
+    const fresh = await sk.issuing.cardholders.retrieve(cardholder.id);
+    const req = fresh.requirements;
+    if (req && (req.past_due?.length || req.disabled_reason)) {
+      console.log(
+        `   ⚠ requirements: disabled_reason=${req.disabled_reason ?? "none"} past_due=[${(req.past_due ?? []).join(", ")}]`,
+      );
+    } else {
+      console.log("   ✓ no outstanding requirements");
+    }
 
     // 3. Mint single-use virtual card ($300 limit)
     step(3, "Mint single-use virtual card ($300 per-authorization limit)");
