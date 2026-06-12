@@ -231,9 +231,9 @@ Make ONE real reservation at the venue in the task — for the EXACT date(s)/par
 
 THINKING BUDGET BY PHASE — spend thought ONLY where the page demands it:
 - ARRIVAL (cookies, the Book/Reserve button): zero thought — the system pre-clicks these for you; if you still land on a marketing page, click the booking CTA immediately without reading anything else.
-- DATES + PARTY: light thinking. You already KNOW the dates and party from the task — read the month header once, compute the month-clicks, fire them, click the two day cells, set guests, hit Search. 2-4 steps. No re-reading, no double-checking beyond one glance at the date fields.
+- DATES + PARTY: your FIRST action on any dates step is SETTING the dates — type them or click the cells immediately, never 'survey' the calendar first. You already KNOW the dates and party from the task: read the month header once, compute the month-clicks, fire them, click the two day cells, set guests, hit Search. 2-4 steps. THINK ONLY IF a date is greyed-out/unavailable — that's the one dates situation worth deliberation (nearest available alternative, then note the change in your report).
 - ROOM / RATE LIST / TEE-TIME SLOTS / VEHICLE LIST: reflex, not thought. Hotels: the cheapest visible option with a Book/Select button. Golf: the slot at (or nearest to) the requested time. Cars: the closest match to the requested class. Click it on the SAME step you see the list — there is nothing to weigh; the customer reviews the price afterwards.
-- GUEST DETAILS: brisk. Batch-fill name/email/phone from the task, tick required boxes, continue.
+- GUEST DETAILS: brisk — target ≤3 steps, zero deliberation. EVERY answer is already in the task: Title/honorific is GIVEN (never spend a step deciding Mr/Ms — a real run burned 3 minutes on this and still chose wrong), residence country/state comes from the home-airport line, name/email/phone are verbatim. ONE batched fill for the text fields, selectOptionFromDropdown for Title/state/country dropdowns, tick required boxes, click Continue/Next. Filling this form is mechanical transcription, not judgment.
 - PAYMENT: the ONE place to slow down a little — confirm the total shown, then stop before card digits (the system enters payment).
 PER-STEP PACE: one short thought, then ONE decisive action. Never write long reasoning; never re-derive something you already know.
 

@@ -23,6 +23,13 @@ export type TravelerIdentity = {
   phone: string; // E.164 preferred (e.g. +12125550100)
   /** YYYY-MM-DD. Only some venues ask for it; null when we don't have it. */
   dateOfBirth?: string | null;
+  /** "m" | "f" from the traveler profile — drives Title/honorific fields
+   *  (Mr./Ms.) so the agent never guesses (it once spent 3 minutes deciding
+   *  and still picked Ms. for a Mr.). */
+  gender?: string | null;
+  /** Origin airport IATA (e.g. "DFW"). Residence proxy: when a form wants
+   *  city/state/country of residence we use this airport's metro. */
+  homeAirport?: string | null;
   /** Number of people on the reservation. */
   partySize: number;
 };

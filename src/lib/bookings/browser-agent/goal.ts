@@ -202,8 +202,20 @@ export function buildGoal(
   lines.push(``);
   lines.push(`## Traveller details (use exactly; do not invent extras)`);
   lines.push(`- Name: ${t.givenName} ${t.familyName}`);
+  lines.push(
+    `- Title/honorific: ${t.gender === "f" ? "Ms." : "Mr."} — use EXACTLY this in any Title/Salutation dropdown. It is GIVEN; never deliberate over it.`,
+  );
   lines.push(`- Email: ${t.email}`);
   lines.push(`- Phone: ${t.phone}`);
+  if (t.homeAirport) {
+    lines.push(
+      `- Residence (for country / state / city fields): the traveller flies from ${t.homeAirport} — use that airport's metro area (e.g. DFW → Dallas, Texas, United States). Pick the matching state/country in dropdowns without deliberating.`,
+    );
+  } else {
+    lines.push(
+      `- Residence (for country / state / city fields): United States; if a state is required and unknown, pick Texas.`,
+    );
+  }
   if (t.dateOfBirth) lines.push(`- Date of birth (only if a field requires it): ${t.dateOfBirth}`);
   if (task.accountPassword) {
     lines.push(

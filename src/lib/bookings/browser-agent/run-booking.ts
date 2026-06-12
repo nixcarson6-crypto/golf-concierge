@@ -67,7 +67,10 @@ export async function runBrowserBooking(args: {
       where: { id: args.itineraryItemId },
       include: {
         itinerary: {
-          select: { tripId: true, trip: { select: { groupSize: true } } },
+          select: {
+            tripId: true,
+            trip: { select: { groupSize: true, constraints: true } },
+          },
         },
       },
     }),
@@ -79,6 +82,8 @@ export async function runBrowserBooking(args: {
         legalFamilyName: true,
         phone: true,
         dateOfBirth: true,
+        gender: true,
+        defaultOriginAirport: true,
       },
     }),
     // Lazy import keeps the Google Places client out of the cold path on
@@ -142,6 +147,14 @@ export async function runBrowserBooking(args: {
     dateOfBirth: user.dateOfBirth
       ? user.dateOfBirth.toISOString().slice(0, 10)
       : null,
+    gender: user.gender ?? null,
+    // Residence proxy: the trip's origin airport (or the user's sticky home
+    // airport). Forms demanding state/country of residence use its metro.
+    homeAirport:
+      ((item.itinerary.trip?.constraints as { originAirport?: string } | null)
+        ?.originAirport ??
+        user.defaultOriginAirport) ||
+      null,
     // Party size = how many people the reservation is for. The trip's
     // groupSize is the source of truth (the customer answered "2 players");
     // a per-item metadata override wins if the itinerary set one (e.g. a
