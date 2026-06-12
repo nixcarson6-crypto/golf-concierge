@@ -80,12 +80,13 @@
     @apply bg-background text-foreground;
   }
 
-  /* Focus styling for every text control: kill the browser's native blue
+  /* Focus styling for every TEXT control: kill the browser's native blue
    * outline and use a clean ink border instead (Carson: blue clashes with
    * the green system; black for ALL inputs). !important so it wins over
-   * any component-level focus classes. */
-  input:focus,
-  input:focus-visible,
+   * any component-level focus classes. Range sliders are excluded — the
+   * border/ring treatment reads as an ugly box around the track. */
+  input:not([type="range"]):focus,
+  input:not([type="range"]):focus-visible,
   textarea:focus,
   textarea:focus-visible,
   select:focus,
@@ -93,6 +94,11 @@
     outline: none !important;
     border-color: hsl(var(--foreground)) !important;
     box-shadow: 0 0 0 1px hsl(var(--foreground)) !important;
+  }
+  input[type="range"]:focus,
+  input[type="range"]:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
   }
   input,
   textarea,
