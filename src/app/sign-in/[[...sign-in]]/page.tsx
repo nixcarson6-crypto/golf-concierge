@@ -3,23 +3,28 @@ import Link from "next/link";
 
 export default function SignInPage() {
   return (
-    <div className="min-h-dvh flex flex-col bg-concierge-radial">
-      <header className="px-6 py-6">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-foreground tracking-wide"
-        >
-          <span className="text-lg font-semibold tracking-[0.3em]">
-            PYLTRIX
+    <div className="min-h-dvh flex flex-col bg-background">
+      <header className="px-6 py-5 border-b border-border/60">
+        <Link href="/" className="inline-flex items-center gap-2">
+          <span className="grid size-7 place-items-center rounded-lg bg-foreground">
+            <svg
+              viewBox="0 0 24 24"
+              className="size-4 text-background"
+              fill="currentColor"
+              aria-hidden
+            >
+              <path d="M12 2c1.5 4 4 6.5 8 8-4 1.5-6.5 4-8 8-1.5-4-4-6.5-8-8 4-1.5 6.5-4 8-8Z" />
+            </svg>
           </span>
+          <span className="text-display text-lg tracking-tight">Pyltrix</span>
         </Link>
       </header>
 
-      <main className="flex-1 grid place-items-center px-4 pb-12">
+      <main className="flex-1 grid place-items-center px-4 pb-12 pt-8">
         <div className="w-full max-w-md flex flex-col items-center gap-6">
           <div className="text-center space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-              Welcome back
+            <h1 className="text-display text-3xl tracking-tight text-foreground">
+              Welcome back.
             </h1>
             <p className="text-sm text-muted-foreground">
               Sign in to keep planning your next golf trip.
@@ -29,8 +34,11 @@ export default function SignInPage() {
           <SignIn
             appearance={{
               elements: {
-                card: "bg-[#0f0f15] border border-[#2a2a35] shadow-2xl w-full",
+                card: "bg-background border border-border shadow-[0_24px_80px_-24px_rgb(0_0_0/0.18)] w-full rounded-2xl",
                 rootBox: "w-full",
+                formButtonPrimary:
+                  "bg-foreground text-background hover:bg-foreground/90",
+                footerActionLink: "text-foreground hover:text-foreground/80",
               },
             }}
           />
@@ -39,7 +47,7 @@ export default function SignInPage() {
             New here?{" "}
             <Link
               href="/sign-up"
-              className="text-[#d6b274] hover:text-[#e0bf85] font-medium"
+              className="text-foreground underline underline-offset-4 hover:text-foreground/80 font-medium"
             >
               Create an account
             </Link>
