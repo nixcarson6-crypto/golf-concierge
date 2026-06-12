@@ -5,44 +5,48 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 
+// Monochrome Clerk theme matching the pyltrix.com brand: white surfaces,
+// hairline borders, ink-black primary. This is GLOBAL — it styles the
+// sign-in/sign-up cards, user button menus, and every Clerk modal, so any
+// theme change happens here, not per-page.
 const clerkAppearance = {
   variables: {
-    colorBackground: "#0a0a0c",
-    colorInputBackground: "#16161e",
-    colorInputText: "#f5f0e3",
-    colorText: "#f5f0e3",
-    colorTextSecondary: "#d4cfc1",
-    colorTextOnPrimaryBackground: "#0a0a0c",
-    colorPrimary: "#d6b274",
-    colorDanger: "#ff6f6f",
-    colorNeutral: "#f5f0e3",
-    borderRadius: "14px",
+    colorBackground: "#ffffff",
+    colorInputBackground: "#ffffff",
+    colorInputText: "#0a0a0a",
+    colorText: "#0a0a0a",
+    colorTextSecondary: "#525252",
+    colorTextOnPrimaryBackground: "#ffffff",
+    colorPrimary: "#0a0a0a",
+    colorDanger: "#dc2626",
+    colorNeutral: "#0a0a0a",
+    borderRadius: "12px",
     fontFamily: "Inter, system-ui, sans-serif",
     fontSize: "15px",
   },
   elements: {
     rootBox: "w-full",
-    card: "bg-[#0f0f15] border border-[#2a2a35] shadow-2xl",
-    headerTitle: "text-[#f5f0e3] text-2xl font-semibold tracking-tight",
-    headerSubtitle: "text-[#c9c4b5] text-sm",
+    card: "bg-white border border-[#e6e6e6] shadow-[0_24px_80px_-24px_rgb(0_0_0/0.18)] rounded-2xl",
+    headerTitle: "text-[#0a0a0a] text-2xl font-semibold tracking-tight",
+    headerSubtitle: "text-[#525252] text-sm",
     socialButtonsBlockButton:
-      "bg-[#16161e] border border-[#2a2a35] text-[#f5f0e3] hover:bg-[#1d1d28]",
-    socialButtonsBlockButtonText: "text-[#f5f0e3] font-medium",
-    dividerLine: "bg-[#2a2a35]",
-    dividerText: "text-[#a8a292]",
-    formFieldLabel: "text-[#e8e3d4] font-medium",
+      "bg-white border border-[#e6e6e6] text-[#0a0a0a] hover:bg-[#fafafa] transition",
+    socialButtonsBlockButtonText: "text-[#0a0a0a] font-medium",
+    dividerLine: "bg-[#e6e6e6]",
+    dividerText: "text-[#8a8a8a]",
+    formFieldLabel: "text-[#0a0a0a] font-medium",
     formFieldInput:
-      "bg-[#16161e] border border-[#2a2a35] text-[#f5f0e3] placeholder:text-[#7a7568]",
-    formFieldInputShowPasswordButton: "text-[#a8a292] hover:text-[#f5f0e3]",
+      "bg-white border border-[#e6e6e6] text-[#0a0a0a] placeholder:text-[#8a8a8a] focus:border-[#0a0a0a] focus:ring-2 focus:ring-[#0a0a0a]/10 transition",
+    formFieldInputShowPasswordButton: "text-[#8a8a8a] hover:text-[#0a0a0a]",
     formButtonPrimary:
-      "bg-[#d6b274] text-[#0a0a0c] font-semibold hover:bg-[#e0bf85] shadow-lg shadow-[#d6b274]/20",
+      "bg-[#0a0a0a] text-white font-semibold hover:bg-[#0a0a0a]/90 transition shadow-sm",
     footer: "hidden",
-    formFieldHintText: "text-[#a8a292]",
-    identityPreviewText: "text-[#f5f0e3]",
-    identityPreviewEditButton: "text-[#d6b274] hover:text-[#e0bf85]",
-    formResendCodeLink: "text-[#d6b274] hover:text-[#e0bf85]",
+    formFieldHintText: "text-[#8a8a8a]",
+    identityPreviewText: "text-[#0a0a0a]",
+    identityPreviewEditButton: "text-[#0a0a0a] underline underline-offset-4 hover:opacity-70",
+    formResendCodeLink: "text-[#0a0a0a] underline underline-offset-4 hover:opacity-70",
     otpCodeFieldInput:
-      "bg-[#16161e] border border-[#2a2a35] text-[#f5f0e3]",
+      "bg-white border border-[#e6e6e6] text-[#0a0a0a] focus:border-[#0a0a0a]",
   },
 } as const;
 
@@ -61,7 +65,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={client}>
         {children}
         <Toaster
-          theme="dark"
+          theme="light"
           position="top-right"
           richColors
           toastOptions={{
