@@ -1244,9 +1244,17 @@ async function clickBookingEntryDeterministically(
       ) {
         return null;
       }
+      // PRIMARY: unambiguous booking-engine entries, incl. common variants
+      // ("Reserve dates", "Book a stay") and the European booking verbs
+      // (Buchen/Prenota/Réserver/Reservar). Deliberately EXCLUDED: "Plan
+      // your trip" / "Request..." / "Enquire" — those are inquiry forms
+      // (a human calls you back), not booking engines, and clicking them
+      // wastes the run (Bandon Dunes). Unmatched wording falls through to
+      // the agent, which reads any phrasing in any language.
       const PRIMARY =
-        /^(book now|reserve now|book online|book your stay|book a room|book accommodations? online|check availability|check rates|book a tee time|book tee times?|tee times? booking)$/i;
-      const SECONDARY = /^(reserve|reservations?|book|tee times?|stay)$/i;
+        /^(book now|reserve now|book online|book your stay|book a stay|book a room|book your room|book your trip|book dates|reserve dates|reserve your stay|reserve a room|book accommodations? online|check availability|check rates|book a tee time|book tee times?|tee times? booking|jetzt buchen|prenota ora|réservez?|reservar ahora)$/i;
+      const SECONDARY =
+        /^(reserve|reservations?|book|booking|tee times?|stay|buchen|prenota|réserver|reservar)$/i;
       const isVisible = (el: Element | null): boolean => {
         if (!el) return false;
         const rects = (el as HTMLElement).getClientRects();
