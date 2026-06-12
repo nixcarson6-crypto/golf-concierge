@@ -583,6 +583,28 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     /^(let'?s\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|i\s+(?:want|wanna|would\s+like|need)\s+to\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|take\s+me\s+to|we\s+(?:should|want\s+to|wanna|need\s+to)\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|i'?d\s+like\s+to\s+(?:go|head|fly|travel|drive)(?:\s+(?:over|down|out|up|across|on))?\s+to|going\s+to|trip\s+to|book\s+(?:us|me)\s+to|plan\s+(?:a\s+trip\s+to|me\s+a\s+trip\s+to)|how\s+about|let'?s\s+do|let'?s\s+try|(?:head|go|fly|drive|travel)\s+(?:over|down|out|up|across|on)\s+to|(?:head|fly|drive|travel)\s+to)\s+/i,
     "",
   );
+  // EXTRACT the place from desire/activity sentences the regex above
+  // doesn't cover, instead of letting the whole string get rejected as
+  // conversational further down. That rejection is how a customer who
+  // typed "I want to go to Montenegro and play golf" ended up routed to
+  // the destination agent — which sent them to Bandon Dunes. Peel layers
+  // in order: desire opener → bare movement verb → activity-with-
+  // preposition lead-in. Whatever survives is the place.
+  //   "i wanna go to montenegro and play golf"  → "montenegro and play golf"
+  //   "I want to play golf in Montenegro"       → "play golf in Montenegro"
+  s = s.replace(
+    /^(?:i|we)(?:'d)?\s+(?:want|wanna|need|would\s+(?:like|love)|d\s+(?:like|love))\s+(?:to\s+)?/i,
+    "",
+  );
+  s = s.replace(
+    /^(?:go|head|fly|travel|drive)\s+(?:over\s+|down\s+|out\s+|up\s+|across\s+)?to\s+/i,
+    "",
+  );
+  // "play golf in X" / "golf in X" / "play a round at X" → "X"
+  s = s.replace(
+    /^(?:go\s+)?(?:play(?:ing)?\s+)?(?:some\s+)?(?:golf(?:ing)?|a\s+round(?:\s+of\s+golf)?|\d+\s+rounds?(?:\s+of\s+golf)?)\s+(?:in|at|around|near)\s+/i,
+    "",
+  );
   // Strip trailing phrases that describe what to do AT the destination.
   // Verb list mirrors the bare-imperative garbage check below — any
   // verb that's a directive ("find the closest course", "pick the
@@ -602,6 +624,8 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     "",
   );
   s = s.replace(/\s+for\s+(?:a\s+)?(?:weekend|week|trip|vacation|getaway|few\s+days|long\s+weekend|guys'?\s+trip|buddies'?\s+trip).*$/i, "");
+  // "montenegro golf trip" → "montenegro" (trailing trip-type descriptor).
+  s = s.replace(/\s+golf(?:ing)?\s+(?:trip|vacation|getaway|holiday)$/i, "");
   s = s.replace(/\s+with\s+.*$/i, "");
   // Strip a trailing first-person desire clause that got glued onto the
   // place when a connector split ate the verb's "to" — "Positano I want

@@ -258,6 +258,15 @@ weather by month, and honest base scores. Use this as the source of truth:
 - NEVER invent course names, hotel names, or weather assertions that contradict
   the knowledge base. If the user is asking about a market not in the KB,
   draw on what you genuinely know about it and say so plainly.
+- A NAMED PLACE IS A HARD CONSTRAINT, NOT A PREFERENCE. If the hint/notes
+  name a real place — a country, region, island, or city ("Montenegro",
+  "Tuscany", "Tennessee") — every option you return MUST be in that place,
+  even if it's not in the KB and even if its golf scene is thin. Never
+  substitute a famous golf market elsewhere: a customer who typed
+  Montenegro and got Bandon Dunes is a catastrophic failure, not a clever
+  upgrade. In a thin market, surface the best golf that genuinely exists
+  there and say honestly that the scene is small. Choose freely ONLY when
+  no place was named at all.
 - WEIGHT THE CUSTOMER'S ANSWERS FIRST. The group's stated preferences —
   vibe, course style, difficulty, region/continent, travel month, group
   type (buddies trip vs. couples vs. corporate), nightlife vs. seclusion —

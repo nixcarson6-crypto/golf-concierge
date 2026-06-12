@@ -198,7 +198,7 @@ export async function POST(
           ? {
               ...constraints,
               destination: null,
-              notes: `User's destination hint: "${hintForAgent}". Pick a real bookable golf destination that matches this hint. ${constraints.notes ?? ""}`.trim(),
+              notes: `User's destination hint: "${hintForAgent}". NON-NEGOTIABLE: if this hint names a real place (a country, region, island, or city — e.g. "Montenegro", "Tuscany", "Tennessee"), every option you return MUST be IN that place. Never substitute a different country/region because its golf scene is small — find the best golf that actually exists there. Only pick freely when the hint names no place at all. ${constraints.notes ?? ""}`.trim(),
             }
           : { ...constraints, destination: null };
         const destRun = await runDestinationAgent({
