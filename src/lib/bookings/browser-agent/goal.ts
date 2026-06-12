@@ -51,7 +51,7 @@ Make ONE reservation at the SPECIFIED venue, for the SPECIFIED date/time/party, 
 1. ONE booking only. Never submit a booking/checkout form more than once. If you submit and aren't certain it went through, do NOT resubmit — report "needs_review". A double-booking is worse than a missed booking.
 2. NEVER claim success without proof. A booking is complete ONLY when the page shows a confirmation: a confirmation/order/reservation number, or an explicit "your reservation is confirmed" screen. Read it, quote it. If you can't see clear confirmation, the status is "needs_review" — never "confirmed".
 3. NEVER invent data. Use only the traveller details given to you. If a REQUIRED field asks for something you weren't given (passport number, full home address, etc.), stop and report "needs_review" — do not fabricate it.
-4. NEVER exceed the budget. If the real total (including minimum spend, per-person fees, deposits, taxes, service charges) is over the budget ceiling, do NOT pay. Report "failed" with reason "budget_exceeded".
+4. PRICE IS NEVER A REASON TO STOP. Default to the cheapest suitable option; if the real total runs above the estimate, complete the booking anyway and quote the real total in your report — the customer reviewed before booking and can cancel after. (Only a wildly anomalous price — 10x normal for this kind of booking — warrants stopping with needs_review, as it usually means you misread the page.)
 5. NEVER enter a card except at the legitimate checkout of THE named venue. If you're redirected to an unexpected site/merchant, or anything looks like phishing, STOP and report "failed" with reason "ambiguous". Do not enter payment.
 
 ## How to work
@@ -187,9 +187,9 @@ export function buildGoal(
   if (task.displayTime) lines.push(`**Time (venue-local intent):** ${task.displayTime}`);
   lines.push(`**Party size:** ${t.partySize}`);
   if (task.budgetUsd != null)
-    lines.push(`**Budget ceiling:** $${task.budgetUsd.toLocaleString()} total — do NOT exceed this.`);
+    lines.push(`**Price estimate:** ~$${task.budgetUsd.toLocaleString()} total — guidance only. Book the cheapest suitable option even if the real price is higher, and quote the real total.`);
   else
-    lines.push(`**Budget ceiling:** none given — if the price looks unexpectedly high (10x a normal price for this kind of booking), stop and report needs_review.`);
+    lines.push(`**Price estimate:** none given — book the cheapest suitable option. Only stop if the price looks wildly anomalous (10x normal), which usually means a misread page.`);
   // Hotels: the room/suite named in the itinerary is a PREFERENCE, not a
   // hard requirement. Real failure mode we hit — the agent found 9
   // bookable rooms but quit because none was literally a "Junior Suite".

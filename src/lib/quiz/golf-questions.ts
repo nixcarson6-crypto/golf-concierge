@@ -499,9 +499,17 @@ export function quizAnswersToConstraints(answers: QuizAnswers): TripConstraints 
     if (!Number.isNaN(n) && n > 0) groupSize = n;
   }
 
-  const budgetPerPerson = answers.budgetPerPerson
+  // The slider tops out at $25,000 = "$25k+", which means NO CEILING — the
+  // customer explicitly said money isn't the constraint. Carson's rule:
+  // 25k+ ⇒ don't worry about budget at all (null ⇒ the itinerary's
+  // "no budget → absolute best" branch, and no price ceiling downstream).
+  const rawBudgetPerPerson = answers.budgetPerPerson
     ? (answers.budgetPerPerson as number)
     : null;
+  const budgetPerPerson =
+    rawBudgetPerPerson != null && rawBudgetPerPerson >= 25000
+      ? null
+      : rawBudgetPerPerson;
   const budgetTotal =
     budgetPerPerson != null && groupSize != null
       ? budgetPerPerson * groupSize
