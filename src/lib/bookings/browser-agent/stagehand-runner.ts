@@ -179,6 +179,11 @@ export type RunStagehandOptions = {
    * payment step and reports needs_review — no card is ever entered.
    */
   cardProvider?: CardProvider;
+  /** The task's check-in / check-out as ISO YYYY-MM-DD — lets the
+   *  deterministic date-setter click the exact calendar cells without the
+   *  agent reading a heavy price-grid calendar. null for non-stay bookings. */
+  checkinISO?: string | null;
+  checkoutISO?: string | null;
   /** Price-approval gate (cents): when the venue's real total at the card
    *  step exceeds this, do NOT pay — return a price_approval outcome so the
    *  customer can approve the real price first. null = no gate (customer
@@ -550,6 +555,42 @@ export async function runStagehandBooking(
       console.warn(
         `[stagehand] booking-CTA fast path skipped: ${e instanceof Error ? e.message : e}`,
       );
+    }
+
+    // FAST PATH: set the stay DATES deterministically. The dual-month price
+    // calendars on luxury sites (aman.com) are so heavy the agent's page
+    // read (ariaTree) TIMES OUT — it could set arrival but not departure.
+    // Dates are mechanical: we already KNOW them, so click the exact cells
+    // in-page by their date metadata (aria-label / title / data-date), no
+    // LLM and no full-page read. Polls briefly because the calendar appears
+    // a moment after the Book-Now navigation. Best-effort: on no match the
+    // agent sets dates the normal way.
+    if (opts.checkinISO && opts.checkoutISO) {
+      try {
+        let setDates: string | null = null;
+        for (let i = 0; i < 5 && !setDates; i++) {
+          setDates = await clickStayDatesDeterministically(
+            page,
+            opts.checkinISO,
+            opts.checkoutISO,
+          );
+          if (!setDates) await new Promise((r) => setTimeout(r, 1500));
+        }
+        if (setDates) {
+          console.log(
+            `[stagehand] ✓ stay dates set deterministically (${setDates}) (${elapsed()})`,
+          );
+          await opts.onStep?.("Dates set — finding your room…");
+        } else {
+          console.log(
+            `[stagehand] no date-metadata calendar found — agent will set dates (${elapsed()})`,
+          );
+        }
+      } catch (e) {
+        console.warn(
+          `[stagehand] date fast path skipped: ${e instanceof Error ? e.message : e}`,
+        );
+      }
     }
 
     // DOM-mode agent: act / fillForm / extract / goto via the page's
@@ -1237,6 +1278,107 @@ async function captureProofScreenshot(
  * "Reserve"/"Reservations"/"Book". Returns the clicked label, or null.
  * Best-effort — never throws.
  */
+/**
+ * Deterministically click the check-in and check-out cells of a stay
+ * calendar, matching cells by their DATE METADATA (data-date / aria-label /
+ * title containing the date in any common format) — no LLM, no full-page
+ * accessibility read (which times out on heavy price-grid calendars like
+ * aman.com). Returns "in=… out=…" on success, or null when no date-metadata
+ * calendar is present. Best-effort — never throws.
+ */
+async function clickStayDatesDeterministically(
+  page: unknown,
+  checkinISO: string,
+  checkoutISO: string,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(
+      (arg: unknown) => {
+        const { ci, co } = arg as { ci: string; co: string };
+        // Build the date strings a cell might carry for a given ISO date.
+        const variants = (iso: string): string[] => {
+          const [y, m, d] = iso.split("-").map((n) => parseInt(n, 10));
+          const dt = new Date(Date.UTC(y, m - 1, d));
+          const months = [
+            "January", "February", "March", "April", "May", "June", "July",
+            "August", "September", "October", "November", "December",
+          ];
+          const mon = months[m - 1];
+          const dd = String(d).padStart(2, "0");
+          const mm = String(m).padStart(2, "0");
+          const wd = [
+            "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
+            "Friday", "Saturday",
+          ][dt.getUTCDay()];
+          return [
+            iso, // 2026-08-21
+            `${mm}/${dd}/${y}`, // 08/21/2026
+            `${dd}/${mm}/${y}`, // 21/08/2026
+            `${mon} ${d}, ${y}`, // August 21, 2026
+            `${d} ${mon} ${y}`, // 21 August 2026
+            `${mon} ${d} ${y}`, // August 21 2026
+            `${wd}, ${mon} ${d}, ${y}`, // Saturday, August 21, 2026
+          ].map((v) => v.toLowerCase());
+        };
+        const isVisible = (el: Element): boolean => {
+          const r = (el as HTMLElement).getClientRects();
+          if (!r || r.length === 0) return false;
+          const st = window.getComputedStyle(el as HTMLElement);
+          return (
+            st.visibility !== "hidden" &&
+            st.display !== "none" &&
+            Number(st.opacity || "1") > 0.05 &&
+            !(el as HTMLElement).hasAttribute("disabled") &&
+            st.pointerEvents !== "none"
+          );
+        };
+        // Candidate clickable day cells: things with date-ish metadata.
+        const cells = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "[data-date], [data-day], [aria-label], [title], td, button, a, li, span",
+          ),
+        );
+        const findCell = (iso: string): HTMLElement | null => {
+          const wants = variants(iso);
+          for (const el of cells) {
+            if (!isVisible(el)) continue;
+            const meta = (
+              (el.getAttribute("data-date") || "") +
+              " " +
+              (el.getAttribute("data-day") || "") +
+              " " +
+              (el.getAttribute("aria-label") || "") +
+              " " +
+              (el.getAttribute("title") || "")
+            ).toLowerCase();
+            if (!meta.trim()) continue;
+            if (wants.some((w) => meta.includes(w))) {
+              // Prefer the cell itself; if it's a wrapper, a clickable child.
+              const clickable =
+                el.closest<HTMLElement>("td,button,a,li,[role=button]") || el;
+              return clickable;
+            }
+          }
+          return null;
+        };
+        const inCell = findCell(ci);
+        if (!inCell) return null; // no date-metadata calendar → let agent do it
+        inCell.click();
+        // Departure often only becomes selectable after arrival is set; give
+        // the widget a tick by re-querying fresh on the next call if needed.
+        const outCell = findCell(co);
+        if (outCell) outCell.click();
+        return `in=${ci}${outCell ? ` out=${co}` : " out=PENDING"}`;
+      },
+      { ci: checkinISO, co: checkoutISO },
+    );
+  } catch {
+    return null;
+  }
+}
+
 async function clickBookingEntryDeterministically(
   page: unknown,
 ): Promise<string | null> {

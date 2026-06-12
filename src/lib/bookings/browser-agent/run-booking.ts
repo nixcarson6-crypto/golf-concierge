@@ -373,6 +373,8 @@ export async function runBrowserBooking(args: {
               // or the customer hasn't saved a card.
               cardProvider,
               priceGateCents,
+              checkinISO: item.type === "LODGING" ? task.isoDate : null,
+              checkoutISO: item.type === "LODGING" ? task.isoCheckOut : null,
               onStep: async (label) => {
                 await bridgeNudge(label);
               },
