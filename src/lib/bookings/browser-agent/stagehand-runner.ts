@@ -333,8 +333,13 @@ export async function runStagehandBooking(
     stagehand = new Stagehand({
       env: "LOCAL",
       // Connect Stagehand to the Steel browser over CDP instead of launching
-      // a local Chromium or using Browserbase.
-      localBrowserLaunchOptions: { cdpUrl: steelSession.connectUrl } as never,
+      // a local Chromium or using Browserbase. Steel's gateway authenticates
+      // the websocket itself — the key must ride on the connect URL AND the
+      // headers, or the upgrade bounces with a bare 502.
+      localBrowserLaunchOptions: {
+        cdpUrl: steelSession.connectUrl,
+        cdpHeaders: { "Steel-Api-Key": steelApiKey() },
+      } as never,
       model: {
         modelName: STAGEHAND_MODEL as never,
         apiKey: env("ANTHROPIC_API_KEY"),
@@ -787,6 +792,11 @@ type SteelSession = {
 
 const STEEL_API_BASE = "https://api.steel.dev/v1";
 
+/** The Steel key, tolerant of quotes/whitespace pasted into .env.local. */
+function steelApiKey(): string {
+  return env("STEEL_API_KEY").trim().replace(/^["']|["']$/g, "");
+}
+
 /**
  * Create a Steel browser session and return the CDP connect URL Stagehand
  * attaches to. Throws a tagged error (with Steel's own message) on failure so
@@ -854,13 +864,24 @@ async function createSteelSession(args: {
   if (!id) throw new Error("[steel] create session returned no id");
   // Steel's documented external-automation connect URL. Prefer an explicit
   // websocket/connect field if the API returns one; otherwise build it.
-  const connectUrl =
+  let connectUrl =
     (json.websocketUrl as string) ||
     (json.connectUrl as string) ||
-    `wss://connect.steel.dev?apiKey=${encodeURIComponent(key)}&sessionId=${id}`;
+    `wss://connect.steel.dev?sessionId=${id}`;
+  // Steel's gateway authenticates the websocket UPGRADE itself: without the
+  // apiKey on the URL the connection dies as a bare "Unexpected server
+  // response: 502". The websocketUrl Steel returns does NOT include the key,
+  // so append it whenever it's missing.
+  if (!/[?&]apiKey=/i.test(connectUrl)) {
+    connectUrl +=
+      (connectUrl.includes("?") ? "&" : "?") +
+      `apiKey=${encodeURIComponent(key)}`;
+  }
   const viewerUrl =
     (json.sessionViewerUrl as string) ?? (json.debugUrl as string) ?? null;
-  console.log(`[steel] ✓ session ${id} created ${viewerUrl ?? ""}`);
+  console.log(
+    `[steel] ✓ session ${id} created ${viewerUrl ?? ""} (cdp: ${connectUrl.replace(/apiKey=[^&]+/i, "apiKey=[KEY]")})`,
+  );
   return { id, connectUrl, viewerUrl };
 }
 
