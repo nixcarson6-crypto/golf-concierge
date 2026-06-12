@@ -38,6 +38,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { BookingDetailsDialog } from "./booking-details-dialog";
+import {
+  BookingConfirmDialog,
+  confirmDetailFor,
+} from "./booking-confirm-dialog";
 import { SuggestedFlightDialog } from "./suggested-flight-dialog";
 import { FlightBookingModal } from "./flight-booking-modal";
 import { TravelerProfileModal } from "./traveler-profile-modal";
@@ -292,6 +296,9 @@ function BookAllPanel({
 }) {
   const qc = useQueryClient();
   const [submitting, setSubmitting] = React.useState(false);
+  // Pre-book review gate (Carson's call): Book All passes through the
+  // shared Review & confirm dialog before anything executes.
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   // Hide once the trip has any confirmed booking — the payment
   // CartFooter takes over.
@@ -352,8 +359,21 @@ function BookAllPanel({
       toast.error("Network error — try again.");
     } finally {
       setSubmitting(false);
+      setConfirmOpen(false);
     }
   };
+
+  const confirmLines = (itinerary?.items ?? [])
+    .filter((i) => i.type !== "FREE_TIME")
+    .map((i) => ({
+      title: i.title,
+      detail: confirmDetailFor(i),
+      costCents: i.cost,
+    }));
+  const confirmTotal = (itinerary?.items ?? []).reduce(
+    (sum, i) => sum + (i.cost ?? 0),
+    0,
+  );
 
   return (
     <div className="border-t border-border/60 bg-[hsl(var(--copper))]/10 px-5 py-4">
@@ -363,12 +383,12 @@ function BookAllPanel({
             Ready to lock it in?
           </p>
           <p className="text-sm text-foreground/85 leading-snug mt-0.5">
-            One click — flights, lodging, golf, dining, transport.
+            Review everything, then one tap books it all.
           </p>
         </div>
         <Button
           size="sm"
-          onClick={bookAll}
+          onClick={() => setConfirmOpen(true)}
           disabled={submitting}
           className="shrink-0 bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
         >
@@ -382,6 +402,17 @@ function BookAllPanel({
           )}
         </Button>
       </div>
+      <BookingConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        heading="Review your trip"
+        lines={confirmLines}
+        totalCents={confirmTotal}
+        paymentNote="Flights are charged now; hotels, golf, and most venues settle at the property. You'll get every confirmation by email."
+        confirmLabel="Confirm & book all"
+        busy={submitting}
+        onConfirm={bookAll}
+      />
     </div>
   );
 }

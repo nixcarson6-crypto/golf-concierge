@@ -34,6 +34,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  BookingConfirmDialog,
+  confirmDetailFor,
+} from "./booking-confirm-dialog";
 import type { WorkspaceItemBooking, WorkspaceItineraryItem } from "./workspace";
 
 type Props = {
@@ -54,6 +58,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
   const qc = useQueryClient();
   const [submitting, setSubmitting] = React.useState(false);
   const [screenshotOpen, setScreenshotOpen] = React.useState(false);
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   // Booking-eligible item types. FLIGHT goes through Duffel; FREE_TIME isn't
   // bookable; TRANSPORT has the Uber deep-link already.
@@ -76,6 +81,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         return;
       }
       toast.success("Pyltrix is on it — watch this card for live updates.");
+      setConfirmOpen(false);
       void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
     } catch {
       toast.error("Network error — try again.");
@@ -102,12 +108,12 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
     return () => clearInterval(id);
   }, [isInFlight, qc, tripId]);
 
-  // --- State: no booking yet → primary CTA ---------------------------------
+  // --- State: no booking yet → primary CTA (review & confirm first) --------
   if (!booking) {
     return (
       <div className="space-y-1">
         <Button
-          onClick={startBooking}
+          onClick={() => setConfirmOpen(true)}
           disabled={submitting}
           className="w-full h-12 rounded-2xl bg-foreground text-background hover:bg-foreground/90 text-base font-semibold"
         >
@@ -121,9 +127,26 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
           )}
         </Button>
         <p className="text-[10px] text-muted-foreground text-center">
-          Pyltrix concierge will reserve this for you. You&apos;ll see live
-          progress.
+          You&apos;ll review the details before anything is booked.
         </p>
+        <BookingConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          lines={[
+            {
+              title: item.title,
+              detail: confirmDetailFor(item),
+              costCents: item.cost,
+            },
+          ]}
+          paymentNote={
+            typeof item.cost === "number"
+              ? "Paid securely by Pyltrix when the venue charges online; otherwise it settles at the property."
+              : "Most venues like this settle at the property — nothing is charged up front."
+          }
+          busy={submitting}
+          onConfirm={startBooking}
+        />
       </div>
     );
   }

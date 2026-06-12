@@ -39,6 +39,10 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  BookingConfirmDialog,
+  confirmDetailFor,
+} from "./booking-confirm-dialog";
 import type {
   WorkspaceItinerary,
   WorkspaceItineraryItem,
@@ -255,6 +259,12 @@ export function BookingStatusPanel({
   const qc = useQueryClient();
   const [bookingId, setBookingId] = React.useState<string | null>(null);
   const [bookingAll, setBookingAll] = React.useState(false);
+  // Pre-book review gate (Carson's call, June 2026): row taps + Book All
+  // both pass through the shared Review & confirm dialog before anything
+  // executes — regardless of which lane (API or agent) does the booking.
+  const [confirmItem, setConfirmItem] =
+    React.useState<WorkspaceItineraryItem | null>(null);
+  const [confirmAllOpen, setConfirmAllOpen] = React.useState(false);
 
   const bookAll = React.useCallback(async () => {
     if (bookingAll || bookingId) return;
@@ -295,6 +305,7 @@ export function BookingStatusPanel({
       toast.error("Network error — try again.");
     } finally {
       setBookingAll(false);
+      setConfirmAllOpen(false);
     }
   }, [bookingAll, bookingId, qc, tripId]);
 
@@ -319,6 +330,7 @@ export function BookingStatusPanel({
         toast.error("Network error — try again.");
       } finally {
         setBookingId(null);
+        setConfirmItem(null);
       }
     },
     [bookingId, qc, tripId],
@@ -481,7 +493,7 @@ export function BookingStatusPanel({
         {hasUnbooked && (
           <button
             type="button"
-            onClick={() => void bookAll()}
+            onClick={() => setConfirmAllOpen(true)}
             disabled={bookingAll || bookingId !== null}
             className={cn(
               "w-full h-11 rounded-xl bg-foreground text-background text-sm font-semibold",
@@ -648,7 +660,7 @@ export function BookingStatusPanel({
                     <button
                       type="button"
                       disabled={bookingId !== null}
-                      onClick={() => void bookItem(item)}
+                      onClick={() => setConfirmItem(item)}
                       className="w-full flex items-start gap-2.5 text-left rounded-lg px-2.5 py-2 hover:bg-surface-raised transition disabled:opacity-60"
                     >
                       {rowInner}
@@ -754,6 +766,49 @@ export function BookingStatusPanel({
           </div>
         </footer>
       )}
+
+      {/* Pre-book review gates */}
+      {confirmItem && (
+        <BookingConfirmDialog
+          open={confirmItem !== null}
+          onOpenChange={(o) => {
+            if (!o) setConfirmItem(null);
+          }}
+          lines={[
+            {
+              title: confirmItem.title,
+              detail: confirmDetailFor(confirmItem),
+              costCents: confirmItem.cost,
+            },
+          ]}
+          paymentNote={
+            typeof confirmItem.cost === "number"
+              ? "Paid securely by Pyltrix when the venue charges online; otherwise it settles at the property."
+              : "Most venues like this settle at the property — nothing is charged up front."
+          }
+          busy={bookingId !== null}
+          onConfirm={() => void bookItem(confirmItem)}
+        />
+      )}
+      <BookingConfirmDialog
+        open={confirmAllOpen}
+        onOpenChange={setConfirmAllOpen}
+        heading="Review your trip"
+        lines={bookable
+          .filter((r) => r.kind === "pending" || r.kind === "failed")
+          .map((r) => ({
+            title: r.item.title,
+            detail: confirmDetailFor(r.item),
+            costCents: r.item.cost,
+          }))}
+        totalCents={bookable
+          .filter((r) => r.kind === "pending" || r.kind === "failed")
+          .reduce((sum, r) => sum + (r.item.cost ?? 0), 0)}
+        paymentNote="Flights are charged now; hotels, golf, and most venues settle at the property. You'll get every confirmation by email."
+        confirmLabel="Confirm & book all"
+        busy={bookingAll}
+        onConfirm={() => void bookAll()}
+      />
     </div>
   );
 }
