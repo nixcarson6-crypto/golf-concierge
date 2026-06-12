@@ -190,6 +190,24 @@ export type RunStagehandOptions = {
    *  customer can approve the real price first. null = no gate (customer
    *  already approved, or no estimate exists / $25k+ budget). */
   priceGateCents?: number | null;
+  /** Known traveler values for the deterministic guest-form autofill (zero
+   *  LLM — runs after every step; fills recognised empty fields instantly). */
+  autofill?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    /** Full E.164 ("+19038206837"). */
+    phone: string;
+    /** National digits ("9038206837") for fields with a country selector. */
+    phoneNational: string;
+    title: "Mr." | "Ms.";
+    addressLine1?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postal?: string | null;
+    /** Country display name, e.g. "United States". */
+    countryName?: string | null;
+  } | null;
   /** Live progress callback → wire to updateProgress for the UI. */
   onStep?: (label: string) => void | Promise<void>;
   /** Browserbase region (us-west-2 / us-east-1 / eu-central-1 /
@@ -234,7 +252,7 @@ THINKING BUDGET BY PHASE — spend thought ONLY where the page demands it:
 - ARRIVAL (cookies, the Book/Reserve button): zero thought — the system pre-clicks these for you; if you still land on a marketing page, click the booking CTA immediately without reading anything else.
 - DATES + PARTY: your FIRST action on any dates step is SETTING the dates — type them or click the cells immediately, never 'survey' the calendar first. You already KNOW the dates and party from the task: read the month header once, compute the month-clicks, fire them, click the two day cells, set guests, hit Search. 2-4 steps. THINK ONLY IF a date is greyed-out/unavailable — that's the one dates situation worth deliberation (nearest available alternative, then note the change in your report).
 - ROOM / RATE LIST / TEE-TIME SLOTS / VEHICLE LIST: reflex, not thought. Hotels: the cheapest visible option with a Book/Select button. Golf: the slot at (or nearest to) the requested time. Cars: the closest match to the requested class. Click it on the SAME step you see the list — there is nothing to weigh; the customer reviews the price afterwards.
-- GUEST DETAILS: brisk — target ≤3 steps, zero deliberation. EVERY answer is already in the task: Title/honorific is GIVEN (never spend a step deciding Mr/Ms — a real run burned 3 minutes on this and still chose wrong), residence country/state comes from the home-airport line, name/email/phone are verbatim. ONE batched fill for the text fields, selectOptionFromDropdown for Title/state/country dropdowns, tick required boxes, click Continue/Next. Filling this form is mechanical transcription, not judgment. PHONE fields with a COUNTRY-CODE dropdown: set the country to match the number's prefix FIRST (+1 → United States), then type only the national digits — never submit under a wrong default country (a real run filed a US number under +90 Turkey). ADDRESS fields: use the task's home-address line EXACTLY — type into the manual street/city/state/zip fields and SKIP any "find your address" autocomplete. If a street address is REQUIRED and the task has none, report needs_review asking the customer to add their home address — never invent one.
+- GUEST DETAILS: brisk — target ≤3 steps, zero deliberation. EVERY answer is already in the task: Title/honorific is GIVEN (never spend a step deciding Mr/Ms — a real run burned 3 minutes on this and still chose wrong), residence country/state comes from the home-airport line, name/email/phone are verbatim. ONE batched fill for the text fields, selectOptionFromDropdown for Title/state/country dropdowns, tick required boxes, click Continue/Next. Filling this form is mechanical transcription, not judgment. A SYSTEM AUTOFILL runs alongside you and often fills these fields the instant the form appears — if fields already show the correct values, do NOT re-type them; just handle anything still empty (dropdowns, checkboxes) and click Continue. PHONE fields with a COUNTRY-CODE dropdown: set the country to match the number's prefix FIRST (+1 → United States), then type only the national digits — never submit under a wrong default country (a real run filed a US number under +90 Turkey). ADDRESS fields: use the task's home-address line EXACTLY — type into the manual street/city/state/zip fields and SKIP any "find your address" autocomplete. If a street address is REQUIRED and the task has none, report needs_review asking the customer to add their home address — never invent one.
 - PAYMENT: the ONE place to slow down a little — confirm the total shown, then stop before card digits (the system enters payment).
 PER-STEP PACE: one short thought, then ONE decisive action. Never write long reasoning; never re-derive something you already know.
 
@@ -672,6 +690,26 @@ export async function runStagehandBooking(
           stepCount += 1;
           console.log(`[stagehand]   step ${stepCount} done (${elapsed()})`);
           await opts.onStep?.(progressLabel(stepCount));
+          // INSTANT GUEST AUTOFILL: zero-LLM pass on the active page after
+          // every step. When a guest/checkout form appears, every recognised
+          // empty field (names, email, phone, address, title) is filled in
+          // ~100ms — the agent then verifies and clicks Continue instead of
+          // typing field-by-field at ~10s a step (a Belmond run burned
+          // minutes transcribing data we already had).
+          if (opts.autofill) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active) {
+                const filled = await deterministicGuestFill(active, opts.autofill);
+                if (filled > 0)
+                  console.log(
+                    `[stagehand] ⚡ autofill completed ${filled} guest fields (${elapsed()})`,
+                  );
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
         },
       },
     });
@@ -1445,6 +1483,129 @@ async function clickStayDatesDeterministically(
     );
   } catch {
     return null;
+  }
+}
+
+/**
+ * Deterministic guest-form autofill — zero LLM calls. Recognises standard
+ * checkout fields by autocomplete/name/id/label and fills them with the
+ * traveler's known values using native setters + synthetic input/change
+ * events (so React/Angular forms register the values). Only touches VISIBLE,
+ * EMPTY fields; never touches checkboxes (consent is the agent's call) or
+ * card fields. Returns how many fields it filled. Best-effort, never throws.
+ */
+async function deterministicGuestFill(
+  page: unknown,
+  data: NonNullable<RunStagehandOptions["autofill"]>,
+): Promise<number> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return 0;
+  try {
+    const result = await cdp.evaluate<number>(
+      (arg: unknown) => {
+        const d = arg as {
+          firstName: string;
+          lastName: string;
+          email: string;
+          phone: string;
+          phoneNational: string;
+          title: string;
+          addressLine1?: string | null;
+          city?: string | null;
+          state?: string | null;
+          postal?: string | null;
+          countryName?: string | null;
+        };
+        let filled = 0;
+        const visible = (el: Element): boolean => {
+          const r = (el as HTMLElement).getClientRects();
+          if (!r || r.length === 0) return false;
+          const st = window.getComputedStyle(el as HTMLElement);
+          return st.visibility !== "hidden" && st.display !== "none";
+        };
+        const meta = (el: HTMLElement): string =>
+          [
+            el.getAttribute("autocomplete"),
+            el.getAttribute("name"),
+            el.id,
+            el.getAttribute("placeholder"),
+            el.getAttribute("aria-label"),
+            (el as HTMLInputElement).labels?.[0]?.textContent,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+        const setVal = (el: HTMLInputElement, val: string) => {
+          const proto = Object.getPrototypeOf(el);
+          const desc = Object.getOwnPropertyDescriptor(proto, "value");
+          desc?.set?.call(el, val);
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          el.dispatchEvent(new Event("blur", { bubbles: true }));
+          filled++;
+        };
+        const inputs = Array.from(
+          document.querySelectorAll<HTMLInputElement>(
+            'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=password]):not([type=submit]):not([type=button])',
+          ),
+        ).filter((el) => visible(el) && !el.value && !el.disabled && !el.readOnly);
+
+        for (const el of inputs) {
+          const m = meta(el);
+          // NEVER touch payment fields.
+          if (/card|cc-|cvc|cvv|expir|pan\b/.test(m)) continue;
+          const type = (el.getAttribute("type") || "text").toLowerCase();
+          if (/given-name|first.?name|\bfname\b/.test(m)) setVal(el, d.firstName);
+          else if (/family-name|last.?name|surname|\blname\b/.test(m)) setVal(el, d.lastName);
+          else if (/confirm.*(e-?mail)|(e-?mail).*(confirm|verify|repeat)/.test(m)) setVal(el, d.email);
+          else if (type === "email" || /\be-?mail\b/.test(m)) setVal(el, d.email);
+          else if (type === "tel" || /phone|mobile|\btel\b/.test(m)) {
+            // Forms with a sibling country-code selector want national digits.
+            const hasCountrySel = !!el.closest("div,fieldset")?.querySelector("select, [class*=country], [class*=flag]");
+            setVal(el, hasCountrySel ? d.phoneNational : d.phone);
+          } else if (d.addressLine1 && /address-line1|address.?(line)?.?1\b|street|\baddr/.test(m) && !/2|line.?2/.test(m)) setVal(el, d.addressLine1);
+          else if (d.city && /\bcity\b|\btown\b|locality/.test(m)) setVal(el, d.city);
+          else if (d.state && /state|province|region|county\b/.test(m) ) setVal(el, d.state);
+          else if (d.postal && /\bzip\b|postal|postcode/.test(m)) setVal(el, d.postal);
+          else if (/prefix|salutation|honorific|^title$|\btitle\b/.test(m) && /title|prefix|salutation/.test(m)) setVal(el, d.title);
+        }
+
+        // Selects: title / state / country.
+        const selects = Array.from(document.querySelectorAll<HTMLSelectElement>("select")).filter(
+          (el) => visible(el) && !el.disabled,
+        );
+        const pick = (el: HTMLSelectElement, want: string): boolean => {
+          const w = want.toLowerCase();
+          for (const opt of Array.from(el.options)) {
+            const t = (opt.textContent || "").trim().toLowerCase();
+            const v = (opt.value || "").toLowerCase();
+            if (!t && !v) continue;
+            if (t === w || v === w || t.startsWith(w) || (w.length > 3 && t.includes(w))) {
+              if (el.value !== opt.value) {
+                el.value = opt.value;
+                el.dispatchEvent(new Event("change", { bubbles: true }));
+                filled++;
+              }
+              return true;
+            }
+          }
+          return false;
+        };
+        for (const el of selects) {
+          const m = meta(el as unknown as HTMLElement);
+          const unset = !el.value || /^(select|choose|--|please)/i.test(el.options[el.selectedIndex]?.textContent || "");
+          if (!unset) continue;
+          if (/title|prefix|salutation|honorific/.test(m)) pick(el, d.title.replace(".", "")) || pick(el, d.title);
+          else if (d.countryName && /country/.test(m)) pick(el, d.countryName);
+          else if (d.state && /state|province|region/.test(m)) pick(el, d.state);
+        }
+        return filled;
+      },
+      data as never,
+    );
+    return typeof result === "number" ? result : 0;
+  } catch {
+    return 0;
   }
 }
 

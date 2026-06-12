@@ -242,6 +242,27 @@ export async function runBrowserBooking(args: {
       ? (bookingMeta.approvedPriceCents as number)
       : null;
   const priceGateCents = approvedPriceCents != null ? null : task.budgetCents;
+
+  // Instant guest autofill payload — the deterministic per-step fill that
+  // types known traveler data in ~100ms instead of the agent transcribing
+  // field-by-field at ~10s a step.
+  const nationalPhone = traveler.phone.replace(/^\+1/, "").replace(/[^\d]/g, "");
+  const autofill = {
+    firstName: traveler.givenName,
+    lastName: traveler.familyName,
+    email: traveler.email,
+    phone: traveler.phone,
+    phoneNational: nationalPhone || traveler.phone.replace(/[^\d]/g, ""),
+    title: (traveler.gender === "f" ? "Ms." : "Mr.") as "Mr." | "Ms.",
+    addressLine1: traveler.addressLine1,
+    city: traveler.addressCity,
+    state: traveler.addressState,
+    postal: traveler.addressPostalCode,
+    countryName:
+      traveler.addressCountry === "US" || !traveler.addressCountry
+        ? "United States"
+        : traveler.addressCountry,
+  };
   const goal = buildGoal(task);
 
   // ---------------------------------------------------------- 3.5 (API-first)
@@ -398,6 +419,7 @@ export async function runBrowserBooking(args: {
               // or the customer hasn't saved a card.
               cardProvider,
               priceGateCents,
+              autofill,
               checkinISO: item.type === "LODGING" ? task.isoDate : null,
               checkoutISO: item.type === "LODGING" ? task.isoCheckOut : null,
               onStep: async (label) => {
