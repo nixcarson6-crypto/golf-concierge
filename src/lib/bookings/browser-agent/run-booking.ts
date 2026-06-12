@@ -337,18 +337,16 @@ export async function runBrowserBooking(args: {
               advancedStealth: stealthOn || attempt > 1,
               // Hard per-attempt cap, sized per booking type. Hotels run the
               // longest flow (splash → widget → dates → guests → search →
-              // room → rate → guest form) — ~30+ steps ≈ 3.5 min on a GOOD
-              // run, so a flat 3-min cap kept clipping them at the finish
-              // line (Borgo Egnazia died one step short, twice). Hotels get
-              // 5 min; everything else (golf/transport: short flows) stays
-              // at 3. Gleneagles proved 4 min still clips a complex resort
-              // ON the rooms-availability grid (step 23 @ 245s, aborted just
-              // before clicking Book now) — the matrix is the slowest page,
-              // so hotels need the extra minute to reach the payment step.
+              // room → rate → guest form) — ~30+ steps. Hotels get 6 min
+              // (Sonnet plans more reliably but a touch slower per step, and
+              // reaching the payment step reliably beats shaving a minute);
+              // everything else (golf/transport: short flows) stays at 3.
+              // Gleneagles proved 4 min clips a complex resort at the rooms
+              // grid; The Lodge 30A burned 5 min stuck on a calendar.
               // BROWSER_AGENT_TIMEOUT_MS overrides both.
               timeoutMs:
                 Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
-                (item.type === "LODGING" ? 300_000 : 180_000),
+                (item.type === "LODGING" ? 360_000 : 180_000),
               maxSteps,
               // Run the browser in the region nearest the venue so each of
               // the ~25 actions has a short round-trip (an Italian hotel

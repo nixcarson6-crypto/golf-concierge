@@ -30,22 +30,25 @@ import { AGENT_VIEWPORT } from "./runtime";
 import type { RawBookingOutcome } from "./outcome";
 import type { CardProvider } from "./agent";
 
-/** Stagehand model id — DOM agent driven by Claude.
- *  SONNET. Haiku couldn't hold the multi-step plan on real reservation
- *  forms (it did the clicks but lost the thread — set the date then
- *  stalled instead of going date→party→time→submit). Booking a form is
- *  genuine multi-step reasoning, so it needs Sonnet. We make it FAST via
- *  mechanics (lean prompt, tight DOM-settle, skip redundant calls,
- *  enough steps to finish) — NOT by downgrading the model. Override with
- *  STAGEHAND_MODEL per-deploy. */
-// Haiku as the PLANNER too (execution was already Haiku). The per-step
-// thinking time is what blew the 3-minute budget on heavy hotel sites
-// (~8-12s/step on Sonnet vs ~3-5s on Haiku), and the booking smarts now
-// live in the prescriptive playbooks/prompts, not model deliberation.
-// Set STAGEHAND_MODEL=anthropic/claude-sonnet-4-6 to restore the slower,
-// more deliberate planner if quality ever dips.
+// Silence the Vercel AI SDK's "System messages in the prompt … security risk"
+// warning. It fires on every Stagehand step because Stagehand (which uses the
+// AI SDK internally) passes our systemPrompt as a system message — that's
+// correct and intended here, the warning is just noise that floods the booking
+// logs. This global flag is the AI SDK's documented off-switch; it only affects
+// the AI SDK (Stagehand), not our own Anthropic-SDK orchestrator.
+(globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
+
+/** Stagehand PLANNER model id — the brain that sequences the booking
+ *  ("set the date → set the party → pick the room → fill guest details →
+ *  submit"). SONNET: Haiku is fast at individual clicks but can't reliably
+ *  hold a multi-step plan — it stalls on calendars (sat on June needing
+ *  August for 28 steps) and re-reads room lists instead of advancing. The
+ *  per-action work (the BULK of calls) still runs on Haiku via
+ *  executionModel below, so most of the speed/cost stays Haiku; only the
+ *  high-level plan is Sonnet. Override with STAGEHAND_MODEL per-deploy;
+ *  set it to anthropic/claude-haiku-4-5 to go back to pure Haiku. */
 const STAGEHAND_MODEL =
-  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-haiku-4-5";
+  optionalEnv("STAGEHAND_MODEL") ?? "anthropic/claude-sonnet-4-6";
 // Default step cap. A restaurant/tee-time/spa reservation (navigate →
 // reservations → date → party → time slot → name/email/phone → submit →
 // confirmation) legitimately takes ~15-25 steps, so 35 is plenty AND
@@ -240,6 +243,8 @@ DATES (get these right — most failures start here, especially the calendar)
   2. Click the exact DAY NUMBER cell for check-IN (e.g. the cell labeled "17"). Pick the cell INSIDE the correct month (calendars often show two months — make sure you click the one under the right header).
   3. Click the exact DAY NUMBER cell for check-OUT.
   4. CONFIRM the date fields now show your dates. If they still show the default/today, your day-clicks didn't land — re-click the day cells.
+- WRONG DEFAULT DATES: many widgets pre-fill arrival = today/tomorrow (e.g. shows "Arrival Fri Jun 12 / Departure Sat Jun 13" when you need August). Dates LOOKING filled does NOT mean they're right — you MUST change them to the task's dates. Read the month header; if it's not your target month, click the next-month arrow (›/→/chevron) to advance, then click your arrival day, then your departure day, then proceed. Never click Search/Book while the dates still show the default.
+- A DUAL-MONTH calendar shows two months side by side (e.g. "June 2026" and "July 2026"). To reach a later month, click the › / right arrow to slide the window forward one month per click until your target month is one of the two shown, THEN click the day cell under the CORRECT month header.
 - DO NOT GET STUCK. If you've tried the SAME action ~2-3 times and the dates still aren't set (the field hasn't changed), STOP repeating it and switch tactics: try typing the date into the field instead; or click a different element (the field label vs the cell); or close the calendar and reopen it. Spinning on one stubborn calendar is the #1 way runs die — change your approach instead of repeating.
 - HOTEL: set BOTH check-in AND check-out so the night count matches — never leave it at one night or "today".
 - Many sites default to today's date and show "no availability" — always set the requested date FIRST, then read availability.
