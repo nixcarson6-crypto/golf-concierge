@@ -399,13 +399,23 @@ export async function runStagehandBooking(
       steelSession?.viewerUrl ?? stagehand.browserbaseSessionURL ?? null;
     console.log(`[stagehand] ✓ session ready (${elapsed()}) ${sessionUrl ?? ""}`);
 
-    // Navigate to the venue first so the agent starts on the right page.
-    const page = stagehand.context.pages()[0];
+    // Navigate the page the AGENT will actually drive. The agent operates on
+    // the context's ACTIVE page — not necessarily pages()[0]. On Browserbase
+    // those are the same, but when we attach over raw CDP (Steel), the browser
+    // already has an about:blank tab: pages()[0] is that blank tab while the
+    // agent's active page is a different one, so navigating pages()[0] left the
+    // agent stranded on about:blank. Use activePage(), create one if the CDP
+    // browser exposed none yet, and pin it active so navigation + agent agree.
+    let page = stagehand.context.activePage() ?? stagehand.context.pages()[0];
+    if (!page) {
+      page = await stagehand.context.newPage();
+    }
     if (!page) {
       throw new Error(
-        "Stagehand init returned no page — the Browserbase session never opened a tab.",
+        `Stagehand init returned no page — the ${provider} session never opened a tab.`,
       );
     }
+    stagehand.context.setActivePage(page);
     // SPEED: drop heavy third-party junk (analytics, ad/marketing tags,
     // session-replay, autoplay video) at the network layer BEFORE the first
     // navigation. The DOM agent reads the accessibility tree, not pixels, so
