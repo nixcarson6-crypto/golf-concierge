@@ -77,7 +77,7 @@ export async function POST(
 
   await audit({
     tripId,
-    action: "BOOKING_PRICE_APPROVED",
+    action: "BOOKING_REQUESTED",
     title: `Approved $${Math.round(quoted / 100).toLocaleString()} for ${item.title}`,
     detail: "Customer approved the venue's real price — completing the booking.",
     actorKind: "user",
