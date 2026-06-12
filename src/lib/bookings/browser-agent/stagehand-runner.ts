@@ -31,12 +31,24 @@ import type { RawBookingOutcome } from "./outcome";
 import type { CardProvider } from "./agent";
 
 // Silence the Vercel AI SDK's "System messages in the prompt … security risk"
-// warning. It fires on every Stagehand step because Stagehand (which uses the
-// AI SDK internally) passes our systemPrompt as a system message — that's
-// correct and intended here, the warning is just noise that floods the booking
-// logs. This global flag is the AI SDK's documented off-switch; it only affects
-// the AI SDK (Stagehand), not our own Anthropic-SDK orchestrator.
-(globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false;
+// warning, which fires on EVERY Stagehand step. Stagehand (AI SDK internally)
+// passes our systemPrompt as a system message — correct and intended here —
+// but it never sets `allowSystemInMessages`, and the SDK hard-prints the
+// warning via console.warn with no global off-switch (verified in
+// ai@5.0.196/dist/index.js). So: a surgical console.warn filter that drops
+// exactly this one message and passes everything else through untouched.
+const _origWarn = console.warn.bind(console);
+console.warn = (...args: unknown[]) => {
+  if (
+    typeof args[0] === "string" &&
+    args[0].startsWith(
+      "AI SDK Warning: System messages in the prompt or messages fields",
+    )
+  ) {
+    return;
+  }
+  _origWarn(...args);
+};
 
 /** Stagehand PLANNER model id — the brain that sequences the booking
  *  ("set the date → set the party → pick the room → fill guest details →
@@ -1216,6 +1228,11 @@ function classifyFromAgentMessage(
   const m = (msg ?? "").toLowerCase();
   if (/no (rooms?|availability|times?|slots?)|sold out|fully booked|unavailable/i.test(m))
     return "failed";
+  // Over budget is a CLEAN failure, not "needs review" — the agent did its
+  // job (navigated, read real prices, refused to overspend). The customer
+  // gets the honest "over your budget" message with the price quoted.
+  if (/budget (rule|ceiling|exceeded)|over (the |your )?budget|exceeds? (the )?budget|above (the |your )?budget/i.test(m))
+    return "failed";
   if (/members?[- ]?only|private (members'?|club)|member(ship)? (number|required|portal)|not open to the public/i.test(m))
     return "failed";
   if (/captcha|are you (a )?human|bot detection|cloudflare/i.test(m))
@@ -1237,11 +1254,14 @@ function reasonFromAgentMessage(
   | "captcha_blocked"
   | "login_required"
   | "form_not_found"
+  | "budget_exceeded"
   | "ambiguous"
   | undefined {
   const m = (msg ?? "").toLowerCase();
   if (/no (rooms?|availability|times?|slots?)|sold out|fully booked|unavailable/i.test(m))
     return "no_availability";
+  if (/budget (rule|ceiling|exceeded)|over (the |your )?budget|exceeds? (the )?budget|above (the |your )?budget/i.test(m))
+    return "budget_exceeded";
   if (/members?[- ]?only|private (members'?|club)|member(ship)? (number|required|portal)|not open to the public/i.test(m))
     return "members_only";
   if (/captcha|are you (a )?human|bot detection|cloudflare/i.test(m))
