@@ -22,6 +22,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import {
+  BadgeCheck,
   Loader2,
   ShieldCheck,
   AlertTriangle,
@@ -235,6 +236,27 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         </div>
       );
     }
+    // Enquiry-only venue: we submitted the reservation REQUEST on the
+    // customer's behalf — the venue confirms directly. Honest state with the
+    // WHY spelled out; never dressed up as Booked.
+    if (booking.failureReason === "enquiry_sent") {
+      return (
+        <div className="rounded-2xl border border-accent/40 bg-accent/5 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <BadgeCheck className="size-4 text-accent" />
+            <p className="text-sm font-semibold text-foreground">
+              Request sent — venue confirms directly
+            </p>
+          </div>
+          <p className="text-xs text-foreground/80 leading-relaxed">
+            This venue doesn&apos;t take instant online bookings — they review
+            requests personally. Pyltrix submitted your reservation request
+            with your dates, party, and contact details; they&apos;ll confirm by
+            email or phone, usually within a day.
+          </p>
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border border-foreground/30 bg-foreground/5 px-4 py-3 space-y-1">
         <div className="flex items-center gap-2">
@@ -409,6 +431,8 @@ function friendlyFailureCopy(code: string | null): string {
       return "This site needs an account login we don't have.";
     case "form_not_found":
       return "We couldn't find an online booking form — they likely take reservations by phone.";
+    case "enquiry_sent":
+      return "This venue is request-only — we submitted your reservation request and they'll confirm directly.";
     case "budget_exceeded":
       return "The real price came in over budget, so we didn't book it.";
     case "timeout":

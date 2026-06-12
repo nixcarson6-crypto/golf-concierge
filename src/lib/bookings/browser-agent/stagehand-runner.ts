@@ -147,11 +147,12 @@ const stagehandOutcomeSchema = z.object({
       "login_required",
       "form_not_found",
       "budget_exceeded",
+      "enquiry_sent",
       "ambiguous",
       "timeout",
     ])
     .nullable()
-    .describe("Set ONLY when status is failed. The specific reason. null otherwise."),
+    .describe("The specific reason when not confirmed (failed, or needs_review for enquiry_sent). null otherwise."),
   message: z
     .string()
     .describe("One short sentence describing the outcome for the customer."),
@@ -254,7 +255,7 @@ STEP 0 — CLEAR THE PAGE FIRST (before anything else, on EVERY new page): if a 
 
 TRAP OVERLAYS & DEAD-END FORMS — CLOSE or SKIP, never engage (these have eaten whole runs):
 - NEWSLETTER / VOUCHER FORMS, popup OR in-page: a modal offering a discount/gift ("€50 geschenkt", "10% off", "subscribe", "join our newsletter") AND footer/inline "Stay Connected" / "Sign up" / "Subscribe" email sections are NOT the booking form, even though they have input fields. NEVER fill or submit them (a real run filled a footer newsletter box). The booking form always has DATES and ROOMS/PLAYERS; any form with no dates is marketing — scroll past it.
-- INQUIRY / TRIP-PLANNER FORMS: "Plan My Trip", "Request a Quote", "Trip Planner", "Request Information", "Contact Us", "Anfragen", "Richiesta" — forms that collect your details so a HUMAN can call you back are INQUIRIES, not bookings. They never show live availability or prices. Do NOT fill them as if they were the booking. Look instead for "Book"/"Reserve"/"Stay"/"Lodging"/"Rooms"/"Tee Times" paths with real DATE fields. If the venue genuinely offers ONLY an inquiry form or a phone number — no live online booking — report failed / form_not_found and quote the phone number in your message.
+- INQUIRY / TRIP-PLANNER FORMS: "Plan My Trip", "Request a Quote", "Enquire Booking", "Request Information", "Contact Us", "Anfragen", "Richiesta" — forms that collect details so a HUMAN confirms later are INQUIRIES, not instant bookings. FIRST look for a real booking engine ("Book"/"Reserve"/"Tee Times" with live DATE fields) — that always wins. BUT if the venue genuinely offers ONLY an enquiry path (no live availability anywhere), DO THE CONCIERGE MOVE: fill the enquiry form with the full reservation request — dates, party size, the traveler's name/email/phone, and a short message ("Requesting [room/tee time] for [dates], [N] guests — please confirm availability to this email") — submit it ONCE, then report needs_review with reason "enquiry_sent", stating exactly what was requested. NEVER report an enquiry as confirmed — the venue confirms directly with the customer. If there is no enquiry form either (phone only), report failed / form_not_found with the phone number.
 - CHAT WIDGETS / AI CONCIERGES / WhatsApp bubbles ("How may I help you?", suggested-question buttons like "Please check room availability"): NEVER type into them, never click their suggestion buttons — a chat is a CONVERSATION, not a booking engine, and it cannot complete a reservation. Close or ignore the chat panel and find the real BOOK button instead.
 
 LANGUAGES: you read EVERY language fluently — never stall or slow down because a site is German/Italian/French/Spanish. Act on foreign labels exactly as you would English. Booking vocabulary you must recognize instantly:
@@ -1605,6 +1606,8 @@ function classifyFromAgentMessage(
   msg: string,
 ): "confirmed" | "failed" | "needs_review" {
   const m = (msg ?? "").toLowerCase();
+  if (/enquiry[ _-]?sent|inquiry submitted|enquiry submitted|request (form )?submitted|reservation request (was )?sent/i.test(m))
+    return "needs_review";
   if (/no (rooms?|availability|times?|slots?)|sold out|fully booked|unavailable/i.test(m))
     return "failed";
   // Over budget is a CLEAN failure, not "needs review" — the agent did its
@@ -1634,9 +1637,12 @@ function reasonFromAgentMessage(
   | "login_required"
   | "form_not_found"
   | "budget_exceeded"
+  | "enquiry_sent"
   | "ambiguous"
   | undefined {
   const m = (msg ?? "").toLowerCase();
+  if (/enquiry[ _-]?sent|inquiry submitted|enquiry submitted|request (form )?submitted|reservation request (was )?sent/i.test(m))
+    return "enquiry_sent";
   if (/no (rooms?|availability|times?|slots?)|sold out|fully booked|unavailable/i.test(m))
     return "no_availability";
   if (/budget (rule|ceiling|exceeded)|over (the |your )?budget|exceeds? (the )?budget|above (the |your )?budget/i.test(m))

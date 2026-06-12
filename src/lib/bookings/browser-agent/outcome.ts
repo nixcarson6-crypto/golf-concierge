@@ -28,6 +28,7 @@ export const FAILURE_CODES = [
   "form_not_found", // no online booking form (phone/email-only venue)
   "budget_exceeded", // real price came in over the budget ceiling
   "price_approval", // real price above estimate — waiting on customer approval
+  "enquiry_sent", // venue is enquiry-only; we submitted the request, venue confirms directly
   "ambiguous", // can't safely tell what state the booking is in
   "timeout", // ran out of time / iterations
 ] as const;
