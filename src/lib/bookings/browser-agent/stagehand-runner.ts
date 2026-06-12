@@ -227,7 +227,7 @@ Make ONE real reservation at the venue in the task — for the EXACT date(s)/par
 THINKING BUDGET BY PHASE — spend thought ONLY where the page demands it:
 - ARRIVAL (cookies, the Book/Reserve button): zero thought — the system pre-clicks these for you; if you still land on a marketing page, click the booking CTA immediately without reading anything else.
 - DATES + PARTY: light thinking. You already KNOW the dates and party from the task — read the month header once, compute the month-clicks, fire them, click the two day cells, set guests, hit Search. 2-4 steps. No re-reading, no double-checking beyond one glance at the date fields.
-- ROOM / RATE LIST: reflex, not thought. The cheapest visible option with a Book/Select button — click it on the SAME step you see the list. There is nothing to weigh; the customer reviews the price afterwards.
+- ROOM / RATE LIST / TEE-TIME SLOTS / VEHICLE LIST: reflex, not thought. Hotels: the cheapest visible option with a Book/Select button. Golf: the slot at (or nearest to) the requested time. Cars: the closest match to the requested class. Click it on the SAME step you see the list — there is nothing to weigh; the customer reviews the price afterwards.
 - GUEST DETAILS: brisk. Batch-fill name/email/phone from the task, tick required boxes, continue.
 - PAYMENT: the ONE place to slow down a little — confirm the total shown, then stop before card digits (the system enters payment).
 PER-STEP PACE: one short thought, then ONE decisive action. Never write long reasoning; never re-derive something you already know.
@@ -316,7 +316,7 @@ ACCOUNT / REGISTRATION WALLS
 GOLF / TEE-TIME PLAYBOOK
 - The booking lives under "Tee Times", "Book a Tee Time", "Golf", "Reserve", or a resort's "Experiences" / "Recreation" section — open it.
 - Many courses embed a booking widget (GolfNow, Lightspeed/Chronogolf, ForeUp, TeeQuest). That widget IS the real booking system — use it, even if the URL host changes.
-- Set the DATE and number of PLAYERS, then pick the tee time at or closest to the requested time. Click the slot (don't stop on the picker — clicking it opens the form), fill the player/contact details, and book. If a card/deposit is required, STOP per rule 6.
+- Set the DATE and number of PLAYERS (light thinking — you KNOW both from the task), then the slot list is a REFLEX: click the tee time at or nearest the requested time on the SAME step you see the grid — don't compare slots, don't re-read. Clicking the slot opens the form; batch-fill the player/contact details and book. If a card/deposit is required, STOP per rule 6.
 
 CAR-RENTAL PLAYBOOK
 1. Find the rental search — pick-up location, pick-up date/time, and drop-off date/time. Set them from the task (use the city/airport in the task as the pick-up location).
@@ -1260,7 +1260,7 @@ async function clickBookingEntryDeterministically(
       // wastes the run (Bandon Dunes). Unmatched wording falls through to
       // the agent, which reads any phrasing in any language.
       const PRIMARY =
-        /^(book now|reserve now|book online|book your stay|book a stay|book a room|book your room|book your trip|book dates|reserve dates|reserve your stay|reserve a room|book accommodations? online|check availability|check rates|book a tee time|book tee times?|tee times? booking|jetzt buchen|prenota ora|réservez?|reservar ahora)$/i;
+        /^(book now|reserve now|book online|book your stay|book a stay|book a room|book your room|book your trip|book dates|reserve dates|reserve your stay|reserve a room|book accommodations? online|check availability|check rates|book a tee time|book tee times?|tee times? booking|book golf|book a round|book your round|golf booking|jetzt buchen|prenota ora|réservez?|reservar ahora)$/i;
       const SECONDARY =
         /^(reserve|reservations?|book|booking|tee times?|stay|buchen|prenota|réserver|reservar)$/i;
       const isVisible = (el: Element | null): boolean => {
