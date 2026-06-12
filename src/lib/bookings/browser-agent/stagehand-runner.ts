@@ -316,10 +316,20 @@ export async function runStagehandBooking(
   let stagehand: Stagehand;
 
   if (useSteel) {
-    steelSession = await createSteelSession({
-      solveCaptcha: opts.solveCaptchas,
-      timeoutMs: opts.timeoutMs,
-    });
+    console.log("[steel] creating session…");
+    try {
+      steelSession = await createSteelSession({
+        solveCaptcha: opts.solveCaptchas,
+        timeoutMs: opts.timeoutMs,
+      });
+    } catch (e) {
+      // Make Steel setup failures LOUD — otherwise they vanish into the
+      // booking record and the run just looks "stuck" with no [stagehand] log.
+      console.error(
+        `[steel] ✗ session setup FAILED: ${e instanceof Error ? e.message : e}`,
+      );
+      throw e;
+    }
     stagehand = new Stagehand({
       env: "LOCAL",
       // Connect Stagehand to the Steel browser over CDP instead of launching
@@ -787,21 +797,36 @@ async function createSteelSession(args: {
   solveCaptcha: boolean;
   timeoutMs: number;
 }): Promise<SteelSession> {
-  const key = env("STEEL_API_KEY");
-  const res = await fetch(`${STEEL_API_BASE}/sessions`, {
-    method: "POST",
-    headers: {
-      "Steel-Api-Key": key,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      solveCaptcha: args.solveCaptcha,
-      useProxy: args.solveCaptcha, // proxy pairs with captcha-solving, as on BB
-      dimensions: { width: AGENT_VIEWPORT.width, height: AGENT_VIEWPORT.height },
-      // Steel expects the session timeout in ms; give it our wall-clock + slack.
-      timeout: args.timeoutMs + 60_000,
-    }),
-  });
+  // Defensively strip surrounding quotes/whitespace — a key pasted as
+  // STEEL_API_KEY="ste-…" should still authenticate.
+  const key = env("STEEL_API_KEY").trim().replace(/^["']|["']$/g, "");
+  // Don't let a hung Steel API call stall the whole booking silently.
+  const ctrl = new AbortController();
+  const killer = setTimeout(() => ctrl.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(`${STEEL_API_BASE}/sessions`, {
+      method: "POST",
+      headers: {
+        "Steel-Api-Key": key,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        solveCaptcha: args.solveCaptcha,
+        useProxy: args.solveCaptcha, // proxy pairs with captcha-solving, as on BB
+        dimensions: { width: AGENT_VIEWPORT.width, height: AGENT_VIEWPORT.height },
+        // Steel expects the session timeout in ms; give it wall-clock + slack.
+        timeout: args.timeoutMs + 60_000,
+      }),
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    throw new Error(
+      `[steel] create session request failed: ${e instanceof Error ? e.message : e} (check STEEL_API_KEY + network)`,
+    );
+  } finally {
+    clearTimeout(killer);
+  }
   const text = await res.text();
   let json: Record<string, unknown>;
   try {
