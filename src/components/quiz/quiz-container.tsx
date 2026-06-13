@@ -192,11 +192,58 @@ export function QuizContainer({ tripId }: { tripId: string }) {
       console.error("[quiz submit]", err);
       const wasAborted =
         err instanceof DOMException && err.name === "AbortError";
+      // NETWORK-DROP RECOVERY: a "Failed to fetch" here usually means the
+      // customer's connection dropped while waiting on the long build
+      // response — but the build KEEPS RUNNING server-side (a real case:
+      // build returned 200 in 183s while the browser had already given
+      // up). Instead of declaring failure, switch to polling the
+      // ultra-light /progress endpoint; the moment the itinerary exists,
+      // land on the trip like nothing happened. Only show the error if
+      // the build genuinely never finishes.
+      const wasNetworkDrop =
+        !wasAborted &&
+        (err instanceof TypeError ||
+          (err instanceof Error && /failed to fetch|networkerror|load failed/i.test(err.message)));
+      if (wasNetworkDrop) {
+        toast.message(
+          "Connection hiccup — your trip is still being built. Hang tight…",
+        );
+        const recovered = await (async (): Promise<boolean> => {
+          const deadline = Date.now() + 6 * 60 * 1000;
+          while (Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 5000));
+            try {
+              const r = await fetch(`/api/trips/${tripId}/progress`, {
+                cache: "no-store",
+              });
+              if (!r.ok) continue;
+              const j = (await r.json()) as {
+                hasItinerary?: boolean;
+                agentStatus?: string;
+              };
+              if (j.hasItinerary) return true;
+              if (j.agentStatus === "FAILED") return false;
+            } catch {
+              // Still offline — keep trying until the deadline.
+            }
+          }
+          return false;
+        })();
+        if (recovered) {
+          try {
+            window.localStorage.removeItem(storageKey);
+          } catch {}
+          window.location.assign(`/trips/${tripId}?autoBook=1`);
+          return;
+        }
+      }
       const message = wasAborted
         ? "Your trip is taking longer than usual. We saved your details — open it from your dashboard to retry."
-        : err instanceof Error
-          ? err.message
-          : "Couldn't build your trip — try again.";
+        : wasNetworkDrop
+          ? "We lost the connection while building. Your answers are saved — check your connection and retry."
+          : err instanceof Error
+            ? err.message
+            : "Couldn't build your trip — try again.";
       toast.error(message);
       // The trip row was already saved at the start of /build with the
       // user's constraints, so route them to the trip workspace instead
