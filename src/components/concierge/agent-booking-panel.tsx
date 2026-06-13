@@ -39,6 +39,7 @@ import {
   BookingConfirmDialog,
   confirmDetailFor,
 } from "./booking-confirm-dialog";
+import { SaveCardButton } from "./save-card-button";
 import type { WorkspaceItemBooking, WorkspaceItineraryItem } from "./workspace";
 
 type Props = {
@@ -126,7 +127,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
     if (!isInFlight) return;
     const id = setInterval(() => {
       void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
-    }, 3000);
+    }, 6000);
     return () => clearInterval(id);
   }, [isInFlight, qc, tripId]);
 
@@ -257,6 +258,42 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         </div>
       );
     }
+    // The agent reached the PAYMENT step and stopped (no card on file yet).
+    // Show the customer exactly what's queued — room/dates/price from the
+    // agent's own summary — and a one-tap "save your card to finish" so the
+    // review is something they can act on, not a dead-end "reviewing" card.
+    const atPaymentStep = /payment|card (entry|number|step)|deposit due|ready to (pay|confirm)/i.test(
+      booking.agentMessage ?? "",
+    );
+    const summary = (booking.agentMessage ?? "")
+      .replace(/^.*?(at the |is at the )/i, "")
+      .replace(/\s*[—-]\s*guest details.*$/i, "")
+      .trim();
+    if (atPaymentStep) {
+      return (
+        <div className="rounded-2xl border border-accent/40 bg-accent/5 p-4 space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="size-9 rounded-xl bg-accent/10 grid place-items-center text-accent shrink-0">
+              <ShieldCheck className="size-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">
+                Filled in &amp; ready to book
+              </p>
+              <p className="text-xs text-foreground/80 mt-0.5 leading-relaxed">
+                {summary ||
+                  "Pyltrix filled out the whole reservation and paused at the payment step."}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                Save your card and Pyltrix completes the booking — you stay in
+                control of the final charge.
+              </p>
+            </div>
+          </div>
+          <SaveCardButton returnTo={`/trips/${tripId}`} />
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border border-foreground/30 bg-foreground/5 px-4 py-3 space-y-1">
         <div className="flex items-center gap-2">
@@ -266,8 +303,8 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
           </p>
         </div>
         <p className="text-xs text-foreground/80">
-          We&apos;re double-checking this booking before confirming it. You&apos;ll
-          get an email the moment it&apos;s locked.
+          {summary ||
+            "We're double-checking this booking before confirming it. You'll get an email the moment it's locked."}
         </p>
       </div>
     );

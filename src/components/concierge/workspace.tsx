@@ -155,6 +155,9 @@ export type WorkspaceItemBooking = {
   /** The venue's real total found at checkout (cents) — set when the agent
    *  paused for price approval. */
   quotedPriceCents?: number | null;
+  /** The agent's own end-of-run summary (room/dates/price) — shown in the
+   *  needs_review card so the customer sees exactly what was queued. */
+  agentMessage?: string | null;
   fallbackContact: {
     website?: string | null;
     phone?: string | null;
@@ -337,7 +340,7 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       const items = snap?.itinerary?.items ?? [];
       const ACTIVE = new Set(["PENDING", "SEARCHING", "HELD"]);
       return items.some((it) => it.booking && ACTIVE.has(it.booking.status))
-        ? 3000
+        ? 6000
         : false;
     },
     refetchIntervalInBackground: true,
