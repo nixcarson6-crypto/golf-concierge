@@ -134,6 +134,76 @@ export async function buildMultiLegItinerary(args: {
     }
   }
 
+  // LODGING GUARANTEE: a leg can come back "ok" yet hotel-less (a real
+  // Capri/Venice trip shipped with no Venice hotel — the customer had
+  // nowhere to sleep on leg 2). For each ok leg with no LODGING item,
+  // retry that single leg ONCE with an explicit corrective note; if the
+  // retry still has no hotel, downgrade the leg to failed so the partial-
+  // failure banner tells the customer instead of shipping a broken trip.
+  for (const legRes of perLeg) {
+    if (legRes.status !== "ok") continue;
+    const i = legRes.index;
+    const hasLodging = mergedItems.some(
+      (it) =>
+        it.type === "LODGING" &&
+        (it.metadata as { legIndex?: number } | null)?.legIndex === i,
+    );
+    if (hasLodging) continue;
+    const leg = args.legs[i];
+    console.warn(
+      `[multi-leg] ✗ leg ${i} (${leg.destination}) returned NO lodging — retrying that leg once.`,
+    );
+    try {
+      const retryConstraints = buildLegConstraints(
+        args.constraints,
+        args.legs,
+        leg,
+        i,
+      );
+      retryConstraints.notes = `YOUR PREVIOUS ATTEMPT OMITTED THE HOTEL — INVALID. This output MUST contain exactly ONE LODGING item in ${leg.destination} for the leg's full date range. ${retryConstraints.notes ?? ""}`;
+      const retry = await withTimeout(
+        runItineraryAgent({
+          tripId: args.tripId,
+          destination: leg.destination,
+          constraints: retryConstraints,
+          priorItinerary: null,
+        }),
+        PER_LEG_TIMEOUT_MS,
+        `Leg "${leg.destination}" lodging retry timed out`,
+      );
+      const retryItems = retry.output.items.filter((it) => it.type !== "FLIGHT");
+      const retryHasLodging = retryItems.some((it) => it.type === "LODGING");
+      if (retryHasLodging) {
+        // Replace the leg's items wholesale with the corrected set.
+        for (let k = mergedItems.length - 1; k >= 0; k--) {
+          const li = (mergedItems[k].metadata as { legIndex?: number } | null)
+            ?.legIndex;
+          if (li === i) mergedItems.splice(k, 1);
+        }
+        for (const item of retryItems) {
+          const existingMeta =
+            (item.metadata as Record<string, unknown> | null) ?? {};
+          mergedItems.push({
+            ...item,
+            metadata: { ...existingMeta, legIndex: i } as Record<string, unknown>,
+          });
+        }
+        console.log(
+          `[multi-leg] ✓ leg ${i} (${leg.destination}) lodging repaired on retry.`,
+        );
+      } else {
+        legRes.status = "failed";
+        legRes.error = `Planned ${leg.destination} but couldn't pick a hotel — retry the build or set one manually.`;
+        console.warn(
+          `[multi-leg] ✗ leg ${i} (${leg.destination}) STILL no lodging after retry — flagged as failed.`,
+        );
+      }
+    } catch (e) {
+      legRes.status = "failed";
+      legRes.error = `Lodging repair for ${leg.destination} failed: ${e instanceof Error ? e.message : e}`;
+    }
+  }
+
   const successCount = perLeg.filter((l) => l.status === "ok").length;
   if (successCount === 0) {
     const firstErr = perLeg.find((l) => l.error)?.error ?? "all legs failed";
@@ -241,6 +311,7 @@ function buildLegConstraints(
     `Other destinations on this trip are planned by separate agent calls and will be merged. Do NOT plan items for them.`,
     `Do NOT emit any FLIGHT items — the trip pipeline books all flights separately based on the leg airports.`,
     `Plan lodging, golf, dining, ground transport, activities, and free time for this destination only.`,
+    `LODGING IS MANDATORY: your output MUST include exactly ONE LODGING item in ${leg.destination} covering ALL of this leg's nights (check-in = leg start date, check-out = leg end date). An itinerary leg without a hotel strands the customer with nowhere to sleep (a real Capri/Venice trip shipped with no Venice hotel) — it is INVALID output.`,
     `Ground transport: only emit Uber/transfer items for the ESSENTIAL transfers — airport↔hotel, and hotel↔course ONLY when the course is OFF the lodging property (a separate venue a real drive away). If the course is ON the resort grounds / same resort as the lodging (e.g. Pinehurst, Pebble, Bandon, Streamsong, Kiawah resort courses), emit NO transport item — guests walk or take the free resort shuttle. Do NOT add Ubers for dinners, bars, activities, or sightseeing; guests summon those in-app themselves in the moment.`,
     legBudgetTotal
       ? `This leg's budget is about $${legBudgetTotal.toLocaleString()} total (your share of the trip across ${allLegs.length} stops). SPEND IT — pick the top lodging tier + best options this leg's share supports; don't come in far under.`
