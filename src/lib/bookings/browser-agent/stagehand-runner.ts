@@ -2164,10 +2164,14 @@ async function dismissConsentDeterministically(
 }
 
 function progressLabel(step: number): string {
-  if (step <= 1) return "Finding the booking form…";
-  if (step <= 3) return "Filling your reservation details…";
-  if (step <= 6) return "Working through the booking…";
-  return "Finishing up…";
+  // Specific + reassuring: the customer is watching a multi-minute run and
+  // needs to know it's doing REAL work on the venue's own site, not hanging.
+  if (step <= 1) return "Opening the venue's real booking site…";
+  if (step <= 3) return "Checking live availability for your dates…";
+  if (step <= 6) return "Picking your room/time and filling your details…";
+  if (step <= 10) return "Working through the venue's checkout…";
+  if (step <= 16) return "Confirming the booking on the venue's site…";
+  return "Almost there — finalizing your reservation…";
 }
 
 function shortHost(url: string): string {

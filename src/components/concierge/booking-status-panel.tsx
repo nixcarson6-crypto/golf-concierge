@@ -85,6 +85,8 @@ function statusFor(item: WorkspaceItineraryItem): {
   agentMessage: string | null;
   /** Real venue total the agent read when it paused for price approval. */
   quotedPriceCents: number | null;
+  /** Live step label while the agent is mid-run ("Checking availability…"). */
+  agentProgress: string | null;
 } {
   const b = item.booking ?? null;
   // Prefer an agent-captured fallback contact, then fall back to the
@@ -105,6 +107,7 @@ function statusFor(item: WorkspaceItineraryItem): {
       screenshotUrl: null,
       agentMessage: null,
       quotedPriceCents: null,
+      agentProgress: null,
     };
   const base = {
     phone,
@@ -114,6 +117,7 @@ function statusFor(item: WorkspaceItineraryItem): {
     screenshotUrl: b.screenshotUrl ?? null,
     agentMessage: b.agentMessage ?? null,
     quotedPriceCents: b.quotedPriceCents ?? null,
+    agentProgress: b.agentProgress ?? null,
   };
   switch (b.status) {
     case "CONFIRMED":
@@ -637,6 +641,7 @@ export function BookingStatusPanel({
                   screenshotUrl,
                   agentMessage,
                   quotedPriceCents,
+                  agentProgress,
                 }) => {
                   // Walk-in venues (casual restaurants/activities Google
                   // says don't take reservations) get a distinct label
@@ -696,7 +701,11 @@ export function BookingStatusPanel({
                           ? "Reservations by phone"
                           : canBook
                             ? "Tap to book"
-                            : statusLabel(kind);
+                            : // While booking, show the live step ("Checking
+                              // availability…") instead of a flat "Booking…".
+                              kind === "booking"
+                              ? agentProgress || statusLabel(kind)
+                              : statusLabel(kind);
                   const rowInner = (
                     <>
                       {isSuggestion && !isThisBooking ? (
@@ -800,6 +809,19 @@ export function BookingStatusPanel({
                             )}
                           </button>
                         </div>
+                      )}
+                      {/* BOOKING — explain WHY a real-site booking takes a
+                          couple minutes so the spinner never feels stuck.
+                          Golf/independent hotels have no instant API, so the
+                          agent books on the venue's own site like a person. */}
+                      {kind === "booking" && !isThisBooking && (
+                        <p className="pl-9 pr-2.5 pb-2 -mt-0.5 text-[11px] text-muted-foreground leading-snug">
+                          Pyltrix is booking on {item.title.split(" — ")[0]}&apos;s
+                          own site — a couple minutes, like a person filling the
+                          form by hand. It checks live availability, picks your
+                          {item.type === "TEE_TIME" ? " tee time" : " room"}, and
+                          fills your details, then shows you proof.
+                        </p>
                       )}
                       {/* REVIEW — the agent reached a real page and stopped.
                           Show what it got to, the screenshot proof, and the
