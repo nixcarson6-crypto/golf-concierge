@@ -189,6 +189,27 @@ export async function runBrowserBooking(args: {
     return;
   }
 
+  // Hotel checkouts ALWAYS require a billing/home address — Country, Street,
+  // City, Zip are * required on every booking engine (synxis/SHR, Belmond,
+  // etc.). With no saved address the agent reaches the checkout, fills the
+  // name/email/phone, then stalls on the address fields it has no data for
+  // until the wall-clock cap aborts it (a real run died at the $5,365 Lodge
+  // Torrey Pines checkout this way). Fail FAST with the exact fix instead of a
+  // 7-minute grind — the customer adds their address once and every future
+  // hotel books end-to-end.
+  if (item.type === "LODGING" && !traveler.addressLine1) {
+    await markBookingFailed({
+      booking,
+      itemId: item.id,
+      tripId: args.tripId,
+      failureReason: "ambiguous",
+      message:
+        "Add your home address in your profile (Street, City, State, Zip) — hotel checkouts require it to book. Then tap Book again and the agent completes the whole reservation.",
+      fallbackContact: { website: startUrl, phone: places.phone ?? null },
+    });
+    return;
+  }
+
   const request: BookingRequest = {
     tripId: args.tripId,
     itineraryItemId: item.id,
@@ -403,10 +424,16 @@ export async function runBrowserBooking(args: {
               // Golf/transport get 4 — Laguna Phuket's booking widget hit the
               // old 3-min cap at step 18 while still working; Carson's bar is
               // "payment step in ≤4 min" for golf too, so give it the full 4.
-              // BROWSER_AGENT_TIMEOUT_MS overrides both.
+              // BROWSER_AGENT_TIMEOUT_MS overrides both. LODGING raised to 9
+              // min: a real Lodge Torrey Pines run reached the FILLED checkout
+              // ($5,365, contact done) at 6:06 and the 7-min cap aborted it ~30s
+              // from the card step. With the deterministic fast-paths cutting
+              // steps, typical hotels still finish in 3-4 min and never feel the
+              // cap — this is purely a safety net so a slow-but-progressing run
+              // crosses the finish line instead of dying at it.
               timeoutMs:
                 Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
-                (item.type === "LODGING" ? 420_000 : 240_000),
+                (item.type === "LODGING" ? 540_000 : 240_000),
               maxSteps,
               // Run the browser in the region nearest the venue so each of
               // the ~25 actions has a short round-trip (an Italian hotel

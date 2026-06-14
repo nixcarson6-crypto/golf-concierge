@@ -2049,7 +2049,7 @@ async function clickBookingEntryDeterministically(
       // wastes the run (Bandon Dunes). Unmatched wording falls through to
       // the agent, which reads any phrasing in any language.
       const PRIMARY =
-        /^(book now|reserve now|book online|book your stay|book a stay|book a room|book your room|book your trip|book dates|reserve dates|reserve your stay|reserve a room|book accommodations? online|check availability|check rates|book a tee time|book tee times?|tee times? booking|book golf|book a round|book your round|golf booking|jetzt buchen|prenota ora|réservez?|reservar ahora)$/i;
+        /^(book now|reserve now|book online|book your stay|book a stay|book a room|book your room|book your trip|book dates|reserve dates|reserve your stay|reserve a room|plan my stay|plan your stay|book accommodations? online|check availability|check rates|book a tee time|book tee times?|tee times? booking|book golf|book a round|book your round|golf booking|jetzt buchen|prenota ora|réservez?|reservar ahora)$/i;
       const SECONDARY =
         /^(reserve|reservations?|book|booking|tee times?|stay|buchen|prenota|réserver|reservar)$/i;
       const isVisible = (el: Element | null): boolean => {

@@ -397,9 +397,13 @@ export function BookingStatusPanel({
   );
   React.useEffect(() => {
     if (!anyInFlight) return;
+    // 10s, not 6s: each workspace refetch is a full DB snapshot that takes
+    // 2-3s, and in local dev it runs in the SAME Node process as the agent —
+    // a tight poll starves the agent's CPU and inflates every step. 10s keeps
+    // the panel live without competing with the booking it's watching.
     const id = setInterval(() => {
       void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
-    }, 6000);
+    }, 10000);
     return () => clearInterval(id);
   }, [anyInFlight, qc, tripId]);
 
