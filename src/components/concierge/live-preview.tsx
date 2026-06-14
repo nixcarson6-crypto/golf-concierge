@@ -84,17 +84,19 @@ export function LivePreview({
   }, [router]);
 
   // Traveler profile completeness — if the user is missing any of the
-  // airline-required fields, surface a copper banner that opens the
-  // profile collection modal. Without this, customers hit Book All and
-  // get a toast saying "fill in your profile first" with no obvious way
-  // to do it.
-  const profileComplete = Boolean(
+  // airline-required fields OR a home address (hotel checkouts require it),
+  // surface a copper banner that opens the profile collection modal. Without
+  // this, customers hit Book All and get a toast saying "fill in your
+  // profile/address first" with no obvious way to do it.
+  const flightInfoComplete = Boolean(
     me.profile.legalGivenName &&
       me.profile.legalFamilyName &&
       me.profile.dateOfBirth &&
       (me.profile.gender === "m" || me.profile.gender === "f") &&
       me.profile.phone,
   );
+  const addressComplete = Boolean(me.profile.addressLine1);
+  const profileComplete = flightInfoComplete && addressComplete;
   const [profileModalOpen, setProfileModalOpen] = React.useState(false);
   const qcForProfile = useQueryClient();
 
@@ -188,13 +190,14 @@ export function LivePreview({
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1 min-w-0">
                 <p className="text-sm font-semibold text-[hsl(var(--copper))]">
-                  Add your traveler info
+                  {flightInfoComplete
+                    ? "Add your home address"
+                    : "Add your traveler info"}
                 </p>
                 <p className="text-xs text-foreground/80 leading-relaxed">
-                  Airlines need full legal name, date of birth, gender, email,
-                  and phone before they&apos;ll issue a ticket. Save it once
-                  and every future booking is one tap. We won&apos;t book or
-                  charge anything from this step.
+                  {flightInfoComplete
+                    ? "Hotel checkouts require a billing address (street, city, state, zip) to book. Save it once and every hotel books in one tap. We won't book or charge anything from this step."
+                    : "Airlines need full legal name, date of birth, gender, email, and phone before they'll issue a ticket — and hotels need your home address. Save it once and every future booking is one tap. We won't book or charge anything from this step."}
                 </p>
               </div>
             </div>
@@ -204,7 +207,7 @@ export function LivePreview({
                 onClick={() => setProfileModalOpen(true)}
                 className="bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
               >
-                Add traveler info
+                {flightInfoComplete ? "Add home address" : "Add traveler info"}
               </Button>
             </div>
           </div>
