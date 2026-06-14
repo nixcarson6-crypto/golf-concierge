@@ -651,6 +651,7 @@ export async function runStagehandBooking(
     // each thing exactly once.
     let datesAlreadySet = false;
     let slotAlreadyPicked = false;
+    let golfSearchSubmitted = false;
 
     // FAST PATH: set the stay DATES deterministically. The dual-month price
     // calendars on luxury sites (aman.com) are so heavy the agent's page
@@ -727,6 +728,16 @@ export async function runStagehandBooking(
     // list appears a beat after the date/search. Best-effort.
     if (opts.selectTeeSlot) {
       try {
+        // Some tee sheets (quick18/Grayhawk, ForeUp) gate the slot list behind
+        // a SEARCH FORM — submit it first so the slots actually render.
+        const searched = await clickGolfSearchDeterministically(page);
+        if (searched) {
+          console.log(
+            `[stagehand] ✓ golf search submitted ("${searched}") (${elapsed()})`,
+          );
+          golfSearchSubmitted = true;
+          await new Promise((r) => setTimeout(r, 2000));
+        }
         let picked: string | null = null;
         for (let i = 0; i < 6 && !picked; i++) {
           picked = await clickTeeTimeSlotDeterministically(
@@ -860,6 +871,16 @@ export async function runStagehandBooking(
                   console.log(
                     `[stagehand] ⚡ tee slot picked mid-run (${r}) (${elapsed()})`,
                   );
+                } else if (!golfSearchSubmitted) {
+                  // No slots yet — the search form may have just appeared.
+                  // Submit it so the list renders on the next step.
+                  const s = await clickGolfSearchDeterministically(active);
+                  if (s) {
+                    golfSearchSubmitted = true;
+                    console.log(
+                      `[stagehand] ⚡ golf search submitted mid-run ("${s}") (${elapsed()})`,
+                    );
+                  }
                 }
               }
             } catch {
@@ -1827,6 +1848,60 @@ async function clickStayDatesDeterministically(
  * Returns "slot=<minutes>" on a click, or null when no slot list is present.
  * Best-effort — never throws.
  */
+/**
+ * Click a golf "Search Tee Times" / "Find Times" button — zero LLM. Many golf
+ * tee sheets (quick18, ForeUp, Teesnap) show a SEARCH FORM (date/course/players)
+ * first; the tee-time list only renders AFTER you submit it. A real run filled
+ * the form on Grayhawk's quick18 page but never hit "SEARCH TEE TIMES", so the
+ * slot list never appeared and the slot-picker had nothing to click. This
+ * submits the search. Returns the button label clicked, or null.
+ */
+async function clickGolfSearchDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const RE =
+        /^(search tee times?|search times?|find tee times?|find times?|search availability|check availability|view tee times?|show tee times?|get tee times?|search|find|go)$/i;
+      const isVisible = (el: Element | null): boolean => {
+        if (!el) return false;
+        const r = (el as HTMLElement).getClientRects();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return (
+          s.visibility !== "hidden" &&
+          s.display !== "none" &&
+          Number(s.opacity || "1") > 0.05
+        );
+      };
+      const nodes = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "button, [role=button], a, input[type=button], input[type=submit]",
+        ),
+      );
+      for (const el of nodes) {
+        const txt = (
+          el.innerText ||
+          el.textContent ||
+          (el as HTMLInputElement).value ||
+          el.getAttribute("aria-label") ||
+          ""
+        ).trim();
+        if (!txt || txt.length > 30) continue;
+        if (RE.test(txt) && isVisible(el)) {
+          el.click();
+          return txt;
+        }
+      }
+      return null;
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function clickTeeTimeSlotDeterministically(
   page: unknown,
   requestedLabel: string | null,
