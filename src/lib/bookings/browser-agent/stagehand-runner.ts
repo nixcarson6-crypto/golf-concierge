@@ -185,6 +185,15 @@ export type RunStagehandOptions = {
    *  agent reading a heavy price-grid calendar. null for non-stay bookings. */
   checkinISO?: string | null;
   checkoutISO?: string | null;
+  /** Golf only: when true, a zero-LLM pass clicks the tee-time SLOT nearest
+   *  `teeTimeLabel` (or the earliest available) the moment the slot list
+   *  renders — the booking widgets (ForeUp/Chronogolf) show a list of times
+   *  and the agent's job is just to click one. Skipping the LLM here removes
+   *  the #1 golf stall (sitting on a full slot list). */
+  selectTeeSlot?: boolean;
+  /** The requested tee time, any human format ("6:00 PM", "18:00") — used to
+   *  pick the nearest slot. null → pick the earliest available. */
+  teeTimeLabel?: string | null;
   /** Price-approval gate (cents): when the venue's real total at the card
    *  step exceeds this, do NOT pay — return a price_approval outcome so the
    *  customer can approve the real price first. null = no gate (customer
@@ -672,6 +681,42 @@ export async function runStagehandBooking(
       } catch (e) {
         console.warn(
           `[stagehand] date fast path skipped: ${e instanceof Error ? e.message : e}`,
+        );
+      }
+    }
+
+    // FAST PATH (GOLF): click the tee-time SLOT. The booking widgets (ForeUp,
+    // Chronogolf, TeeQuest) render a LIST of available times; the agent's only
+    // job there is to click one — yet a real run sat on a full ForeUp slot list
+    // the entire time budget without clicking. Picking the slot in-page (zero
+    // LLM, nearest the requested time) removes that stall entirely, the same
+    // way the date fast-path removed the calendar stall. Polls because the slot
+    // list appears a beat after the date/search. Best-effort.
+    if (opts.selectTeeSlot) {
+      try {
+        let picked: string | null = null;
+        for (let i = 0; i < 6 && !picked; i++) {
+          picked = await clickTeeTimeSlotDeterministically(
+            page,
+            opts.teeTimeLabel ?? null,
+          );
+          if (!picked) await new Promise((r) => setTimeout(r, 1500));
+        }
+        if (picked) {
+          console.log(
+            `[stagehand] ✓ tee-time slot clicked deterministically (${picked}) (${elapsed()})`,
+          );
+          await opts.onStep?.("Tee time selected — filling your details…");
+          await new Promise((r) => setTimeout(r, 1200));
+          await slimHeavyDom(page);
+        } else {
+          console.log(
+            `[stagehand] no tee-slot list matched — agent will pick the time (${elapsed()})`,
+          );
+        }
+      } catch (e) {
+        console.warn(
+          `[stagehand] tee-slot fast path skipped: ${e instanceof Error ? e.message : e}`,
         );
       }
     }
@@ -1686,6 +1731,116 @@ async function clickStayDatesDeterministically(
         return `in=${ci}${outCell ? ` out=${co}` : " out=PENDING"}`;
       },
       { ci: checkinISO, co: checkoutISO },
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Click the tee-time SLOT nearest the requested time — zero LLM. Golf booking
+ * widgets (ForeUp, Chronogolf, TeeQuest) render the available times as a list
+ * of clickable cards/rows ("6:00pm · 4 Players · $125"); the agent's only job
+ * there is to click one, but a real run sat on a full ForeUp list the whole
+ * time budget. This finds the slot cards, parses each card's time, picks the
+ * one nearest the requested time (or the earliest if unknown), and clicks it.
+ * Returns "slot=<minutes>" on a click, or null when no slot list is present.
+ * Best-effort — never throws.
+ */
+async function clickTeeTimeSlotDeterministically(
+  page: unknown,
+  requestedLabel: string | null,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(
+      (arg: unknown) => {
+        const { reqLabel } = arg as { reqLabel: string | null };
+        // Parse the FIRST clock time in a string → minutes since midnight.
+        const parseMin = (s: string): number | null => {
+          const m = s.match(/\b(\d{1,2}):(\d{2})\s*([ap]\.?m\.?)?/i);
+          if (!m) return null;
+          let h = parseInt(m[1], 10);
+          const min = parseInt(m[2], 10);
+          if (h > 23 || min > 59) return null;
+          const ap = (m[3] || "").toLowerCase().replace(/\./g, "");
+          if (ap === "pm" && h !== 12) h += 12;
+          if (ap === "am" && h === 12) h = 0;
+          return h * 60 + min;
+        };
+        const isVisible = (el: Element): boolean => {
+          const r = (el as HTMLElement).getClientRects();
+          if (!r || r.length === 0) return false;
+          const st = window.getComputedStyle(el as HTMLElement);
+          return (
+            st.visibility !== "hidden" &&
+            st.display !== "none" &&
+            Number(st.opacity || "1") > 0.05 &&
+            st.pointerEvents !== "none"
+          );
+        };
+        const want = reqLabel ? parseMin(reqLabel) : null;
+        // The outermost clickable ancestor (a/button/role=button, or any
+        // ancestor the site styled as cursor:pointer — ForeUp's slot is a
+        // pointer DIV, not a button).
+        const clickableAncestor = (el: HTMLElement): HTMLElement => {
+          let best = el;
+          let cur: HTMLElement | null = el;
+          for (let i = 0; i < 5 && cur; i++) {
+            const cs = window.getComputedStyle(cur);
+            if (
+              cur.tagName === "A" ||
+              cur.tagName === "BUTTON" ||
+              cur.getAttribute("role") === "button" ||
+              cs.cursor === "pointer"
+            ) {
+              best = cur;
+            }
+            cur = cur.parentElement;
+          }
+          return best;
+        };
+        // Candidate slot cards: smallish elements whose text carries a time.
+        // The length guard keeps us to a single card ("6:00pm Aspen Golf Club
+        // Front 4 Players $125.00"), never the whole page.
+        const nodes = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "a,button,[role=button],li,tr,div,span",
+          ),
+        );
+        const slots: { el: HTMLElement; min: number }[] = [];
+        const seen = new Set<HTMLElement>();
+        for (const el of nodes) {
+          if (!isVisible(el)) continue;
+          const txt = (el.textContent || "").trim();
+          if (!txt || txt.length > 140) continue;
+          const min = parseMin(txt);
+          if (min == null) continue;
+          const card = clickableAncestor(el);
+          if (seen.has(card)) continue;
+          seen.add(card);
+          // A real slot card is interactive AND priced/sized like a row, not a
+          // tiny inline time label. Require it to be a link/button/pointer.
+          const cs = window.getComputedStyle(card);
+          const interactive =
+            card.tagName === "A" ||
+            card.tagName === "BUTTON" ||
+            card.getAttribute("role") === "button" ||
+            cs.cursor === "pointer";
+          if (!interactive) continue;
+          slots.push({ el: card, min });
+        }
+        if (slots.length === 0) return null;
+        slots.sort((a, b) =>
+          want != null
+            ? Math.abs(a.min - want) - Math.abs(b.min - want)
+            : a.min - b.min,
+        );
+        slots[0].el.click();
+        return `slot=${slots[0].min}`;
+      },
+      { reqLabel: requestedLabel },
     );
   } catch {
     return null;

@@ -431,6 +431,12 @@ export async function runBrowserBooking(args: {
                   ? task.isoDate
                   : null,
               checkoutISO: item.type === "LODGING" ? task.isoCheckOut : null,
+              // Golf: click the tee-time slot nearest the requested time the
+              // moment the list renders (zero LLM) — the agent's #1 stall was
+              // sitting on a full ForeUp/Chronogolf slot list without clicking.
+              selectTeeSlot: item.type === "TEE_TIME",
+              teeTimeLabel:
+                item.type === "TEE_TIME" ? task.displayTime ?? null : null,
               onStep: async (label) => {
                 await bridgeNudge(label);
               },
