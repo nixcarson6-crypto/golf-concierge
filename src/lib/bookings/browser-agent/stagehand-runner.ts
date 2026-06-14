@@ -621,22 +621,49 @@ export async function runStagehandBooking(
     if (opts.checkinISO && opts.checkoutISO) {
       try {
         let setDates: string | null = null;
-        for (let i = 0; i < 5 && !setDates; i++) {
+        // Poll: the calendar appears a beat after the Book-Now navigation, and
+        // a closed calendar needs one pass to ARM it (returns "OPENED") before
+        // the cells exist to click. Keep going while we're still null/OPENED.
+        for (
+          let i = 0;
+          i < 7 && (!setDates || setDates === "OPENED");
+          i++
+        ) {
           setDates = await clickStayDatesDeterministically(
             page,
             opts.checkinISO,
             opts.checkoutISO,
           );
-          if (!setDates) await new Promise((r) => setTimeout(r, 1500));
+          if (!setDates || setDates === "OPENED") {
+            await new Promise((r) => setTimeout(r, 1200));
+          }
         }
-        if (setDates) {
+        // Arrival landed but the departure cell wasn't selectable yet (many
+        // range pickers only enable check-out after check-in is chosen). Run
+        // dedicated checkout-only passes so the agent inherits a COMPLETE range
+        // and never has to touch the calendar at all.
+        if (setDates && setDates.includes("out=PENDING")) {
+          for (let i = 0; i < 4; i++) {
+            await new Promise((r) => setTimeout(r, 1200));
+            const outRes = await clickStayDatesDeterministically(
+              page,
+              null,
+              opts.checkoutISO,
+            );
+            if (outRes) {
+              setDates = `in=${opts.checkinISO} out=${opts.checkoutISO}`;
+              break;
+            }
+          }
+        }
+        if (setDates && setDates !== "OPENED") {
           console.log(
             `[stagehand] ✓ stay dates set deterministically (${setDates}) (${elapsed()})`,
           );
           await opts.onStep?.("Dates set — finding your room…");
         } else {
           console.log(
-            `[stagehand] no date-metadata calendar found — agent will set dates (${elapsed()})`,
+            `[stagehand] no auto-settable calendar (${setDates ?? "no match"}) — agent will set dates (${elapsed()})`,
           );
         }
       } catch (e) {
@@ -1387,16 +1414,30 @@ async function captureProofScreenshot(
  * Best-effort — never throws.
  */
 /**
- * Deterministically click the check-in and check-out cells of a stay
- * calendar, matching cells by their DATE METADATA (data-date / aria-label /
- * title containing the date in any common format) — no LLM, no full-page
- * accessibility read (which times out on heavy price-grid calendars like
- * aman.com). Returns "in=… out=…" on success, or null when no date-metadata
- * calendar is present. Best-effort — never throws.
+ * Deterministically set the check-in and check-out of a stay calendar — no
+ * LLM, no full-page accessibility read (which times out on heavy price-grid
+ * calendars like aman.com). Three strategies, in order of reliability:
+ *
+ *   1. TYPE into a writable check-in / check-out text input (one shot).
+ *   2. Click cells matched by DATE METADATA (data-date / aria-label / title).
+ *   3. Click cells matched by PLAIN DAY-NUMBER TEXT, scoped to the month
+ *      container whose header reads the target "Month YYYY" — this is what
+ *      custom JS calendars (Rocco Forte, The Lodge, Aman) render: bare "<td>21"
+ *      cells with no metadata, the case that used to dump the whole calendar
+ *      on the agent and stall it for dozens of steps.
+ *
+ * Pass `ci=null` to set ONLY the checkout (used to finish a range after the
+ * arrival click armed the widget). Returns a status string on progress:
+ *   "in=… out=…"    both set
+ *   "in=… out=PENDING"  arrival set, checkout still needs a pass
+ *   "out=…"         checkout-only pass landed
+ *   "OPENED"        calendar wasn't open; clicked the arrival field to arm it
+ *   null            nothing matched — let the agent do it
+ * Best-effort — never throws.
  */
 async function clickStayDatesDeterministically(
   page: unknown,
-  checkinISO: string,
+  checkinISO: string | null,
   checkoutISO: string,
 ): Promise<string | null> {
   const cdp = page as CdpPage;
@@ -1404,16 +1445,16 @@ async function clickStayDatesDeterministically(
   try {
     return await cdp.evaluate<string | null>(
       (arg: unknown) => {
-        const { ci, co } = arg as { ci: string; co: string };
+        const { ci, co } = arg as { ci: string | null; co: string };
+        const MONTHS = [
+          "January", "February", "March", "April", "May", "June", "July",
+          "August", "September", "October", "November", "December",
+        ];
         // Build the date strings a cell might carry for a given ISO date.
         const variants = (iso: string): string[] => {
           const [y, m, d] = iso.split("-").map((n) => parseInt(n, 10));
           const dt = new Date(Date.UTC(y, m - 1, d));
-          const months = [
-            "January", "February", "March", "April", "May", "June", "July",
-            "August", "September", "October", "November", "December",
-          ];
-          const mon = months[m - 1];
+          const mon = MONTHS[m - 1];
           const dd = String(d).padStart(2, "0");
           const mm = String(m).padStart(2, "0");
           const wd = [
@@ -1442,40 +1483,185 @@ async function clickStayDatesDeterministically(
             st.pointerEvents !== "none"
           );
         };
-        // Candidate clickable day cells: things with date-ish metadata.
-        const cells = Array.from(
+
+        // ── Strategy 2: metadata match ───────────────────────────────────
+        const metaCells = Array.from(
           document.querySelectorAll<HTMLElement>(
             "[data-date], [data-day], [aria-label], [title], td, button, a, li, span",
           ),
         );
-        const findCell = (iso: string): HTMLElement | null => {
+        const findCellByMeta = (iso: string): HTMLElement | null => {
           const wants = variants(iso);
-          for (const el of cells) {
+          for (const el of metaCells) {
             if (!isVisible(el)) continue;
             const meta = (
-              (el.getAttribute("data-date") || "") +
-              " " +
-              (el.getAttribute("data-day") || "") +
-              " " +
-              (el.getAttribute("aria-label") || "") +
-              " " +
+              (el.getAttribute("data-date") || "") + " " +
+              (el.getAttribute("data-day") || "") + " " +
+              (el.getAttribute("aria-label") || "") + " " +
               (el.getAttribute("title") || "")
             ).toLowerCase();
             if (!meta.trim()) continue;
             if (wants.some((w) => meta.includes(w))) {
-              // Prefer the cell itself; if it's a wrapper, a clickable child.
-              const clickable =
-                el.closest<HTMLElement>("td,button,a,li,[role=button]") || el;
-              return clickable;
+              return el.closest<HTMLElement>("td,button,a,li,[role=button],[role=gridcell]") || el;
             }
           }
           return null;
         };
+
+        // ── Strategy 3: plain day-number text, scoped to the month box ────
+        const findCellByText = (iso: string): HTMLElement | null => {
+          const [y, m, d] = iso.split("-").map((n) => parseInt(n, 10));
+          const wantDay = String(d);
+          const monLong = MONTHS[m - 1].toLowerCase();
+          const monShort = monLong.slice(0, 3);
+          const yr = String(y);
+          // Headers that name the target month+year. Keep it tight so we
+          // don't grab a paragraph that merely mentions the month.
+          const headers = Array.from(
+            document.querySelectorAll<HTMLElement>("*"),
+          ).filter((el) => {
+            if (el.children.length > 3) return false;
+            const t = (el.textContent || "").trim().toLowerCase();
+            if (!t || t.length > 24) return false;
+            return (
+              (t.includes(monLong) || t.includes(monShort)) && t.includes(yr)
+            );
+          });
+          const looksDisabled = (el: HTMLElement): boolean => {
+            const cls = (el.className || "").toString().toLowerCase();
+            if (el.getAttribute("aria-disabled") === "true") return true;
+            if (el.hasAttribute("disabled")) return true;
+            return /disabled|outside|other-?month|adjacent|muted|unavailable|past|blocked|not-?allowed|faded/.test(
+              cls,
+            );
+          };
+          for (const h of headers) {
+            // Climb a few levels to the container that actually holds the grid.
+            let container: HTMLElement | null = h;
+            for (let up = 0; up < 4 && container; up++) {
+              const cands = Array.from(
+                container.querySelectorAll<HTMLElement>(
+                  "td,button,a,[role=gridcell],[role=button],li,span,div",
+                ),
+              ).filter(
+                (el) =>
+                  isVisible(el) &&
+                  (el.textContent || "").trim() === wantDay &&
+                  el.children.length === 0 &&
+                  !looksDisabled(el),
+              );
+              // A clean month grid yields exactly one cell for a given day.
+              // Two side-by-side months in one container would yield 2 — bail
+              // rather than guess wrong.
+              if (cands.length === 1) {
+                return (
+                  cands[0].closest<HTMLElement>(
+                    "td,button,a,[role=gridcell],[role=button],li",
+                  ) || cands[0]
+                );
+              }
+              if (cands.length > 1) break; // ambiguous at this level → stop
+              container = container.parentElement;
+            }
+          }
+          return null;
+        };
+
+        const findCell = (iso: string): HTMLElement | null =>
+          findCellByMeta(iso) || findCellByText(iso);
+
+        // ── Strategy 1: type into writable check-in / check-out inputs ────
+        const setNative = (el: HTMLInputElement, val: string): void => {
+          const proto = Object.getPrototypeOf(el);
+          const desc = Object.getOwnPropertyDescriptor(proto, "value");
+          desc?.set?.call(el, val);
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          el.dispatchEvent(new Event("blur", { bubbles: true }));
+        };
+        const fieldHay = (el: Element): string =>
+          (
+            (el.getAttribute("placeholder") || "") + " " +
+            (el.getAttribute("aria-label") || "") + " " +
+            (el.getAttribute("name") || "") + " " +
+            (el.getAttribute("id") || "") + " " +
+            (el.getAttribute("data-testid") || "")
+          ).toLowerCase();
+        const typeInto = (iso: string, kind: "in" | "out"): boolean => {
+          const [y, m, d] = iso.split("-").map((n) => parseInt(n, 10));
+          const dd = String(d).padStart(2, "0");
+          const mm = String(m).padStart(2, "0");
+          const want =
+            kind === "in"
+              ? ["check-in", "check in", "checkin", "arrival", "arrive", "from"]
+              : ["check-out", "check out", "checkout", "departure", "depart", "to"];
+          const inputs = Array.from(
+            document.querySelectorAll<HTMLInputElement>("input"),
+          );
+          for (const el of inputs) {
+            if (!isVisible(el)) continue;
+            if (el.readOnly || el.disabled) continue;
+            const type = (el.getAttribute("type") || "text").toLowerCase();
+            if (!["text", "date", "tel", "search", ""].includes(type)) continue;
+            const hay = fieldHay(el);
+            if (!want.some((w) => hay.includes(w))) continue;
+            // Respect the input's own format if it's a native date input.
+            const val = type === "date" ? iso : `${mm}/${dd}/${y}`;
+            setNative(el, val);
+            return true;
+          }
+          return false;
+        };
+
+        // Arm a closed calendar by clicking the arrival field/label/box.
+        const openCalendar = (): boolean => {
+          const want = [
+            "check-in", "check in", "checkin", "arrival", "arrive",
+            "select dates", "select your dates", "choose dates", "dates",
+            "add dates",
+          ];
+          const els = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              "input,[role=textbox],button,[role=button],label,[class*=date],[class*=Date]",
+            ),
+          );
+          for (const el of els) {
+            if (!isVisible(el)) continue;
+            const hay =
+              fieldHay(el) + " " + (el.textContent || "").slice(0, 40).toLowerCase();
+            if (want.some((w) => hay.includes(w))) {
+              el.click();
+              return true;
+            }
+          }
+          return false;
+        };
+
+        // ── Checkout-only pass (ci omitted) ──────────────────────────────
+        if (ci == null) {
+          if (typeInto(co, "out")) return `out=${co}`;
+          const outCell = findCell(co);
+          if (outCell) {
+            outCell.click();
+            return `out=${co}`;
+          }
+          return null;
+        }
+
+        // ── Full pass: typing first (most reliable), then cells ───────────
+        if (typeInto(ci, "in")) {
+          const typedOut = typeInto(co, "out");
+          return `in=${ci}${typedOut ? ` out=${co}` : " out=PENDING"}`;
+        }
+
         const inCell = findCell(ci);
-        if (!inCell) return null; // no date-metadata calendar → let agent do it
+        if (!inCell) {
+          // Calendar likely isn't open yet — arm it and let the poll retry.
+          return openCalendar() ? "OPENED" : null;
+        }
         inCell.click();
-        // Departure often only becomes selectable after arrival is set; give
-        // the widget a tick by re-querying fresh on the next call if needed.
+        // Departure often only becomes selectable after arrival is set; if it
+        // doesn't land this pass, the caller runs a checkout-only pass next.
         const outCell = findCell(co);
         if (outCell) outCell.click();
         return `in=${ci}${outCell ? ` out=${co}` : " out=PENDING"}`;
