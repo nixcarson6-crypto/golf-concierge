@@ -282,7 +282,7 @@ STEP 0 — CLEAR THE PAGE FIRST (before anything else, on EVERY new page): if a 
 
 TRAP OVERLAYS & DEAD-END FORMS — CLOSE or SKIP, never engage (these have eaten whole runs):
 - NEWSLETTER / VOUCHER FORMS, popup OR in-page: a modal offering a discount/gift ("€50 geschenkt", "10% off", "subscribe", "join our newsletter") AND footer/inline "Stay Connected" / "Sign up" / "Subscribe" email sections are NOT the booking form, even though they have input fields. NEVER fill or submit them (a real run filled a footer newsletter box). The booking form always has DATES and ROOMS/PLAYERS; any form with no dates is marketing — scroll past it.
-- INQUIRY / TRIP-PLANNER FORMS: "Plan My Trip", "Request a Quote", "Enquire Booking", "Request Information", "Contact Us", "Anfragen", "Richiesta" — forms that collect details so a HUMAN confirms later are INQUIRIES, not instant bookings. FIRST look for a real booking engine ("Book"/"Reserve"/"Tee Times" with live DATE fields) — that always wins. BUT if the venue genuinely offers ONLY an enquiry path (no live availability anywhere), DO THE CONCIERGE MOVE: fill the enquiry form with the full reservation request — dates, party size, the traveler's name/email/phone, and a short message ("Requesting [room/tee time] for [dates], [N] guests — please confirm availability to this email") — submit it ONCE, then report needs_review with reason "enquiry_sent", stating exactly what was requested. NEVER report an enquiry as confirmed — the venue confirms directly with the customer. If there is no enquiry form either (phone only), report failed / form_not_found with the phone number.
+- INQUIRY / TRIP-PLANNER FORMS: "Plan My Trip", "Request a Quote", "Enquire Booking", "Request Information", "Contact Us", "Anfragen", "Richiesta" — forms that collect details so a HUMAN confirms later are INQUIRIES, not instant bookings. FIRST look for a real booking engine ("Book"/"Reserve"/"Tee Times" with live DATE fields) — that always wins. BUT if the venue genuinely offers ONLY an enquiry path (no live availability anywhere), DO THE CONCIERGE MOVE: fill the enquiry form with the full reservation request — dates, party size, the traveler's name/email/phone, and a short message ("Requesting [room/tee time] for [dates], [N] guests — please confirm availability to this email") — submit it ONCE, then report needs_review with reason "enquiry_sent", stating exactly what was requested. NEVER report an enquiry as confirmed — the venue confirms directly with the customer. If there is no enquiry form either (phone only), report failed / form_not_found with the phone number. SPEED: the big US golf RESORTS — Pebble Beach ("plan my trip" / "Reservation Inquiry"), Pinehurst, Bandon Dunes, Sea Island — book this way ONLY: there is no instant online checkout, just the inquiry. Recognize it on sight and be DECISIVE — your dates are auto-filled for you, so you only need to set the rooms + GUESTS/GOLFERS count to the party size (if it shows 0 it's a required field — set it), fill your contact details, and SUBMIT in a HANDFUL of steps. Do NOT keep hunting for a "book"/rate page that does not exist on these resorts, and do NOT re-read the page over and over — fill the highlighted required fields and submit.
 - CHAT WIDGETS / AI CONCIERGES / WhatsApp bubbles ("How may I help you?", suggested-question buttons like "Please check room availability"): NEVER type into them, never click their suggestion buttons — a chat is a CONVERSATION, not a booking engine, and it cannot complete a reservation. Close or ignore the chat panel and find the real BOOK button instead.
 
 LANGUAGES: you read EVERY language fluently — never stall or slow down because a site is German/Italian/French/Spanish. Act on foreign labels exactly as you would English. Booking vocabulary you must recognize instantly:
@@ -620,6 +620,14 @@ export async function runStagehandBooking(
       );
     }
 
+    // These fast-paths also re-run after EVERY agent step (see onStepFinish)
+    // because multi-page flows (Pebble Beach: land → "plan my trip" inquiry →
+    // calendar appears) only show the form LATER. Running once at the start
+    // missed it and the agent hand-cranked the rest. Track "done" so we set
+    // each thing exactly once.
+    let datesAlreadySet = false;
+    let slotAlreadyPicked = false;
+
     // FAST PATH: set the stay DATES deterministically. The dual-month price
     // calendars on luxury sites (aman.com) are so heavy the agent's page
     // read (ariaTree) TIMES OUT — it could set arrival but not departure.
@@ -667,6 +675,7 @@ export async function runStagehandBooking(
           }
         }
         if (setDates && setDates !== "OPENED") {
+          datesAlreadySet = true;
           console.log(
             `[stagehand] ✓ stay dates set deterministically (${setDates}) (${elapsed()})`,
           );
@@ -703,6 +712,7 @@ export async function runStagehandBooking(
           if (!picked) await new Promise((r) => setTimeout(r, 1500));
         }
         if (picked) {
+          slotAlreadyPicked = true;
           console.log(
             `[stagehand] ✓ tee-time slot clicked deterministically (${picked}) (${elapsed()})`,
           );
@@ -781,6 +791,52 @@ export async function runStagehandBooking(
                   console.log(
                     `[stagehand] ⚡ autofill completed ${filled} guest fields (${elapsed()})`,
                   );
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
+          // INSTANT DATE-SET (per step): the calendar often appears only after
+          // the agent navigates a page or two (Pebble Beach's inquiry form, a
+          // hotel's "check availability" step). Re-run the deterministic date
+          // setter on the active page until it lands ONCE — so code sets the
+          // dates the moment the widget shows, instead of the agent grinding it.
+          if (opts.checkinISO && !datesAlreadySet) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active) {
+                const r = await clickStayDatesDeterministically(
+                  active,
+                  opts.checkinISO ?? null,
+                  opts.checkoutISO ?? null,
+                );
+                if (r && r !== "OPENED" && r.startsWith("in=")) {
+                  datesAlreadySet = true;
+                  console.log(
+                    `[stagehand] ⚡ dates set mid-run (${r}) (${elapsed()})`,
+                  );
+                }
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
+          // INSTANT TEE-SLOT (per step): same idea for golf — the slot list can
+          // render a step or two in. Click the nearest slot the moment it shows.
+          if (opts.selectTeeSlot && !slotAlreadyPicked) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active) {
+                const r = await clickTeeTimeSlotDeterministically(
+                  active,
+                  opts.teeTimeLabel ?? null,
+                );
+                if (r) {
+                  slotAlreadyPicked = true;
+                  console.log(
+                    `[stagehand] ⚡ tee slot picked mid-run (${r}) (${elapsed()})`,
+                  );
+                }
               }
             } catch {
               /* best-effort */
