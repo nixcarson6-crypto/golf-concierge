@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
 import { LayoutGrid, Plus } from "lucide-react";
+import { AccountButton } from "@/components/account-button";
 import { requireTripAccess, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,7 @@ export default async function TripLayout({
             </h1>
           </div>
           <div className="shrink-0">
-            <UserButton afterSignOutUrl="/" />
+            <AccountButton />
           </div>
         </div>
         <TripTabs trips={trips} activeId={tripId} />

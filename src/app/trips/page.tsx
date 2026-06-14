@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
 import { Plus, Sparkles } from "lucide-react";
+import { AccountButton } from "@/components/account-button";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ export default async function TripsListPage() {
         <Link href="/" className="text-display text-xl tracking-tight">
           Pyltrix
         </Link>
-        <UserButton afterSignOutUrl="/" />
+        <AccountButton />
       </header>
 
       <main className="container pb-24">

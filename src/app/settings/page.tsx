@@ -1,6 +1,6 @@
-import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { AccountButton } from "@/components/account-button";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { SettingsClient } from "./settings-client";
@@ -24,7 +24,7 @@ export default async function SettingsPage() {
         >
           <ChevronLeft className="size-4" /> Dashboard
         </Link>
-        <UserButton afterSignOutUrl="/" />
+        <AccountButton />
       </header>
 
       <main className="container pb-24 max-w-2xl">
