@@ -54,6 +54,28 @@ export function parseLegs(input: string): ParsedLeg[] | null {
   // Only fall back to comma/bare-and splitting when there's no THEN
   // marker — that preserves the "Capri, Lake Como, Portofino" case
   // (three explicit places, no other connectives).
+  // A SLASH is an unambiguous two-city separator the way users type it —
+  // "Capri/Rome", "Venice / Puglia". Treat it like a THEN marker (a hard
+  // leg boundary). Checked first so "Capri / Rome" doesn't fall through to
+  // the weaker comma/and fallback. Guard against URL-ish or "and/or" noise
+  // by only splitting when both sides are short place-name-ish tokens.
+  const SLASH_RE = /\s*\/\s*/;
+  if (
+    SLASH_RE.test(s) &&
+    !/https?:|www\.|and\/or|\d\/\d/i.test(s) &&
+    s.split(SLASH_RE).every((p) => p.trim().length > 1 && p.trim().length < 40)
+  ) {
+    const slashParts = s.split(SLASH_RE);
+    if (slashParts.length >= 2) {
+      const legs: ParsedLeg[] = [];
+      for (const raw of slashParts) {
+        const leg = parseLeg(raw);
+        if (leg) legs.push(leg);
+      }
+      if (legs.length >= 2) return legs;
+    }
+  }
+
   const THEN_RE =
     /\s+(?:and\s+then|after\s+that|followed\s+by|then|plus|to)\s+/i;
   const hasThen = THEN_RE.test(s);

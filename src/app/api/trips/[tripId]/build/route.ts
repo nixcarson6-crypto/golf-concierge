@@ -68,6 +68,11 @@ export async function POST(
   const rawDest = (rawConstraints.destination ?? "").trim();
   const looksMultiDest =
     /\s+(?:then|and\s+then|plus|after\s+that|followed\s+by)\s+/i.test(rawDest) ||
+    // Slash ("Capri/Rome") and bare "and" ("Capri and Rome") are multi-city
+    // too — but only when each side is a short place token, not a sentence.
+    (/\s*\/\s*/.test(rawDest) &&
+      !/https?:|www\.|and\/or|\d\/\d/i.test(rawDest) &&
+      rawDest.split(/\s*\/\s*/).every((p) => p.trim().length > 1 && p.trim().length < 40)) ||
     /(?:for\s+\d+\s+(?:day|night)s?.+(?:for\s+\d+\s+(?:day|night)s?))/i.test(rawDest);
   // ALWAYS preserve the user's original phrasing in notes when cleaning
   // changed it. The cleaner strips "and stay at the Aman" to get the place
