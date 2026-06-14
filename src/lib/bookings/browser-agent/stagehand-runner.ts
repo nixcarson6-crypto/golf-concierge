@@ -1600,8 +1600,15 @@ async function clickStayDatesDeterministically(
                   "check-in", "check in", "checkin", "arrival", "arrive",
                   "from", "date", "data", "giorno", "fecha", "datum",
                   "when", "play", "tee",
+                  // car-rental pick-up
+                  "pick-up", "pickup", "pick up", "collection", "ritiro",
                 ]
-              : ["check-out", "check out", "checkout", "departure", "depart", "to"];
+              : [
+                  "check-out", "check out", "checkout", "departure", "depart",
+                  "to",
+                  // car-rental drop-off
+                  "drop-off", "dropoff", "drop off", "return", "riconsegna",
+                ];
           const inputs = Array.from(
             document.querySelectorAll<HTMLInputElement>("input"),
           );

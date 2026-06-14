@@ -26,20 +26,16 @@ import {
   Loader2,
   ShieldCheck,
   AlertTriangle,
-  X,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
   BookingConfirmDialog,
   confirmDetailFor,
 } from "./booking-confirm-dialog";
 import { SaveCardButton } from "./save-card-button";
+import { isAgentBookable } from "@/lib/bookings/agent-scope";
+import { ScreenshotProof } from "./screenshot-proof";
 import type { WorkspaceItemBooking, WorkspaceItineraryItem } from "./workspace";
 
 type Props = {
@@ -61,13 +57,11 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
   const [submitting, setSubmitting] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
-  // Booking-eligible item types. FLIGHT goes through Duffel; FREE_TIME isn't
-  // bookable; TRANSPORT has the Uber deep-link already.
-  const eligible =
-    item.type !== "FLIGHT" &&
-    item.type !== "FREE_TIME" &&
-    item.type !== "TRANSPORT";
-  if (!eligible) return null;
+  // Shared scope: hotels + golf always, and TRANSPORT only when it's a car
+  // RENTAL (not an Uber/chauffeur transfer, which has its own deep-link). Using
+  // the same predicate as the server route + status panel so the button never
+  // shows for something the endpoint would reject — and cars now qualify.
+  if (!isAgentBookable(item.type, item.title, item.description)) return null;
 
   async function startBooking() {
     setSubmitting(true);
@@ -417,63 +411,6 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         </Button>
       </div>
     </div>
-  );
-}
-
-/**
- * The screenshot the agent captured of the actual venue page — the customer's
- * proof they can SEE and click into. Shown both when a booking is CONFIRMED
- * (the venue's confirmation page) and while it's at the filled-in review /
- * payment step (the form Pyltrix completed on their behalf). Self-contained:
- * renders a thumbnail that opens a full-size dialog.
- */
-function ScreenshotProof({
-  url,
-  title,
-  caption,
-}: {
-  url: string;
-  title: string;
-  caption: string;
-}) {
-  const [open, setOpen] = React.useState(false);
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="w-full rounded-xl overflow-hidden border border-foreground/30 hover:border-foreground/60 transition relative group"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={url}
-          alt={title}
-          className="w-full h-auto object-cover max-h-44"
-        />
-        <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[10px] uppercase tracking-widest text-center py-1.5">
-          {caption}
-        </div>
-      </button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden">
-          <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between gap-3">
-            <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Close"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-          <div className="bg-black grid place-items-center max-h-[80vh] overflow-auto">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt={`${title} (full)`} className="w-full h-auto" />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
 

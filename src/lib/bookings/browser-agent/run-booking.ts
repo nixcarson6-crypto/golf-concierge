@@ -420,8 +420,14 @@ export async function runBrowserBooking(args: {
               cardProvider,
               priceGateCents,
               autofill,
+              // Set the date deterministically (zero-LLM) for every type that
+              // has one on a web form: hotels (check-in + check-out), golf (the
+              // single tee date), and CAR RENTALS (the pick-up date). Only
+              // hotels carry a second date; golf + cars are single-date.
               checkinISO:
-                item.type === "LODGING" || item.type === "TEE_TIME"
+                item.type === "LODGING" ||
+                item.type === "TEE_TIME" ||
+                item.type === "TRANSPORT"
                   ? task.isoDate
                   : null,
               checkoutISO: item.type === "LODGING" ? task.isoCheckOut : null,

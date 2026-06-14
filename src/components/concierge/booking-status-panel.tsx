@@ -55,6 +55,7 @@ import type {
 // among transport items are tap-to-book.
 import { isAgentBookable } from "@/lib/bookings/agent-scope";
 import { SaveCardButton } from "./save-card-button";
+import { ScreenshotProof } from "./screenshot-proof";
 
 // Types we present as contact-and-book-yourself suggestions, never
 // auto-booked. Each surfaces Call / Visit-site actions. (Carson's call:
@@ -76,6 +77,14 @@ function statusFor(item: WorkspaceItineraryItem): {
   email: string | null;
   /** Why the booking failed — drives the "Call to book" vs "Needs you" copy. */
   failureReason: string | null;
+  /** Agent-captured screenshot of the page it reached (filled-in form or the
+   *  venue's confirmation) — the customer's tap-to-enlarge proof. */
+  screenshotUrl: string | null;
+  /** The agent's free-text summary of what it reached ("Junior Suite — $6,570
+   *  at the card step"). Drives the review copy. */
+  agentMessage: string | null;
+  /** Real venue total the agent read when it paused for price approval. */
+  quotedPriceCents: number | null;
 } {
   const b = item.booking ?? null;
   // Prefer an agent-captured fallback contact, then fall back to the
@@ -93,8 +102,19 @@ function statusFor(item: WorkspaceItineraryItem): {
       website,
       email,
       failureReason: null,
+      screenshotUrl: null,
+      agentMessage: null,
+      quotedPriceCents: null,
     };
-  const base = { phone, website, email, failureReason: b.failureReason ?? null };
+  const base = {
+    phone,
+    website,
+    email,
+    failureReason: b.failureReason ?? null,
+    screenshotUrl: b.screenshotUrl ?? null,
+    agentMessage: b.agentMessage ?? null,
+    quotedPriceCents: b.quotedPriceCents ?? null,
+  };
   switch (b.status) {
     case "CONFIRMED":
       return {
@@ -336,6 +356,53 @@ export function BookingStatusPanel({
     [bookingId, qc, tripId],
   );
 
+  // Approve the agent's quoted price (it paused because the venue's real total
+  // came in above the estimate). On approval the agent re-runs with the gate
+  // lifted and finishes the booking.
+  const [approvingId, setApprovingId] = React.useState<string | null>(null);
+  const approvePrice = React.useCallback(
+    async (item: WorkspaceItineraryItem) => {
+      if (approvingId) return;
+      setApprovingId(item.id);
+      try {
+        const res = await fetch(
+          `/api/trips/${tripId}/items/${item.id}/approve-price`,
+          { method: "POST" },
+        );
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          toast.error(err?.error ?? "Couldn't approve — try again.");
+          return;
+        }
+        toast.success("Approved — Pyltrix is completing the booking.");
+        void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+      } catch {
+        toast.error("Network error — try again.");
+      } finally {
+        setApprovingId(null);
+      }
+    },
+    [approvingId, qc, tripId],
+  );
+
+  // Live updates while any booking is mid-flight. The SSE nudge bridge pushes
+  // progress when it's wired, but a cheap 6s refetch keeps the panel honest
+  // (Booking… → Reviewing/Booked) even when the bridge isn't reachable.
+  const anyInFlight = React.useMemo(
+    () =>
+      (itinerary?.items ?? []).some((it) =>
+        ["PENDING", "SEARCHING", "HELD"].includes(it.booking?.status ?? ""),
+      ),
+    [itinerary],
+  );
+  React.useEffect(() => {
+    if (!anyInFlight) return;
+    const id = setInterval(() => {
+      void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+    }, 6000);
+    return () => clearInterval(id);
+  }, [anyInFlight, qc, tripId]);
+
   // Remove an item the customer doesn't want (e.g. 6 golf rounds, they only
   // want one). Confirms first — the DELETE also cancels any booking tied to
   // the item server-side — then refetches the workspace so totals + the
@@ -557,6 +624,9 @@ export function BookingStatusPanel({
                   phone,
                   website,
                   failureReason,
+                  screenshotUrl,
+                  agentMessage,
+                  quotedPriceCents,
                 }) => {
                   // Walk-in venues (casual restaurants/activities Google
                   // says don't take reservations) get a distinct label
@@ -719,6 +789,106 @@ export function BookingStatusPanel({
                               </>
                             )}
                           </button>
+                        </div>
+                      )}
+                      {/* REVIEW — the agent reached a real page and stopped.
+                          Show what it got to, the screenshot proof, and the
+                          one action that finishes it (approve price / save
+                          card). This is the "review button" the customer
+                          expects after the agent runs. */}
+                      {kind === "review" && (
+                        <div className="pl-9 pr-2.5 pb-2.5 -mt-0.5 space-y-2">
+                          {failureReason === "price_approval" &&
+                          quotedPriceCents ? (
+                            <>
+                              <p className="text-[11px] text-foreground/80 leading-snug">
+                                Found it — the venue&apos;s real total is{" "}
+                                <span className="font-semibold tabular-nums">
+                                  $
+                                  {Math.round(
+                                    quotedPriceCents / 100,
+                                  ).toLocaleString()}
+                                </span>
+                                {item.cost != null
+                                  ? `, above the $${Math.round(item.cost / 100).toLocaleString()} estimate.`
+                                  : "."}{" "}
+                                Everything else is filled in.
+                              </p>
+                              {screenshotUrl && (
+                                <ScreenshotProof
+                                  url={screenshotUrl}
+                                  title={`Filled-in booking — ${item.title}`}
+                                  caption="Tap to see what Pyltrix filled in"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void approvePrice(item)}
+                                disabled={approvingId !== null}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-[11px] font-semibold text-accent-foreground hover:bg-accent/90 transition disabled:opacity-60"
+                              >
+                                {approvingId === item.id ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : null}
+                                Approve &amp; book — $
+                                {Math.round(
+                                  quotedPriceCents / 100,
+                                ).toLocaleString()}
+                              </button>
+                            </>
+                          ) : failureReason === "enquiry_sent" ? (
+                            <>
+                              <p className="text-[11px] text-foreground/80 leading-snug">
+                                This venue is request-only — Pyltrix submitted
+                                your reservation request with your dates, party,
+                                and details. They&apos;ll confirm directly,
+                                usually within a day.
+                              </p>
+                              {screenshotUrl && (
+                                <ScreenshotProof
+                                  url={screenshotUrl}
+                                  title={`Request sent — ${item.title}`}
+                                  caption="Tap to see the request Pyltrix sent"
+                                />
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-[11px] text-foreground/80 leading-snug">
+                                {agentMessage?.trim()
+                                  ? `Pyltrix filled in the whole reservation — ${agentMessage.trim()}.`
+                                  : "Pyltrix filled in the whole reservation and paused at the payment step."}
+                              </p>
+                              {screenshotUrl && (
+                                <ScreenshotProof
+                                  url={screenshotUrl}
+                                  title={`Filled-in booking — ${item.title}`}
+                                  caption="Tap to see what Pyltrix filled in"
+                                />
+                              )}
+                              {hasSavedCard ? (
+                                <p className="text-[11px] text-muted-foreground leading-snug">
+                                  Pyltrix is completing the payment with your
+                                  saved card — you&apos;ll get the confirmation
+                                  by email.
+                                </p>
+                              ) : (
+                                <SaveCardButton
+                                  returnTo={`/trips/${tripId}`}
+                                />
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {/* BOOKED — the venue's own confirmation page, captured. */}
+                      {kind === "confirmed" && screenshotUrl && (
+                        <div className="pl-9 pr-2.5 pb-2.5 -mt-0.5">
+                          <ScreenshotProof
+                            url={screenshotUrl}
+                            title={`Venue confirmation — ${item.title}`}
+                            caption="Tap to see the venue's confirmation"
+                          />
                         </div>
                       )}
                       {showContacts && (
