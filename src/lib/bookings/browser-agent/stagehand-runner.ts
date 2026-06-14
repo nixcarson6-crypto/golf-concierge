@@ -342,6 +342,7 @@ GOLF / TEE-TIME PLAYBOOK
 - The booking lives under "Tee Times", "Book a Tee Time", "Golf", "Reserve", or a resort's "Experiences" / "Recreation" section — open it.
 - Many courses embed a booking widget (GolfNow, Lightspeed/Chronogolf, ForeUp, TeeQuest). That widget IS the real booking system — use it, even if the URL host changes.
 - Set the DATE and number of PLAYERS (light thinking — you KNOW both from the task), then the slot list is a REFLEX: click the tee time at or nearest the requested time on the SAME step you see the grid — don't compare slots, don't re-read. Clicking the slot opens the form; batch-fill the player/contact details and book. If a card/deposit is required, STOP per rule 6.
+- NO SLOTS ON THE REQUESTED DATE: if after setting the date the page shows an EMPTY slot list and a "next available date" hint (e.g. "Next available date 15-06-2026 11:10" / "Prossima data disponibile…" / "Next tee time…"), do NOT sit on the page waiting and do NOT keep re-reading. The course is simply full that day. STOP at once and report failed / no_availability, quoting the next-available date the site showed. One decisive read, then report — never linger on a sold-out date.
 
 CAR-RENTAL PLAYBOOK
 1. Find the rental search — pick-up location, pick-up date/time, and drop-off date/time. Set them from the task (use the city/airport in the task as the pick-up location).
@@ -618,7 +619,7 @@ export async function runStagehandBooking(
     // LLM and no full-page read. Polls briefly because the calendar appears
     // a moment after the Book-Now navigation. Best-effort: on no match the
     // agent sets dates the normal way.
-    if (opts.checkinISO && opts.checkoutISO) {
+    if (opts.checkinISO) {
       try {
         let setDates: string | null = null;
         // Poll: the calendar appears a beat after the Book-Now navigation, and
@@ -631,8 +632,8 @@ export async function runStagehandBooking(
         ) {
           setDates = await clickStayDatesDeterministically(
             page,
-            opts.checkinISO,
-            opts.checkoutISO,
+            opts.checkinISO ?? null,
+            opts.checkoutISO ?? null,
           );
           if (!setDates || setDates === "OPENED") {
             await new Promise((r) => setTimeout(r, 1200));
@@ -648,7 +649,7 @@ export async function runStagehandBooking(
             const outRes = await clickStayDatesDeterministically(
               page,
               null,
-              opts.checkoutISO,
+              opts.checkoutISO ?? null,
             );
             if (outRes) {
               setDates = `in=${opts.checkinISO} out=${opts.checkoutISO}`;
@@ -660,7 +661,9 @@ export async function runStagehandBooking(
           console.log(
             `[stagehand] ✓ stay dates set deterministically (${setDates}) (${elapsed()})`,
           );
-          await opts.onStep?.("Dates set — finding your room…");
+          await opts.onStep?.(
+            opts.checkoutISO ? "Dates set — finding your room…" : "Date set — finding your time…",
+          );
         } else {
           console.log(
             `[stagehand] no auto-settable calendar (${setDates ?? "no match"}) — agent will set dates (${elapsed()})`,
@@ -1438,14 +1441,14 @@ async function captureProofScreenshot(
 async function clickStayDatesDeterministically(
   page: unknown,
   checkinISO: string | null,
-  checkoutISO: string,
+  checkoutISO: string | null,
 ): Promise<string | null> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return null;
   try {
     return await cdp.evaluate<string | null>(
       (arg: unknown) => {
-        const { ci, co } = arg as { ci: string | null; co: string };
+        const { ci, co } = arg as { ci: string | null; co: string | null };
         const MONTHS = [
           "January", "February", "March", "April", "May", "June", "July",
           "August", "September", "October", "November", "December",
@@ -1593,7 +1596,11 @@ async function clickStayDatesDeterministically(
           const mm = String(m).padStart(2, "0");
           const want =
             kind === "in"
-              ? ["check-in", "check in", "checkin", "arrival", "arrive", "from"]
+              ? [
+                  "check-in", "check in", "checkin", "arrival", "arrive",
+                  "from", "date", "data", "giorno", "fecha", "datum",
+                  "when", "play", "tee",
+                ]
               : ["check-out", "check out", "checkout", "departure", "depart", "to"];
           const inputs = Array.from(
             document.querySelectorAll<HTMLInputElement>("input"),
@@ -1639,6 +1646,7 @@ async function clickStayDatesDeterministically(
 
         // ── Checkout-only pass (ci omitted) ──────────────────────────────
         if (ci == null) {
+          if (co == null) return null;
           if (typeInto(co, "out")) return `out=${co}`;
           const outCell = findCell(co);
           if (outCell) {
@@ -1649,7 +1657,10 @@ async function clickStayDatesDeterministically(
         }
 
         // ── Full pass: typing first (most reliable), then cells ───────────
+        // co == null is the SINGLE-DATE case (golf tee time): set only the one
+        // date, no departure. Otherwise it's a stay range (check-in/out).
         if (typeInto(ci, "in")) {
+          if (co == null) return `in=${ci}`;
           const typedOut = typeInto(co, "out");
           return `in=${ci}${typedOut ? ` out=${co}` : " out=PENDING"}`;
         }
@@ -1660,6 +1671,7 @@ async function clickStayDatesDeterministically(
           return openCalendar() ? "OPENED" : null;
         }
         inCell.click();
+        if (co == null) return `in=${ci}`;
         // Departure often only becomes selectable after arrival is set; if it
         // doesn't land this pass, the caller runs a checkout-only pass next.
         const outCell = findCell(co);

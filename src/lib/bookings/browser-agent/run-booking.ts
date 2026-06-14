@@ -420,7 +420,10 @@ export async function runBrowserBooking(args: {
               cardProvider,
               priceGateCents,
               autofill,
-              checkinISO: item.type === "LODGING" ? task.isoDate : null,
+              checkinISO:
+                item.type === "LODGING" || item.type === "TEE_TIME"
+                  ? task.isoDate
+                  : null,
               checkoutISO: item.type === "LODGING" ? task.isoCheckOut : null,
               onStep: async (label) => {
                 await bridgeNudge(label);

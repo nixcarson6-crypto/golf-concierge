@@ -59,7 +59,6 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
   const booking = item.booking ?? null;
   const qc = useQueryClient();
   const [submitting, setSubmitting] = React.useState(false);
-  const [screenshotOpen, setScreenshotOpen] = React.useState(false);
   const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   // Booking-eligible item types. FLIGHT goes through Duffel; FREE_TIME isn't
@@ -262,9 +261,14 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
     // Show the customer exactly what's queued — room/dates/price from the
     // agent's own summary — and a one-tap "save your card to finish" so the
     // review is something they can act on, not a dead-end "reviewing" card.
-    const atPaymentStep = /payment|card (entry|number|step)|deposit due|ready to (pay|confirm)/i.test(
-      booking.agentMessage ?? "",
-    );
+    const atPaymentStep =
+      /payment|card (entry|number|step)|deposit due|ready to (pay|confirm)|at the card|filled in/i.test(
+        booking.agentMessage ?? "",
+      ) ||
+      // The agent reached a real page and captured proof but its summary didn't
+      // use a payment keyword — still a "we filled it in, here's the proof"
+      // moment, not a dead-end. Treat a captured screenshot as review-able.
+      (booking.screenshotUrl != null && booking.failureReason == null);
     const summary = (booking.agentMessage ?? "")
       .replace(/^.*?(at the |is at the )/i, "")
       .replace(/\s*[—-]\s*guest details.*$/i, "")
@@ -290,12 +294,19 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
               </p>
             </div>
           </div>
+          {booking.screenshotUrl && (
+            <ScreenshotProof
+              url={booking.screenshotUrl}
+              title={`Filled-in booking — ${item.title}`}
+              caption="Tap to see what Pyltrix filled in"
+            />
+          )}
           <SaveCardButton returnTo={`/trips/${tripId}`} />
         </div>
       );
     }
     return (
-      <div className="rounded-2xl border border-foreground/30 bg-foreground/5 px-4 py-3 space-y-1">
+      <div className="rounded-2xl border border-foreground/30 bg-foreground/5 px-4 py-3 space-y-2">
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-4 text-foreground" />
           <p className="text-sm font-semibold text-foreground">
@@ -306,6 +317,13 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
           {summary ||
             "We're double-checking this booking before confirming it. You'll get an email the moment it's locked."}
         </p>
+        {booking.screenshotUrl && (
+          <ScreenshotProof
+            url={booking.screenshotUrl}
+            title={`Where Pyltrix got to — ${item.title}`}
+            caption="Tap to see the page"
+          />
+        )}
       </div>
     );
   }
@@ -318,74 +336,33 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         ? Math.round(booking.amountChargedCents / 100)
         : null;
     return (
-      <>
-        <div className="rounded-2xl border border-foreground/30 bg-foreground/5 p-4 space-y-3">
-          <div className="flex items-start gap-3">
-            <div className="size-9 rounded-xl bg-foreground/10 grid place-items-center text-foreground shrink-0">
-              <ShieldCheck className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-foreground">
-                Booked ✓
-              </p>
-              <p className="text-xs text-foreground/80 mt-0.5">
-                {code
-                  ? `Confirmation #${code}`
-                  : "Confirmed on the venue's site."}
-                {amount != null ? ` · charged $${amount.toLocaleString()}` : ""}
-              </p>
-              <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
-                The venue is emailing you a confirmation directly. Bring your
-                name to the door — they have your reservation.
-              </p>
-            </div>
+      <div className="rounded-2xl border border-foreground/30 bg-foreground/5 p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="size-9 rounded-xl bg-foreground/10 grid place-items-center text-foreground shrink-0">
+            <ShieldCheck className="size-5" />
           </div>
-          {booking.screenshotUrl && (
-            <button
-              type="button"
-              onClick={() => setScreenshotOpen(true)}
-              className="w-full rounded-xl overflow-hidden border border-foreground/30 hover:border-foreground/60 transition relative group"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={booking.screenshotUrl}
-                alt="Venue confirmation page"
-                className="w-full h-auto object-cover max-h-44"
-              />
-              <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[10px] uppercase tracking-widest text-center py-1.5">
-                Tap to see the venue&apos;s confirmation
-              </div>
-            </button>
-          )}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-foreground">Booked ✓</p>
+            <p className="text-xs text-foreground/80 mt-0.5">
+              {code
+                ? `Confirmation #${code}`
+                : "Confirmed on the venue's site."}
+              {amount != null ? ` · charged $${amount.toLocaleString()}` : ""}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
+              The venue is emailing you a confirmation directly. Bring your
+              name to the door — they have your reservation.
+            </p>
+          </div>
         </div>
         {booking.screenshotUrl && (
-          <Dialog open={screenshotOpen} onOpenChange={setScreenshotOpen}>
-            <DialogContent className="max-w-4xl p-0 overflow-hidden">
-              <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between gap-3">
-                <DialogTitle className="text-sm font-semibold">
-                  Venue confirmation — {item.title}
-                </DialogTitle>
-                <button
-                  type="button"
-                  onClick={() => setScreenshotOpen(false)}
-                  className="text-muted-foreground hover:text-foreground"
-                  aria-label="Close"
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
-              <div className="bg-black grid place-items-center max-h-[80vh] overflow-auto">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={booking.screenshotUrl}
-                  alt="Venue confirmation page (full)"
-                  className="w-full h-auto"
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
+          <ScreenshotProof
+            url={booking.screenshotUrl}
+            title={`Venue confirmation — ${item.title}`}
+            caption="Tap to see the venue's confirmation"
+          />
         )}
-      </>
+      </div>
     );
   }
 
@@ -440,6 +417,63 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The screenshot the agent captured of the actual venue page — the customer's
+ * proof they can SEE and click into. Shown both when a booking is CONFIRMED
+ * (the venue's confirmation page) and while it's at the filled-in review /
+ * payment step (the form Pyltrix completed on their behalf). Self-contained:
+ * renders a thumbnail that opens a full-size dialog.
+ */
+function ScreenshotProof({
+  url,
+  title,
+  caption,
+}: {
+  url: string;
+  title: string;
+  caption: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full rounded-xl overflow-hidden border border-foreground/30 hover:border-foreground/60 transition relative group"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={title}
+          className="w-full h-auto object-cover max-h-44"
+        />
+        <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[10px] uppercase tracking-widest text-center py-1.5">
+          {caption}
+        </div>
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden">
+          <div className="px-5 py-3 border-b border-border/40 flex items-center justify-between gap-3">
+            <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Close"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+          <div className="bg-black grid place-items-center max-h-[80vh] overflow-auto">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={url} alt={`${title} (full)`} className="w-full h-auto" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
