@@ -14,10 +14,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { inngest } from "@/lib/inngest";
 import { nudge } from "@/lib/events";
-import { audit } from "@/lib/audit";
 import { isAgentBookable } from "@/lib/bookings/agent-scope";
+import { prepareAgentBooking, triggerAgentRun } from "@/lib/bookings/dispatch-agent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,115 +69,44 @@ export async function POST(
     );
   }
 
-  // Idempotency — never re-queue a booking that's already in flight or done.
-  if (item.booking) {
-    const status = item.booking.status;
-    if (
-      status === "CONFIRMED" ||
-      status === "SEARCHING" ||
-      status === "PENDING" ||
-      status === "HELD" ||
-      status === "NEEDS_REVIEW"
-    ) {
-      return NextResponse.json({
-        ok: true,
-        idempotent: true,
-        bookingId: item.booking.id,
-        status,
-      });
-    }
-  }
-
-  // Create (or upsert into a fresh attempt) the Booking row. If a prior
-  // FAILED/CANCELLED row exists, reuse the same id so the executor's
-  // 1:1 (itineraryItemId → Booking) invariant holds.
-  const booking = item.booking
-    ? await db.booking.update({
-        where: { id: item.booking.id },
-        data: {
-          provider: "BROWSER_AGENT",
-          status: "SEARCHING",
-          lastError: null,
-          confirmationCode: null,
-          screenshotUrl: null,
-          confirmedAt: null,
-        },
-      })
-    : await db.booking.create({
-        data: {
-          tripId,
-          itineraryItemId: itemId,
-          type: item.type,
-          provider: "BROWSER_AGENT",
-          status: "SEARCHING",
-          cost: item.cost,
-        },
-      });
-
-  await db.itineraryItem.update({
-    where: { id: itemId },
-    data: { confirmationState: "SEARCHING", status: "Pyltrix is on it…" },
-  });
-
-  await audit({
+  // Create/refresh the SEARCHING Booking row (shared with Book All so the two
+  // paths never drift). Idempotent: an in-flight booking returns as-is.
+  const prepared = await prepareAgentBooking({
     tripId,
-    action: "BOOKING_REQUESTED",
-    title: `Booking ${item.title}`,
-    detail: "Customer asked Pyltrix to handle the booking.",
-    actorKind: "user",
-    actorId: user.id,
-    metadata: { bookingId: booking.id, itemId },
+    userId: user.id,
+    item,
   });
+  if (!prepared.ok) {
+    // Shouldn't happen (we validated above) but stay honest if it does.
+    return NextResponse.json(
+      { error: "This isn't something the agent books." },
+      { status: 400 },
+    );
+  }
 
   nudge(tripId);
 
-  // Fire the long-running job. In production we hand the event to
-  // Inngest; in local dev (no INNGEST_EVENT_KEY) we run the agent
-  // in-process as fire-and-forget so the customer sees progress without
-  // having to also run `pnpm dlx inngest-cli dev`.
-  const hasInngestWorker = Boolean(process.env.INNGEST_EVENT_KEY);
-  if (hasInngestWorker) {
-    try {
-      await inngest.send({
-        name: "trip/booking.agent_requested",
-        data: {
-          tripId,
-          bookingId: booking.id,
-          itineraryItemId: itemId,
-          userId: user.id,
-        },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(
-        `[book-agent] Inngest send failed (${msg}) — falling back to in-process run.`,
-      );
-      await runInProcess();
-    }
-  } else {
-    console.warn(
-      "[book-agent] INNGEST_EVENT_KEY not set — running agent in-process (local-dev mode).",
-    );
-    await runInProcess();
+  // Already in flight → don't re-fire the run, just hand back the row.
+  if (prepared.idempotent) {
+    return NextResponse.json({
+      ok: true,
+      idempotent: true,
+      bookingId: prepared.bookingId,
+      status: "SEARCHING",
+    });
   }
 
-  async function runInProcess() {
-    const { runBrowserBooking } = await import(
-      "@/lib/bookings/browser-agent/run-booking"
-    );
-    void runBrowserBooking({
-      tripId,
-      bookingId: booking.id,
-      itineraryItemId: itemId,
-      userId: user.id,
-    }).catch((e) =>
-      console.error("[book-agent] in-process run failed:", e),
-    );
-  }
+  // Fire the long-running agent (Inngest in prod, in-process in local dev).
+  await triggerAgentRun({
+    tripId,
+    bookingId: prepared.bookingId,
+    itineraryItemId: itemId,
+    userId: user.id,
+  });
 
   return NextResponse.json({
     ok: true,
-    bookingId: booking.id,
+    bookingId: prepared.bookingId,
     status: "SEARCHING",
   });
 }

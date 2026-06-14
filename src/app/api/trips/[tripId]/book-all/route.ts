@@ -30,13 +30,23 @@ import {
 import { tripDisplayLabel } from "@/lib/trip-display";
 import { bookFlightOffer } from "@/lib/bookings/providers/duffel-book";
 import { recordFlightBooking } from "@/lib/bookings/record-flight";
+import {
+  prepareAgentBooking,
+  triggerAgentRun,
+  hasInngestWorker,
+  runAgentBatchSequentiallyInBackground,
+} from "@/lib/bookings/dispatch-agent";
+import { isAgentBookable } from "@/lib/bookings/agent-scope";
 import type {
   FlightOfferSummary,
 } from "@/lib/bookings/providers/duffel-search";
 
 type Outcome = {
   category: "flight" | "hotel" | "golf" | "restaurant" | "transport";
-  status: "booked" | "pencilled" | "skipped" | "failed";
+  // "booking" = agent dispatched, running async (real status arrives via the
+  // panel's live polling). "booked" = confirmed now (a real flight ticket, or
+  // an item already CONFIRMED on a prior run).
+  status: "booked" | "booking" | "pencilled" | "skipped" | "failed";
   title: string;
   detail?: string;
   confirmationCode?: string;
@@ -64,7 +74,9 @@ export async function POST(
         where: { status: { in: ["DRAFT", "CURRENT"] } },
         orderBy: { version: "desc" },
         take: 1,
-        include: { items: { orderBy: { orderIndex: "asc" } } },
+        include: {
+          items: { orderBy: { orderIndex: "asc" }, include: { booking: true } },
+        },
       },
       bookings: true,
     },
@@ -95,6 +107,23 @@ export async function POST(
   const outcomes: Outcome[] = [];
   const itinerary = trip.itineraries[0] ?? null;
   const items = itinerary?.items ?? [];
+
+  // Hotels' checkout always requires a billing/home address. If the trip has a
+  // hotel and the profile has none, fail the WHOLE Book All up front with the
+  // exact fix — far better than dispatching agent runs that all stall on the
+  // empty address fields. (Per-item booking enforces the same thing.)
+  const hasHotel = items.some((i) => i.type === "LODGING");
+  if (hasHotel && !me.addressLine1) {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        needsProfile: true,
+        error:
+          "Add your home address in your profile (Street, City, State, Zip) — hotel checkouts require it. Then Book All completes every reservation.",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
   // ── Flight ─────────────────────────────────────────────────────────
   const alreadyBookedFlight = trip.bookings.find(
@@ -197,100 +226,86 @@ export async function POST(
     }
   }
 
-  // ── Itinerary items (hotel, golf, restaurant, transport) ──────────
-  // For each pencilled-in item, we record a STUB booking so the
-  // workspace shows "Pencilled" status. When partner APIs (Hotelbeds,
-  // Lightspeed Golf, OpenTable, CarTrawler) flip live, this same code
-  // path issues real reservations without changing the UX.
+  // ── Itinerary items (hotel, golf, car rental) → REAL browser agent ──
+  // Book All now runs the SAME agent the per-item "Tap to book" uses on every
+  // bookable item — it reaches each venue's real checkout, fills everything,
+  // and books (or pauses for review with proof). No more fake "pencilled"
+  // stubs. Dining/activities stay suggestions (the agent scope excludes them);
+  // per-ride Uber/chauffeur transfers aren't browser-bookable (only car
+  // rentals are — handled by isAgentBookable).
+  const agentJobs: {
+    tripId: string;
+    bookingId: string;
+    itineraryItemId: string;
+    userId: string;
+  }[] = [];
   for (const item of items) {
-    const meta = (item.metadata ?? {}) as Record<string, unknown>;
-    if (meta.bookedAt) continue; // already locked in earlier
-    // Walk-in venues don't take reservations — silently skip so they
-    // don't show as failed in the Book All summary.
-    if (meta.reservationNeed === "walk_in") continue;
+    if (!isAgentBookable(item.type, item.title, item.description)) continue;
 
-    // Map the Prisma ItineraryItemType enum onto our public Outcome
-    // category for the client. The Booking row keeps the original
-    // enum value as `type`.
-    //
-    // DINING / NIGHTLIFE / SPA / ACTIVITY are deliberately NOT booked
-    // here (mapped to null → skipped). Carson's call: we don't auto-book
-    // restaurants/activities — they're presented as suggestions with the
-    // venue's phone + a pre-drafted email, and the customer books them
-    // directly. Book All only commits the high-value reservations:
-    // flights (above), hotels, golf, and transport.
-    const category: Outcome["category"] | null =
+    const category: Outcome["category"] =
       item.type === "LODGING"
         ? "hotel"
         : item.type === "TEE_TIME"
           ? "golf"
-          : item.type === "TRANSPORT"
-            ? "transport"
-            : null;
-    if (!category) continue;
+          : "transport";
 
-    try {
-      // Mark the itinerary item as "pencilled" and create a STUB
-      // booking so it surfaces under the Booked list with the right
-      // status. Real partner integration replaces this with a true
-      // confirmation when those keys land.
-      // Reservations vs payments: most golf resorts, courses, and
-      // every restaurant secure a booking with name/contact only and
-      // charge at check-in / when you dine. Mark these so the Pay
-      // CTA doesn't try to charge for them.
-      //   pay_at_property → customer pays at the venue
-      //   pay_now         → Pyltrix charges via Stripe (flights, some
-      //                     transport)
-      const paymentMode: "pay_at_property" | "pay_now" =
-        category === "transport" ? "pay_now" : "pay_at_property";
-      const stubRef = `STUB-${category.toUpperCase()}-${item.id.slice(-8)}`;
-      await db.booking.create({
-        data: {
-          tripId,
-          itineraryItemId: item.id,
-          provider: category === "golf" ? "GOLFNOW" : "INTERNAL",
-          providerReference: stubRef,
-          type: item.type,
-          status: "CONFIRMED",
-          confirmationCode: stubRef,
-          cost: item.cost,
-          confirmedAt: new Date(),
-          metadata: {
-            isStub: true,
-            paymentMode,
-            stubReason: `Awaiting ${category} partner API access`,
-            itemTitle: item.title,
-            itemLocation: item.location,
-          },
-        },
-      });
-      await db.itineraryItem.update({
-        where: { id: item.id },
-        data: {
-          confirmationState: "CONFIRMED",
-          status: "Pencilled",
-          metadata: {
-            ...meta,
-            bookedAt: new Date().toISOString(),
-            stubRef,
-          },
-        },
-      });
-      outcomes.push({
-        category,
-        status: "pencilled",
+    const prepared = await prepareAgentBooking({
+      tripId,
+      userId: user.id,
+      item: {
+        id: item.id,
+        type: item.type,
         title: item.title,
-        detail:
-          "Recorded — awaiting partner API to issue real confirmation.",
-        confirmationCode: stubRef,
+        description: item.description,
+        cost: item.cost,
+        metadata: item.metadata,
+        booking: item.booking
+          ? { id: item.booking.id, status: item.booking.status }
+          : null,
+      },
+    });
+
+    if (!prepared.ok) {
+      // walk-in / not bookable / already CONFIRMED → skip quietly.
+      if (prepared.skip === "confirmed") {
+        outcomes.push({
+          category,
+          status: "booked",
+          title: item.title,
+          detail: "Already booked.",
+        });
+      }
+      continue;
+    }
+
+    outcomes.push({
+      category,
+      status: "booking",
+      title: item.title,
+      detail: prepared.idempotent
+        ? "Already in progress."
+        : "Pyltrix is booking this now.",
+    });
+
+    // Don't re-fire a run that's already in flight.
+    if (!prepared.idempotent) {
+      agentJobs.push({
+        tripId,
+        bookingId: prepared.bookingId,
+        itineraryItemId: item.id,
+        userId: user.id,
       });
-    } catch (err) {
-      outcomes.push({
-        category,
-        status: "failed",
-        title: item.title,
-        detail: err instanceof Error ? err.message : String(err),
-      });
+    }
+  }
+
+  // Kick off the agent runs. Production: hand each to Inngest (fans out on its
+  // own workers). Local dev: run them SEQUENTIALLY in the background — one
+  // agent at a time so concurrent runs don't starve each other in one process.
+  if (agentJobs.length > 0) {
+    if (hasInngestWorker()) {
+      for (const job of agentJobs) await triggerAgentRun(job);
+    } else {
+      runAgentBatchSequentiallyInBackground(agentJobs);
     }
   }
 
@@ -316,16 +331,16 @@ export async function POST(
   // and its confirmation code in one place. Best-effort; a mail failure must
   // never fail the booking response. No-ops without RESEND_API_KEY.
   try {
-    const confirmable = outcomes.filter(
-      (o) => o.status === "booked" || o.status === "pencilled",
-    );
+    // Only email items that are ACTUALLY confirmed right now (a real flight,
+    // or an item already booked on a prior run). Agent items dispatched this
+    // request are still running — the agent's own flow emails/surfaces their
+    // confirmation when each one lands, so we don't pre-announce them here.
+    const confirmable = outcomes.filter((o) => o.status === "booked");
     if (confirmable.length > 0 && me.email) {
       const lines: ConfirmationLine[] = confirmable.map((o) => ({
         title: o.title,
         detail: o.detail,
         confirmationCode: o.confirmationCode,
-        // Flights are charged now; everything else (hotel/golf/transport
-        // stubs) settles at the property until those partner charges go live.
         paymentMode: o.category === "flight" ? "pay_now" : "pay_at_property",
       }));
       const tripLabel = tripDisplayLabel({

@@ -307,17 +307,23 @@ export function BookingStatusPanel({
       }
       const booked =
         data.outcomes?.filter((o) => o.status === "booked").length ?? 0;
-      const pencilled =
-        data.outcomes?.filter((o) => o.status === "pencilled").length ?? 0;
+      // Agent items dispatched this request run async — their real status
+      // lands on each card via live polling. Report them as "on it" now.
+      const booking =
+        data.outcomes?.filter((o) => o.status === "booking").length ?? 0;
       const failed =
         data.outcomes?.filter((o) => o.status === "failed").length ?? 0;
       if (failed > 0) {
         toast.error(
-          `Booked ${booked}, pencilled ${pencilled}, ${failed} failed — check the panel.`,
+          `${failed} couldn't start — check the panel.${booking > 0 ? ` Pyltrix is booking ${booking} more.` : ""}`,
+        );
+      } else if (booking > 0) {
+        toast.success(
+          `Pyltrix is booking ${booking} ${booking === 1 ? "item" : "items"}${booked > 0 ? ` (${booked} already done)` : ""} — watch each card for progress.`,
         );
       } else {
         toast.success(
-          `Trip locked in: ${booked} confirmed${pencilled > 0 ? `, ${pencilled} pencilled` : ""}.`,
+          booked > 0 ? `Trip locked in: ${booked} confirmed.` : "Nothing left to book.",
         );
       }
       void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
