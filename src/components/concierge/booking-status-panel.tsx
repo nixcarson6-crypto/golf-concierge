@@ -810,17 +810,11 @@ export function BookingStatusPanel({
                           </button>
                         </div>
                       )}
-                      {/* BOOKING — explain WHY a real-site booking takes a
-                          couple minutes so the spinner never feels stuck.
-                          Golf/independent hotels have no instant API, so the
-                          agent books on the venue's own site like a person. */}
+                      {/* BOOKING — brief note that a real-site booking takes
+                          a bit, so the spinner never feels stuck. */}
                       {kind === "booking" && !isThisBooking && (
                         <p className="pl-9 pr-2.5 pb-2 -mt-0.5 text-[11px] text-muted-foreground leading-snug">
-                          Pyltrix is booking on {item.title.split(" — ")[0]}&apos;s
-                          own site — a couple minutes, like a person filling the
-                          form by hand. It checks live availability, picks your
-                          {item.type === "TEE_TIME" ? " tee time" : " room"}, and
-                          fills your details, then shows you proof.
+                          This one takes a little while.
                         </p>
                       )}
                       {/* REVIEW — the agent reached a real page and stopped.
