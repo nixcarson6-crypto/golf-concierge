@@ -78,7 +78,7 @@ export function SetOriginBanner({ tripId }: { tripId: string }) {
           onChange={(e) => setOrigin(e.target.value)}
           placeholder="e.g. DFW, JFK, or Dallas"
           autoFocus={false}
-          className="flex-1 min-w-[180px] rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm"
+          className="flex-1 min-w-[180px] rounded-xl border border-border bg-surface-raised px-3 py-2 text-sm focus:border-foreground focus:outline-none focus-visible:ring-0"
           disabled={busy}
         />
         <Button

@@ -830,6 +830,39 @@ const REFINE_CHIPS: Array<{
   { id: "different_airline", label: "Different airline" },
 ];
 
+// A FLIGHT item is an ESTIMATE placeholder (not a real Duffel fare) when its
+// description still carries the AI's estimate-band language. Until the customer
+// sets a departure airport, these read as "Home → PHX … live Duffel fare will
+// replace this", which looks broken. We render them as a clean, intentional
+// estimate instead.
+const FLIGHT_ESTIMATE_RE = /estimate|will replace|live duffel/i;
+
+function isEstimateFlight(it: {
+  type: string;
+  description: string | null;
+}): boolean {
+  return it.type === "FLIGHT" && !!it.description && FLIGHT_ESTIMATE_RE.test(it.description);
+}
+
+/** Strip the "Home →" / "→ Home" placeholder so an estimate flight reads
+ *  cleanly ("Outbound — Phoenix Sky Harbor (PHX)") instead of looking buggy. */
+function cleanFlightTitle(title: string): string {
+  return title
+    .replace(/\s*home\s*(?:→|->|—|-|to)\s*/i, " ")
+    .replace(/\s*(?:→|->|—|-|to)\s*home\s*/i, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The first sentence of a flight estimate description (the cabin/pax fact),
+ *  dropping the noisy "≈ $X pp depending on origin; live Duffel fare…" tail. */
+function estimateFlightFact(description: string): string {
+  return description
+    .split(/estimate-band|estimate|≈/i)[0]
+    .replace(/[.;,\s]+$/, "")
+    .trim();
+}
+
 function SuggestedFlightsSection({
   tripId,
   suggested,
@@ -1549,6 +1582,10 @@ function ItineraryCategoriesSection({
                       )}
                       {group.items.map((it) => {
                         const time = fmtTimeOnly(it.startTime, it.timeZone);
+                        const estFlight = isEstimateFlight(it);
+                        const displayTitle = estFlight
+                          ? cleanFlightTitle(it.title)
+                          : it.title;
                         return (
                           <button
                             key={it.id}
@@ -1563,23 +1600,45 @@ function ItineraryCategoriesSection({
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-baseline justify-between gap-2">
                                   <p className="text-sm font-medium leading-snug truncate">
-                                    {it.title}
+                                    {displayTitle}
                                   </p>
-                                  {time && (
-                                    <p className="text-[11px] font-semibold tabular-nums shrink-0 text-[hsl(var(--copper))]">
-                                      {time}
-                                    </p>
+                                  {/* Real-fare time, or an "Estimate" pill for
+                                      placeholder flights so they read as
+                                      intentional, not broken. */}
+                                  {estFlight ? (
+                                    <span className="text-[9px] uppercase tracking-widest font-semibold text-muted-foreground border border-border/70 rounded-full px-1.5 py-0.5 shrink-0">
+                                      Estimate
+                                    </span>
+                                  ) : (
+                                    time && (
+                                      <p className="text-[11px] font-semibold tabular-nums shrink-0 text-[hsl(var(--copper))]">
+                                        {time}
+                                      </p>
+                                    )
                                   )}
                                 </div>
-                                {it.location && (
+                                {it.location && !estFlight && (
                                   <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                                     {it.location}
                                   </p>
                                 )}
-                                {it.description && (
-                                  <p className="text-[11px] text-foreground/70 mt-1 leading-snug line-clamp-2">
-                                    {it.description}
-                                  </p>
+                                {estFlight ? (
+                                  <>
+                                    {it.description && (
+                                      <p className="text-[11px] text-foreground/70 mt-1 leading-snug">
+                                        {estimateFlightFact(it.description)}
+                                      </p>
+                                    )}
+                                    <p className="text-[11px] text-[hsl(var(--copper))] mt-1 leading-snug font-medium">
+                                      Add your departure airport above to lock a live fare.
+                                    </p>
+                                  </>
+                                ) : (
+                                  it.description && (
+                                    <p className="text-[11px] text-foreground/70 mt-1 leading-snug line-clamp-2">
+                                      {it.description}
+                                    </p>
+                                  )
                                 )}
                                 {it.cost != null && it.cost > 0 && (
                                   <p className="text-[10px] text-muted-foreground tabular-nums mt-1">
