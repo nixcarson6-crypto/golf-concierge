@@ -347,6 +347,15 @@ ACCOUNT / REGISTRATION WALLS
   room selection and the real confirmation.
 - A login wall for an account you DON'T have credentials for (no register
   option, only "sign in"), or SMS/phone verification, → failed / login_required.
+- "LOG IN OR SIGN UP" with an EMAIL field + "Continue" (Access/golfwithaccess
+  checkout step): this is GUEST CHECKOUT, not a mandatory account. The email is
+  already filled — just click "Continue" to proceed to the payment/confirm step.
+  Do NOT try to create a password account or stop here.
+- "WE WERE UNABLE TO VERIFY YOUR BROWSER. PLEASE REFRESH THE PAGE AND TRY
+  AGAIN." (or any "please refresh / try again" verification notice): do exactly
+  what it says — RELOAD the page once, then continue from where you were. The
+  booking state is preserved in the URL, so your tee time/players/rate survive
+  the refresh. It's a transient check, NOT a dead end — never quit on it.
 
 GOLF / TEE-TIME PLAYBOOK
 - The booking lives under "Tee Times", "Book a Tee Time", "Golf", "Reserve", or a resort's "Experiences" / "Recreation" section — open it.
@@ -656,6 +665,7 @@ export async function runStagehandBooking(
     let slotAlreadyPicked = false;
     let golfSearchSubmitted = false;
     let rateSelected = false;
+    let verifyReloads = 0;
 
     // FAST PATH: set the stay DATES deterministically. The dual-month price
     // calendars on luxury sites (aman.com) are so heavy the agent's page
@@ -815,6 +825,23 @@ export async function runStagehandBooking(
           stepCount += 1;
           console.log(`[stagehand]   step ${stepCount} done (${elapsed()})`);
           await opts.onStep?.(progressLabel(stepCount));
+          // SOFT VERIFY-WALL: "We were unable to verify your browser. Please
+          // refresh." (Access checkout). The page says to reload, and the
+          // booking state lives in the URL, so reload preserves progress.
+          if (verifyReloads < 2) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active && (await reloadOnVerifyWall(active))) {
+                verifyReloads += 1;
+                console.log(
+                  `[stagehand] ⚡ verify-wall → reloaded page (${verifyReloads}/2) (${elapsed()})`,
+                );
+                await new Promise((r) => setTimeout(r, 2500));
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
           // STICKY POPUP CLEAR (per step, SAFE mode): cookie/privacy banners
           // often appear a page or two in (golfwithaccess's "We value your
           // privacy / Do Not Sell" popup shows on the slot page, not landing)
@@ -2344,6 +2371,35 @@ async function detectBotBlock(page: unknown): Promise<string | null> {
     });
   } catch {
     return null;
+  }
+}
+
+/**
+ * Soft browser-verification check (NOT a hard 403): some sites (Access/
+ * golfwithaccess at the login/checkout step) show "We were unable to verify
+ * your browser. Please refresh the page and try again." mid-flow. The page
+ * itself tells you to reload — and the booking state is encoded in the URL, so
+ * a reload preserves the tee time/players/rate. Reloads in-page (location
+ * .reload), best-effort. Returns true when it triggered a reload.
+ */
+async function reloadOnVerifyWall(page: unknown): Promise<boolean> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return false;
+  try {
+    return await cdp.evaluate<boolean>(() => {
+      const b = (document.body?.innerText || "").toLowerCase();
+      if (
+        /unable to verify your browser|couldn.?t verify your browser|please refresh the page (and|to) (try again|continue)|refresh the page and try again/.test(
+          b,
+        )
+      ) {
+        location.reload();
+        return true;
+      }
+      return false;
+    });
+  } catch {
+    return false;
   }
 }
 

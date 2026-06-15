@@ -443,16 +443,18 @@ export async function runBrowserBooking(args: {
               // Golf/transport get 4 — Laguna Phuket's booking widget hit the
               // old 3-min cap at step 18 while still working; Carson's bar is
               // "payment step in ≤4 min" for golf too, so give it the full 4.
-              // BROWSER_AGENT_TIMEOUT_MS overrides both. LODGING raised to 9
-              // min: a real Lodge Torrey Pines run reached the FILLED checkout
-              // ($5,365, contact done) at 6:06 and the 7-min cap aborted it ~30s
-              // from the card step. With the deterministic fast-paths cutting
-              // steps, typical hotels still finish in 3-4 min and never feel the
-              // cap — this is purely a safety net so a slow-but-progressing run
-              // crosses the finish line instead of dying at it.
+              // BROWSER_AGENT_TIMEOUT_MS overrides. LODGING 9 min (long
+              // checkout). TEE_TIME 7 min: Access/golfwithaccess flows run
+              // longer than expected (route → search → slot → rate → players →
+              // guest/login → confirm) — a real Troon run reached checkout step
+              // 3 and got cut off at the old 4-min cap mid-flow. Cars stay 4.
               timeoutMs:
                 Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
-                (item.type === "LODGING" ? 540_000 : 240_000),
+                (item.type === "LODGING"
+                  ? 540_000
+                  : item.type === "TEE_TIME"
+                    ? 420_000
+                    : 240_000),
               maxSteps,
               // Run the browser in the region nearest the venue so each of
               // the ~25 actions has a short round-trip (an Italian hotel
