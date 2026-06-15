@@ -351,11 +351,9 @@ ACCOUNT / REGISTRATION WALLS
   checkout step): this is GUEST CHECKOUT, not a mandatory account. The email is
   already filled — just click "Continue" to proceed to the payment/confirm step.
   Do NOT try to create a password account or stop here.
-- "WE WERE UNABLE TO VERIFY YOUR BROWSER. PLEASE REFRESH THE PAGE AND TRY
-  AGAIN." (or any "please refresh / try again" verification notice): do exactly
-  what it says — RELOAD the page once, then continue from where you were. The
-  booking state is preserved in the URL, so your tee time/players/rate survive
-  the refresh. It's a transient check, NOT a dead end — never quit on it.
+- "WE WERE UNABLE TO VERIFY YOUR BROWSER" / "please verify your browser": this
+  is the venue's BOT DETECTION, and reloading will NOT clear it. Do not loop on
+  it. Report failed / captcha_blocked plainly — the system retries with stealth.
 
 GOLF / TEE-TIME PLAYBOOK
 - The booking lives under "Tee Times", "Book a Tee Time", "Golf", "Reserve", or a resort's "Experiences" / "Recreation" section — open it.
@@ -665,7 +663,8 @@ export async function runStagehandBooking(
     let slotAlreadyPicked = false;
     let golfSearchSubmitted = false;
     let rateSelected = false;
-    let verifyReloads = 0;
+    let verifyWallHits = 0;
+    let verifyWallBlocked = false;
 
     // FAST PATH: set the stay DATES deterministically. The dual-month price
     // calendars on luxury sites (aman.com) are so heavy the agent's page
@@ -825,18 +824,25 @@ export async function runStagehandBooking(
           stepCount += 1;
           console.log(`[stagehand]   step ${stepCount} done (${elapsed()})`);
           await opts.onStep?.(progressLabel(stepCount));
-          // SOFT VERIFY-WALL: "We were unable to verify your browser. Please
-          // refresh." (Access checkout). The page says to reload, and the
-          // booking state lives in the URL, so reload preserves progress.
-          if (verifyReloads < 2) {
+          // BROWSER-VERIFICATION WALL: "We were unable to verify your browser"
+          // is Access's BOT DETECTION — reloading does NOT clear it (it just
+          // re-shows). If it persists across steps, abort fast so the retry
+          // runs with ADVANCED STEALTH, which is the only thing that slips past
+          // this kind of check. Tracked, not reloaded.
+          if (!verifyWallBlocked) {
             try {
               const active = stagehand.context.activePage();
-              if (active && (await reloadOnVerifyWall(active))) {
-                verifyReloads += 1;
-                console.log(
-                  `[stagehand] ⚡ verify-wall → reloaded page (${verifyReloads}/2) (${elapsed()})`,
-                );
-                await new Promise((r) => setTimeout(r, 2500));
+              if (active && (await detectVerifyWall(active))) {
+                verifyWallHits += 1;
+                if (verifyWallHits >= 2) {
+                  verifyWallBlocked = true;
+                  console.warn(
+                    `[stagehand] ✗ browser-verification wall persists — aborting for a stealth retry (${elapsed()})`,
+                  );
+                  controller.abort();
+                }
+              } else {
+                verifyWallHits = 0;
               }
             } catch {
               /* best-effort */
@@ -966,6 +972,23 @@ export async function runStagehandBooking(
     console.log(
       `[stagehand] ✓ agent finished (${elapsed()}) success=${result.success} completed=${result.completed} steps=${result.actions?.length ?? stepCount}\n  agent message: ${result.message?.slice(0, 600) || "(no message)"}`,
     );
+    // Browser-verification wall hit: classify as captcha_blocked so the retry
+    // loop re-runs with ADVANCED STEALTH (the actual unblock for bot-detection
+    // walls). We aborted on purpose, so don't treat it as a crash.
+    if (verifyWallBlocked) {
+      console.warn("[stagehand] ✗ aborted on browser-verification wall (Access bot-detection).");
+      return {
+        outcome: {
+          status: "failed",
+          failureReason: "captcha_blocked",
+          message:
+            "The venue's checkout couldn't verify the browser (bot protection). Retrying with stealth; if it persists, this venue needs the API or a stealth proxy.",
+        },
+        sessionUrl,
+        finalScreenshot: null,
+      };
+    }
+
     // Loud flag when the agent stops without saying anything useful — that's
     // the "just stopped" case and we want it screaming in the terminal so we
     // can see it instead of a quiet needs_review later.
@@ -2390,28 +2413,20 @@ async function detectBotBlock(page: unknown): Promise<string | null> {
 }
 
 /**
- * Soft browser-verification check (NOT a hard 403): some sites (Access/
- * golfwithaccess at the login/checkout step) show "We were unable to verify
- * your browser. Please refresh the page and try again." mid-flow. The page
- * itself tells you to reload — and the booking state is encoded in the URL, so
- * a reload preserves the tee time/players/rate. Reloads in-page (location
- * .reload), best-effort. Returns true when it triggered a reload.
+ * Detect a browser-VERIFICATION wall (bot detection) — e.g. Access/
+ * golfwithaccess at the login/checkout step shows "We were unable to verify
+ * your browser." Reloading does NOT clear this (it's fingerprint/automation
+ * detection), so we only DETECT it; the caller aborts for a stealth retry.
  */
-async function reloadOnVerifyWall(page: unknown): Promise<boolean> {
+async function detectVerifyWall(page: unknown): Promise<boolean> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return false;
   try {
     return await cdp.evaluate<boolean>(() => {
       const b = (document.body?.innerText || "").toLowerCase();
-      if (
-        /unable to verify your browser|couldn.?t verify your browser|please refresh the page (and|to) (try again|continue)|refresh the page and try again/.test(
-          b,
-        )
-      ) {
-        location.reload();
-        return true;
-      }
-      return false;
+      return /unable to verify your browser|couldn.?t verify your browser|verify your browser.*(refresh|try again)/.test(
+        b,
+      );
     });
   } catch {
     return false;
