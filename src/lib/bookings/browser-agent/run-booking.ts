@@ -433,12 +433,13 @@ export async function runBrowserBooking(args: {
               system: goal.system,
               task: goal.firstUserMessage,
               solveCaptchas: captchaOn,
-              // Escalate to advanced stealth on RETRIES. The first attempt
-              // uses the configured default; retries exist for exactly the
-              // bot-wall / captcha failures (Akamai 'Access Denied' on chains
-              // like Marriott), and stealth + a fresh residential IP is what
-              // actually slips past those — so give the retry its best shot.
-              advancedStealth: stealthOn || attempt > 1,
+              // Advanced Stealth is a Browserbase SCALE-plan feature — sending
+              // it on a Developer/Startup plan can error the session. So only
+              // request it when EXPLICITLY enabled (BROWSERBASE_PREMIUM /
+              // _ADVANCED_STEALTH), not automatically on retries. Retries still
+              // get their unblock from a FRESH residential IP + captcha-solving
+              // (solveCaptchas → proxies), which every paid plan includes.
+              advancedStealth: stealthOn,
               // Hard per-attempt cap, sized per booking type. Hotels run the
               // longest flow (splash → widget → dates → guests → search →
               // room → rate → guest form) — ~30+ steps. Hotels get 6 min
