@@ -2123,12 +2123,13 @@ async function selectCheapestRateRadioDeterministically(
         checked: boolean;
       };
 
-      // ── Tier 1: real radios ──────────────────────────────────────────
+      // ── Tier 1: real radios (INCLUDING hidden ones) ──────────────────
+      // Styled radios hide the real <input> behind a decorative circle, so do
+      // NOT filter by visibility — a hidden input's .click() still selects it.
       const radios = Array.from(
         document.querySelectorAll<HTMLElement>("input[type=radio], [role=radio]"),
       ).filter(
         (el) =>
-          isVisible(el) &&
           !(el as HTMLInputElement).disabled &&
           el.getAttribute("aria-disabled") !== "true",
       );
@@ -2183,8 +2184,15 @@ async function selectCheapestRateRadioDeterministically(
           const circle = c.querySelector<HTMLElement>(
             "input[type=radio],[role=radio]",
           );
+          // Prefer the actual radio CONTROL inside the card (real input or the
+          // styled circle) over the card div — clicking the card text often
+          // doesn't register the selection.
+          const control =
+            circle ||
+            c.querySelector<HTMLElement>("[class*=radio i],[class*=circle i]") ||
+            c;
           return {
-            click: c,
+            click: control,
             key: c,
             text,
             price: priceOf(text),
@@ -2210,7 +2218,14 @@ async function selectCheapestRateRadioDeterministically(
       if (pool.length === 0) pool = opts;
       pool.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
       const choice = pool[0];
+      // Click the control; for a real <input> also force checked + dispatch
+      // change so React state updates even on a hidden input behind a label.
       choice.click.click();
+      if (choice.click instanceof HTMLInputElement) {
+        choice.click.checked = true;
+        choice.click.dispatchEvent(new Event("input", { bubbles: true }));
+        choice.click.dispatchEvent(new Event("change", { bubbles: true }));
+      }
       return `rate=${choice.price != null ? "$" + choice.price : choice.text.slice(0, 30)}`;
     });
   } catch {
