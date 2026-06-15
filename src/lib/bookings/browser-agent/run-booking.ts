@@ -50,6 +50,7 @@ import {
   type RawBookingOutcome,
 } from "./outcome";
 import { buildCardProviderForBooking } from "./card-provider";
+import { resolveGolfBookingUrl } from "../golf-platform-url";
 import type { BookingRequest } from "../types";
 
 export async function runBrowserBooking(args: {
@@ -121,7 +122,25 @@ export async function runBrowserBooking(args: {
 
   // ---------------------------------------------------------------------- 3
   // Build the agent's marching orders.
-  const startUrl = places.website ?? (item.location ?? "").trim();
+  // GOLF: some operators bot-wall their marketing site (Troon's
+  // troonnorthgolf.com 403s automation) while the real tee-time booking lives
+  // on a separate platform (golfwithaccess.com). Route straight there so the
+  // agent doesn't get blocked at a door it can't open.
+  const golfOverrideUrl =
+    item.type === "TEE_TIME"
+      ? resolveGolfBookingUrl({
+          title: item.title,
+          location: item.location,
+          placesWebsite: places.website,
+        })
+      : null;
+  if (golfOverrideUrl) {
+    console.log(
+      `[book] ${item.title}: using platform booking URL ${golfOverrideUrl} instead of ${places.website ?? "(no site)"} (marketing site is bot-walled).`,
+    );
+  }
+  const startUrl =
+    golfOverrideUrl ?? places.website ?? (item.location ?? "").trim();
   if (!startUrl || !/^https?:\/\//i.test(startUrl)) {
     // No website to book against. Mark FAILED with the "no online form"
     // failure code so the UI shows the website/phone fallback honestly.
