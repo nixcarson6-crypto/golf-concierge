@@ -219,6 +219,10 @@ export type RunStagehandOptions = {
   } | null;
   /** Live progress callback → wire to updateProgress for the UI. */
   onStep?: (label: string) => void | Promise<void>;
+  /** Fired ONCE the browser session opens, with its live-view URL — lets the
+   *  app show a "Watch live" link the instant the booking starts (the live
+   *  view 404s once the session ends, so it must be surfaced early). */
+  onSessionReady?: (sessionUrl: string | null) => void | Promise<void>;
   /** Browserbase region (us-west-2 / us-east-1 / eu-central-1 /
    *  ap-southeast-1). Set to the region nearest the venue so every action's
    *  round-trip is short. Defaults to DEFAULT_REGION when unset. */
@@ -527,6 +531,13 @@ export async function runStagehandBooking(
     const sessionUrl =
       steelSession?.viewerUrl ?? stagehand.browserbaseSessionURL ?? null;
     console.log(`[stagehand] ✓ session ready (${elapsed()}) ${sessionUrl ?? ""}`);
+    // Hand the live-view URL to the app NOW (not at the end) so a "Watch live"
+    // link can appear while the run is in flight.
+    try {
+      await opts.onSessionReady?.(sessionUrl);
+    } catch {
+      /* never let a UI callback break the booking */
+    }
 
     // Navigate the page the AGENT will actually drive. The agent operates on
     // the context's ACTIVE page — not necessarily pages()[0]. On Browserbase

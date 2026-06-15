@@ -496,6 +496,29 @@ export async function runBrowserBooking(args: {
               onStep: async (label) => {
                 await bridgeNudge(label);
               },
+              onSessionReady: async (sessionUrl) => {
+                // Persist the live-view URL the instant the session opens so
+                // the app can show a "Watch live" link DURING the run (it 404s
+                // once the session ends).
+                if (!sessionUrl) return;
+                try {
+                  const cur = await db.booking.findUnique({
+                    where: { id: booking.id },
+                    select: { metadata: true },
+                  });
+                  const meta =
+                    (cur?.metadata as Record<string, unknown> | null) ?? {};
+                  await db.booking.update({
+                    where: { id: booking.id },
+                    data: {
+                      metadata: { ...meta, liveViewUrl: sessionUrl } as object,
+                    },
+                  });
+                  await bridgeNudge("Live view ready…");
+                } catch {
+                  /* best-effort — never block the booking */
+                }
+              },
             });
             return {
               outcome: result.outcome,

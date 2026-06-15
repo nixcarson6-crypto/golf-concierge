@@ -244,6 +244,10 @@ export async function GET(
                     screenshotUrl: b.screenshotUrl,
                     vendorUrl: b.vendorUrl,
                     agentRunId: b.agentRunId,
+                    liveViewUrl:
+                      typeof bMeta?.liveViewUrl === "string"
+                        ? (bMeta.liveViewUrl as string)
+                        : null,
                     failureReason:
                       typeof bMeta?.failureReason === "string"
                         ? (bMeta.failureReason as string)

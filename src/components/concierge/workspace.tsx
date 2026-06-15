@@ -151,6 +151,9 @@ export type WorkspaceItemBooking = {
   screenshotUrl: string | null;
   vendorUrl: string | null;
   agentRunId: string | null;
+  /** Browserbase/Steel live-view URL — lets the customer watch the agent work
+   *  in real time while the booking is in flight. */
+  liveViewUrl?: string | null;
   failureReason: string | null;
   /** The venue's real total found at checkout (cents) — set when the agent
    *  paused for price approval. */

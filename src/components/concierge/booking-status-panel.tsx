@@ -87,6 +87,8 @@ function statusFor(item: WorkspaceItineraryItem): {
   quotedPriceCents: number | null;
   /** Live step label while the agent is mid-run ("Checking availability…"). */
   agentProgress: string | null;
+  /** Browserbase/Steel live-view URL — watch the agent work in real time. */
+  liveViewUrl: string | null;
 } {
   const b = item.booking ?? null;
   // Prefer an agent-captured fallback contact, then fall back to the
@@ -108,6 +110,7 @@ function statusFor(item: WorkspaceItineraryItem): {
       agentMessage: null,
       quotedPriceCents: null,
       agentProgress: null,
+      liveViewUrl: null,
     };
   const base = {
     phone,
@@ -118,6 +121,7 @@ function statusFor(item: WorkspaceItineraryItem): {
     agentMessage: b.agentMessage ?? null,
     quotedPriceCents: b.quotedPriceCents ?? null,
     agentProgress: b.agentProgress ?? null,
+    liveViewUrl: b.liveViewUrl ?? null,
   };
   switch (b.status) {
     case "CONFIRMED":
@@ -642,6 +646,7 @@ export function BookingStatusPanel({
                   agentMessage,
                   quotedPriceCents,
                   agentProgress,
+                  liveViewUrl,
                 }) => {
                   // Walk-in venues (casual restaurants/activities Google
                   // says don't take reservations) get a distinct label
@@ -813,9 +818,22 @@ export function BookingStatusPanel({
                       {/* BOOKING — brief note that a real-site booking takes
                           a bit, so the spinner never feels stuck. */}
                       {kind === "booking" && !isThisBooking && (
-                        <p className="pl-9 pr-2.5 pb-2 -mt-0.5 text-[11px] text-muted-foreground leading-snug">
-                          This one takes a little while.
-                        </p>
+                        <div className="pl-9 pr-2.5 pb-2 -mt-0.5 space-y-1.5">
+                          <p className="text-[11px] text-muted-foreground leading-snug">
+                            This one takes a little while.
+                          </p>
+                          {liveViewUrl && (
+                            <a
+                              href={liveViewUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-full border border-foreground/30 bg-foreground/5 px-3 py-1 text-[11px] font-semibold text-foreground hover:bg-foreground/10 transition"
+                            >
+                              <Loader2 className="size-3 animate-spin" />
+                              Watch Pyltrix book it live
+                            </a>
+                          )}
+                        </div>
                       )}
                       {/* REVIEW — the agent reached a real page and stopped.
                           Show what it got to, the screenshot proof, and the
