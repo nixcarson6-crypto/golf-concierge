@@ -284,12 +284,15 @@ async function priceTeeTime(
   if (!courseName) return null;
   const where = destination ?? item.location ?? "";
 
-  // Try the specific "green fee" query first; fall back to a broader
-  // "rates" query that catches Tee-time aggregators and the course's
-  // own rates page.
+  // Try the specific "green fee" query first; then progressively broader
+  // ones that catch tee-time aggregators (GolfNow/Supreme), the course's own
+  // rates page, and current-season pricing. More variants = a confirmed price
+  // shows on more courses instead of falling to "at checkout".
   const queries = [
     `${courseName} ${where} golf green fee per player USD`,
     `${courseName} ${where} golf course rates`,
+    `${courseName} ${where} tee time price 2026`,
+    `${courseName} green fee cost to play 18 holes`,
   ];
   for (const q of queries) {
     const extracted = await searchAndExtract(q, courseName);

@@ -281,7 +281,14 @@ export async function runBrowserBooking(args: {
     typeof bookingMeta.approvedPriceCents === "number"
       ? (bookingMeta.approvedPriceCents as number)
       : null;
-  const priceGateCents = approvedPriceCents != null ? null : task.budgetCents;
+  // Golf is exempt from the price gate: its green-fee 'cost' is a DISPLAY
+  // estimate from the build's web lookup (Carson's ask — show a price), and we
+  // don't want that to ever pause a tee-time booking for "price approval". Golf
+  // is pay-at-course anyway, so there's no charge to gate. Hotels/cars keep it.
+  const priceGateCents =
+    approvedPriceCents != null || item.type === "TEE_TIME"
+      ? null
+      : task.budgetCents;
 
   // Instant guest autofill payload — the deterministic per-step fill that
   // types known traveler data in ~100ms instead of the agent transcribing
