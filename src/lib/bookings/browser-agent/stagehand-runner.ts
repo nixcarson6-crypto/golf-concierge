@@ -654,6 +654,7 @@ export async function runStagehandBooking(
     let datesAlreadySet = false;
     let slotAlreadyPicked = false;
     let golfSearchSubmitted = false;
+    let rateSelected = false;
 
     // FAST PATH: set the stay DATES deterministically. The dual-month price
     // calendars on luxury sites (aman.com) are so heavy the agent's page
@@ -903,6 +904,25 @@ export async function runStagehandBooking(
                       `[stagehand] ⚡ golf search submitted mid-run ("${s}") (${elapsed()})`,
                     );
                   }
+                }
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
+          // RATE STEP (golf, after a slot is picked): select the cheapest
+          // public rate radio so the greyed-out Continue button enables. Only
+          // touches a radio — never advances the booking itself.
+          if (opts.selectTeeSlot && slotAlreadyPicked && !rateSelected) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active) {
+                const r = await selectCheapestRateRadioDeterministically(active);
+                if (r) {
+                  rateSelected = true;
+                  console.log(
+                    `[stagehand] ⚡ rate selected mid-run (${r}) (${elapsed()})`,
+                  );
                 }
               }
             } catch {
@@ -2027,6 +2047,81 @@ async function clickTeeTimeSlotDeterministically(
       },
       { reqLabel: requestedLabel },
     );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Select the cheapest PUBLIC rate radio on a "Choose your rate" step — zero
+ * LLM. Golf checkouts (Access/golfwithaccess, GolfNow) gate the Continue
+ * button behind a rate radio; a real Troon run sat on this step because it
+ * never clicked the radio. This picks the cheapest NON-membership rate (skips
+ * "Premium+/Join/Member" upsells that need a paid account), which enables the
+ * Continue button — the agent then just clicks Continue. Only ever clicks a
+ * radio input, never a submit, so it can't advance the booking on its own.
+ * No-ops if a rate is already selected. Returns what it picked, or null.
+ */
+async function selectCheapestRateRadioDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const isVisible = (el: Element): boolean => {
+        const r = (el as HTMLElement).getClientRects();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return s.visibility !== "hidden" && s.display !== "none";
+      };
+      const priceOf = (s: string): number | null => {
+        const m = s.match(/[$€£]\s?([\d,]+(?:\.\d{1,2})?)/);
+        return m ? parseFloat(m[1].replace(/,/g, "")) : null;
+      };
+      const MEMBERSHIP_RE =
+        /premium\+?|membership|\bjoin\b|subscribe|member rate|loyalty|sign\s?up/i;
+      const radios = Array.from(
+        document.querySelectorAll<HTMLElement>("input[type=radio], [role=radio]"),
+      ).filter(
+        (el) =>
+          isVisible(el) &&
+          !(el as HTMLInputElement).disabled &&
+          el.getAttribute("aria-disabled") !== "true",
+      );
+      if (radios.length === 0) return null;
+      const opts = radios.map((r) => {
+        const forLabel =
+          (r.id && document.querySelector(`label[for="${CSS.escape(r.id)}"]`)) ||
+          r.closest("label") ||
+          r.closest("[class*=rate],[class*=option],[class*=Rate],li,tr") ||
+          r.parentElement;
+        const text = (forLabel?.textContent || "").trim().slice(0, 200);
+        const checked =
+          (r as HTMLInputElement).checked ||
+          r.getAttribute("aria-checked") === "true";
+        return {
+          r,
+          text,
+          price: priceOf(text),
+          membership: MEMBERSHIP_RE.test(text),
+          checked,
+        };
+      });
+      // Something already selected → leave it; the agent continues.
+      if (opts.some((o) => o.checked)) return null;
+      let pool = opts.filter((o) => o.price != null && !o.membership);
+      if (pool.length === 0)
+        pool = opts.filter(
+          (o) => /public|standard|guest/i.test(o.text) && !o.membership,
+        );
+      if (pool.length === 0) pool = opts.filter((o) => !o.membership);
+      if (pool.length === 0) pool = opts;
+      pool.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+      const choice = pool[0];
+      choice.r.click();
+      return `rate=${choice.price != null ? "$" + choice.price : choice.text.slice(0, 30)}`;
+    });
   } catch {
     return null;
   }
