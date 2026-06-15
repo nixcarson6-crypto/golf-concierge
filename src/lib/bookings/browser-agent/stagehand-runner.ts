@@ -1936,13 +1936,18 @@ async function clickTeeTimeSlotDeterministically(
           );
         };
         const want = reqLabel ? parseMin(reqLabel) : null;
-        // The outermost clickable ancestor (a/button/role=button, or any
-        // ancestor the site styled as cursor:pointer — ForeUp's slot is a
-        // pointer DIV, not a button).
-        const clickableAncestor = (el: HTMLElement): HTMLElement => {
-          let best = el;
-          let cur: HTMLElement | null = el;
-          for (let i = 0; i < 5 && cur; i++) {
+        // Find the best thing to CLICK for a tee-time card, given the element
+        // that holds the time text. Three tiers, most-specific first:
+        //   1) the nearest clickable ancestor (a/button/role=button, or a
+        //      cursor:pointer card — ForeUp's slot is a pointer DIV).
+        //   2) the card boundary (nearest ancestor that also shows a price or a
+        //      Book/Reserve word) — and inside it, a Book/Reserve/Select button
+        //      if one exists (Access/golfwithaccess renders a button per slot).
+        //   3) the time element itself (a delegated React handler on a parent
+        //      still fires when the inner element bubbles the click).
+        const clickTarget = (timeEl: HTMLElement): HTMLElement => {
+          let cur: HTMLElement | null = timeEl;
+          for (let i = 0; i < 6 && cur; i++) {
             const cs = window.getComputedStyle(cur);
             if (
               cur.tagName === "A" ||
@@ -1950,11 +1955,23 @@ async function clickTeeTimeSlotDeterministically(
               cur.getAttribute("role") === "button" ||
               cs.cursor === "pointer"
             ) {
-              best = cur;
+              return cur;
             }
             cur = cur.parentElement;
           }
-          return best;
+          cur = timeEl;
+          for (let i = 0; i < 6 && cur; i++) {
+            const t = cur.textContent || "";
+            if (t.length < 200 && /\$\s?\d|book|reserve|select|tee/i.test(t)) {
+              const btn = cur.querySelector<HTMLElement>(
+                "a,button,[role=button]",
+              );
+              if (btn && isVisible(btn)) return btn;
+              return cur;
+            }
+            cur = cur.parentElement;
+          }
+          return timeEl;
         };
         // Candidate slot cards: smallish elements whose text carries a time.
         // The length guard keeps us to a single card ("6:00pm Aspen Golf Club
@@ -1972,19 +1989,10 @@ async function clickTeeTimeSlotDeterministically(
           if (!txt || txt.length > 140) continue;
           const min = parseMin(txt);
           if (min == null) continue;
-          const card = clickableAncestor(el);
-          if (seen.has(card)) continue;
-          seen.add(card);
-          // A real slot card is interactive AND priced/sized like a row, not a
-          // tiny inline time label. Require it to be a link/button/pointer.
-          const cs = window.getComputedStyle(card);
-          const interactive =
-            card.tagName === "A" ||
-            card.tagName === "BUTTON" ||
-            card.getAttribute("role") === "button" ||
-            cs.cursor === "pointer";
-          if (!interactive) continue;
-          slots.push({ el: card, min });
+          const target = clickTarget(el);
+          if (seen.has(target)) continue;
+          seen.add(target);
+          slots.push({ el: target, min });
         }
         if (slots.length === 0) return null;
         slots.sort((a, b) =>
