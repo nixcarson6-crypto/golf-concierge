@@ -813,6 +813,26 @@ export async function runStagehandBooking(
           stepCount += 1;
           console.log(`[stagehand]   step ${stepCount} done (${elapsed()})`);
           await opts.onStep?.(progressLabel(stepCount));
+          // STICKY POPUP CLEAR (per step, SAFE mode): cookie/privacy banners
+          // often appear a page or two in (golfwithaccess's "We value your
+          // privacy / Do Not Sell" popup shows on the slot page, not landing)
+          // and intercept clicks. Safe mode only touches known cookie managers
+          // + scoped privacy banners — never the generic Accept/Continue scan,
+          // which could mis-click a booking button.
+          try {
+            const active = stagehand.context.activePage();
+            if (active) {
+              const cleared = await dismissConsentDeterministically(active, {
+                safe: true,
+              });
+              if (cleared)
+                console.log(
+                  `[stagehand] ⚡ dismissed sticky popup ("${cleared}") (${elapsed()})`,
+                );
+            }
+          } catch {
+            /* best-effort */
+          }
           // INSTANT GUEST AUTOFILL: zero-LLM pass on the active page after
           // every step. When a guest/checkout form appears, every recognised
           // empty field (names, email, phone, address, title) is filled in
@@ -2241,12 +2261,15 @@ async function clickBookingEntryDeterministically(
 
 async function dismissConsentDeterministically(
   page: unknown,
+  opts?: { safe?: boolean },
 ): Promise<string | null> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return null;
   try {
-    return await cdp.evaluate<string | null>(() => {
-      const ACCEPT =
+    return await cdp.evaluate<string | null>(
+      (arg: unknown) => {
+        const safe = (arg as { safe?: boolean })?.safe === true;
+        const ACCEPT =
         /^(accept all|accept cookies|accept|agree|i agree|allow all|allow cookies|got it|ok|okay|continue|enable all|accetta tutti|accetta|acconsento|accetto|aceptar todo|aceptar|de acuerdo|tout accepter|j.accepte|accepter|alle akzeptieren|akzeptieren|zustimmen|einverstanden|aceitar tudo|aceitar|concordo)$/i;
       const KNOWN = [
         "#onetrust-accept-btn-handler",
@@ -2279,6 +2302,45 @@ async function dismissConsentDeterministically(
           return sel;
         }
       }
+      // PRIVACY POPUP WITH NO ACCEPT BUTTON (e.g. golfwithaccess's "We value
+      // your privacy … Do Not Sell or Share", just an X). These intercept
+      // clicks. Scope STRICTLY to a small banner that talks about cookies/
+      // privacy so we never close a booking modal, then click its X / Close /
+      // Reject control. Safe to run every step.
+      const PRIV_RE =
+        /we value your privacy|this (website|site) uses cookies|cookie|do not sell|gdpr|tracking technolog|privacy preferences/i;
+      const CLOSE_RE =
+        /^(×|✕|✖|x|close|dismiss|no thanks?|reject all|reject|decline|necessary only|only necessary|continue without|save (and )?close)$/i;
+      const containers = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "div,section,aside,dialog,[role=dialog],[aria-modal=true]",
+        ),
+      );
+      for (const c of containers) {
+        if (!isVisible(c)) continue;
+        const t = (c.textContent || "").trim();
+        if (!t || t.length > 600) continue; // banners are short; skip the page
+        if (!PRIV_RE.test(t)) continue;
+        const ctrls = Array.from(
+          c.querySelectorAll<HTMLElement>("button,[role=button],a,[aria-label]"),
+        );
+        for (const b of ctrls) {
+          const lbl = (
+            b.getAttribute("aria-label") ||
+            b.innerText ||
+            b.textContent ||
+            ""
+          ).trim();
+          if (lbl && lbl.length <= 20 && CLOSE_RE.test(lbl) && isVisible(b)) {
+            b.click();
+            return `privacy-close:${lbl}`;
+          }
+        }
+      }
+      // The generic Accept/Agree/OK text scan can mis-click a booking
+      // "Continue"/"OK" button, so only run it on the up-front (non-safe)
+      // landing pass, never per-step.
+      if (safe) return null;
       const nodes = Array.from(
         document.querySelectorAll<HTMLElement>(
           "button, [role=button], a, input[type=button], input[type=submit]",
@@ -2299,7 +2361,9 @@ async function dismissConsentDeterministically(
         }
       }
       return null;
-    });
+      },
+      { safe: opts?.safe === true },
+    );
   } catch {
     return null;
   }
