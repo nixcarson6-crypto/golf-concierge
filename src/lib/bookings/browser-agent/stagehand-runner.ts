@@ -911,10 +911,13 @@ export async function runStagehandBooking(
               /* best-effort */
             }
           }
-          // RATE STEP (golf, after a slot is picked): select the cheapest
-          // public rate radio so the greyed-out Continue button enables. Only
-          // touches a radio — never advances the booking itself.
-          if (opts.selectTeeSlot && slotAlreadyPicked && !rateSelected) {
+          // RATE STEP (golf): select the cheapest public rate so the greyed-out
+          // Continue button enables. Runs for ANY golf booking — NOT gated on
+          // our own slot-pick, because the AGENT often picks the slot itself
+          // (a real Troon run reached the rate page that way and our gate kept
+          // this from ever firing). Safe anywhere: no-ops unless the page has
+          // unselected priced rate options.
+          if (opts.selectTeeSlot && !rateSelected) {
             try {
               const active = stagehand.context.activePage();
               if (active) {
@@ -2054,13 +2057,14 @@ async function clickTeeTimeSlotDeterministically(
 }
 
 /**
- * Select the cheapest PUBLIC rate radio on a "Choose your rate" step — zero
- * LLM. Golf checkouts (Access/golfwithaccess, GolfNow) gate the Continue
- * button behind a rate radio; a real Troon run sat on this step because it
- * never clicked the radio. This picks the cheapest NON-membership rate (skips
- * "Premium+/Join/Member" upsells that need a paid account), which enables the
- * Continue button — the agent then just clicks Continue. Only ever clicks a
- * radio input, never a submit, so it can't advance the booking on its own.
+ * Select the cheapest PUBLIC rate on a "Choose your rate" step — zero LLM.
+ * Golf checkouts (Access/golfwithaccess, GolfNow) gate the Continue button
+ * behind a rate choice; a real Troon run sat here twice because it never
+ * selected the rate. Handles BOTH real <input radio>/[role=radio] AND custom
+ * styled rate CARDS (Access renders a clickable card with a decorative circle,
+ * not a real radio). Picks the cheapest NON-membership option (skips
+ * "Premium+/Join/Member" upsells that need a paid account). Only clicks a rate
+ * option — never a submit — so it can't advance the booking on its own.
  * No-ops if a rate is already selected. Returns what it picked, or null.
  */
 async function selectCheapestRateRadioDeterministically(
@@ -2082,6 +2086,17 @@ async function selectCheapestRateRadioDeterministically(
       };
       const MEMBERSHIP_RE =
         /premium\+?|membership|\bjoin\b|subscribe|member rate|loyalty|sign\s?up/i;
+
+      type Opt = {
+        click: HTMLElement;
+        key: HTMLElement;
+        text: string;
+        price: number | null;
+        membership: boolean;
+        checked: boolean;
+      };
+
+      // ── Tier 1: real radios ──────────────────────────────────────────
       const radios = Array.from(
         document.querySelectorAll<HTMLElement>("input[type=radio], [role=radio]"),
       ).filter(
@@ -2090,27 +2105,75 @@ async function selectCheapestRateRadioDeterministically(
           !(el as HTMLInputElement).disabled &&
           el.getAttribute("aria-disabled") !== "true",
       );
-      if (radios.length === 0) return null;
-      const opts = radios.map((r) => {
-        const forLabel =
-          (r.id && document.querySelector(`label[for="${CSS.escape(r.id)}"]`)) ||
-          r.closest("label") ||
-          r.closest("[class*=rate],[class*=option],[class*=Rate],li,tr") ||
+      let opts: Opt[] = radios.map((r) => {
+        const label =
+          (r.id && document.querySelector<HTMLElement>(`label[for="${CSS.escape(r.id)}"]`)) ||
+          r.closest<HTMLElement>("label") ||
+          r.closest<HTMLElement>("[class*=rate],[class*=option],[class*=Rate],li,tr") ||
           r.parentElement;
-        const text = (forLabel?.textContent || "").trim().slice(0, 200);
-        const checked =
-          (r as HTMLInputElement).checked ||
-          r.getAttribute("aria-checked") === "true";
+        const text = (label?.textContent || "").trim().slice(0, 200);
         return {
-          r,
+          click: r,
+          key: r,
           text,
           price: priceOf(text),
           membership: MEMBERSHIP_RE.test(text),
-          checked,
+          checked:
+            (r as HTMLInputElement).checked ||
+            r.getAttribute("aria-checked") === "true",
         };
       });
+
+      // ── Tier 2: custom rate CARDS (no real radio) ────────────────────
+      if (opts.length === 0) {
+        const RATE_HINT =
+          /\brate\b|public|standard|greens?\s*fee|guest|walking|riding|\d+\s*hole/i;
+        const cards = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "div,li,button,a,[role=button],label",
+          ),
+        ).filter((el) => {
+          if (!isVisible(el)) return false;
+          const t = (el.textContent || "").trim();
+          if (!t || t.length > 160) return false; // a single option, not the page
+          if (priceOf(t) == null) return false;
+          // Looks like a rate option: rate-ish words OR a radio-like circle.
+          return (
+            RATE_HINT.test(t) ||
+            !!el.querySelector(
+              "input[type=radio],[role=radio],[class*=radio],[class*=circle],[class*=Radio]",
+            )
+          );
+        });
+        // Dedupe nested cards: keep the SMALLEST (innermost) priced container.
+        const kept: HTMLElement[] = [];
+        for (const c of cards) {
+          if (cards.some((o) => o !== c && c.contains(o))) continue; // has a smaller priced child
+          kept.push(c);
+        }
+        opts = kept.map((c) => {
+          const text = (c.textContent || "").trim().slice(0, 200);
+          const circle = c.querySelector<HTMLElement>(
+            "input[type=radio],[role=radio]",
+          );
+          return {
+            click: c,
+            key: c,
+            text,
+            price: priceOf(text),
+            membership: MEMBERSHIP_RE.test(text),
+            checked:
+              !!circle &&
+              ((circle as HTMLInputElement).checked ||
+                circle.getAttribute("aria-checked") === "true"),
+          };
+        });
+      }
+
+      if (opts.length === 0) return null;
       // Something already selected → leave it; the agent continues.
       if (opts.some((o) => o.checked)) return null;
+
       let pool = opts.filter((o) => o.price != null && !o.membership);
       if (pool.length === 0)
         pool = opts.filter(
@@ -2120,7 +2183,7 @@ async function selectCheapestRateRadioDeterministically(
       if (pool.length === 0) pool = opts;
       pool.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
       const choice = pool[0];
-      choice.r.click();
+      choice.click.click();
       return `rate=${choice.price != null ? "$" + choice.price : choice.text.slice(0, 30)}`;
     });
   } catch {
