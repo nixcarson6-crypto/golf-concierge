@@ -29,6 +29,10 @@ export function AccountButton() {
     `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`.toUpperCase() ||
     user?.primaryEmailAddress?.emailAddress?.[0]?.toUpperCase() ||
     "·";
+  // Founder sees the concierge queue link (the page itself is server-gated too).
+  const isFounder =
+    user?.primaryEmailAddress?.emailAddress?.toLowerCase() ===
+    "nixcarson6@gmail.com";
 
   return (
     <div ref={ref} className="relative">
@@ -42,6 +46,15 @@ export function AccountButton() {
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-44 rounded-xl border border-border/60 bg-background shadow-lg py-1 z-50">
+          {isFounder && (
+            <Link
+              href="/admin/queue"
+              onClick={() => setOpen(false)}
+              className="block px-3 py-2 text-sm text-foreground/90 hover:bg-surface-raised transition"
+            >
+              Concierge queue
+            </Link>
+          )}
           <Link
             href="/settings"
             onClick={() => setOpen(false)}

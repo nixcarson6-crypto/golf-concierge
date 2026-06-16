@@ -110,6 +110,9 @@ const definitions = {
   // Additive: Steel/Browserbase + Stagehand stay the default + fallback.
   SKYVERN_API_KEY: { required: false },
   SKYVERN_BASE: { required: false },
+  // Comma-separated emails allowed into the /admin concierge queue. Defaults
+  // to the founder's email when unset (single-operator launch).
+  ADMIN_EMAILS: { required: false },
   STAGEHAND_MODEL: { required: false },
   STAGEHAND_EXECUTION_MODEL: { required: false },
   STAGEHAND_MAX_STEPS: { required: false },
