@@ -499,6 +499,10 @@ export async function runBrowserBooking(args: {
               // moment the list renders (zero LLM) — the agent's #1 stall was
               // sitting on a full ForeUp/Chronogolf slot list without clicking.
               selectTeeSlot: item.type === "TEE_TIME",
+              // Hotels: click the cheapest room card the moment the rooms/suites
+              // grid renders (zero LLM) — the agent's #1 hotel stall is sitting
+              // on the room list.
+              selectRoom: item.type === "LODGING",
               teeTimeLabel:
                 item.type === "TEE_TIME" ? task.displayTime ?? null : null,
               onStep: async (label) => {

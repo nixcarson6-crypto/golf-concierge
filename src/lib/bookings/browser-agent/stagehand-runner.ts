@@ -194,6 +194,10 @@ export type RunStagehandOptions = {
   /** The requested tee time, any human format ("6:00 PM", "18:00") — used to
    *  pick the nearest slot. null → pick the earliest available. */
   teeTimeLabel?: string | null;
+  /** Hotels only: when true, a zero-LLM pass clicks the cheapest ROOM card's
+   *  CTA the moment a rooms/suites list renders — the agent's #1 hotel stall
+   *  was sitting on the room grid. */
+  selectRoom?: boolean;
   /** Price-approval gate (cents): when the venue's real total at the card
    *  step exceeds this, do NOT pay — return a price_approval outcome so the
    *  customer can approve the real price first. null = no gate (customer
@@ -677,6 +681,7 @@ export async function runStagehandBooking(
     let slotAlreadyPicked = false;
     let golfSearchSubmitted = false;
     let rateSelected = false;
+    let roomPicked = false;
     let verifyWallHits = 0;
     let verifyWallBlocked = false;
 
@@ -973,6 +978,24 @@ export async function runStagehandBooking(
                   rateSelected = true;
                   console.log(
                     `[stagehand] ⚡ rate selected mid-run (${r}) (${elapsed()})`,
+                  );
+                }
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
+          // ROOM STEP (hotels): the moment a rooms/suites grid renders, click
+          // the cheapest room's CTA so the agent never SITS on the list. Once.
+          if (opts.selectRoom && !roomPicked) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active) {
+                const r = await clickCheapestRoomDeterministically(active);
+                if (r) {
+                  roomPicked = true;
+                  console.log(
+                    `[stagehand] ⚡ room picked mid-run (${r}) (${elapsed()})`,
                   );
                 }
               }
@@ -2115,6 +2138,108 @@ async function clickTeeTimeSlotDeterministically(
       },
       { reqLabel: requestedLabel },
     );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pick the cheapest ROOM on a hotel rooms/suites list — zero LLM. Hotels show
+ * a grid of room cards each with a CTA (Select / Book / Reserve / View Rates /
+ * View Room Details); the agent's job is just to click one, but a real Hôtel
+ * Martinez run SAT on the rooms list. This finds the room cards, prefers a
+ * booking-forward CTA over an info-only one, picks the cheapest priced card
+ * (or the first if no prices show), and clicks it. Best-effort — never throws.
+ */
+async function clickCheapestRoomDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const isVisible = (el: Element): boolean => {
+        const r = (el as HTMLElement).getClientRects();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return s.visibility !== "hidden" && s.display !== "none";
+      };
+      const priceOf = (s: string): number | null => {
+        const m = s.match(/[$€£]\s?([\d,]+(?:\.\d{1,2})?)/);
+        return m ? parseFloat(m[1].replace(/,/g, "")) : null;
+      };
+      // Booking-forward CTAs rank higher than info-only "view details".
+      const BOOK_CTA =
+        /^(select( room)?|book( now| this room| this)?|reserve( now| this room)?|choose( room)?|view rates?|view offers?|see rates?|view deal|select rate|book room)$/i;
+      const INFO_CTA = /^(view room details?|view details?|room details?|details)$/i;
+      const labelOf = (el: HTMLElement): string =>
+        (
+          el.innerText ||
+          el.textContent ||
+          (el as HTMLInputElement).value ||
+          el.getAttribute("aria-label") ||
+          ""
+        ).trim();
+      const ctaEls = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "a,button,[role=button],input[type=button],input[type=submit]",
+        ),
+      ).filter((el) => {
+        if (!isVisible(el)) return false;
+        const t = labelOf(el);
+        return t.length <= 24 && (BOOK_CTA.test(t) || INFO_CTA.test(t));
+      });
+      if (ctaEls.length === 0) return null;
+      // Climb to the room CARD (nearest ancestor that mentions a room word or
+      // shows a price, and isn't the whole page).
+      const cardOf = (el: HTMLElement): HTMLElement => {
+        let cur: HTMLElement | null = el;
+        for (let i = 0; i < 6 && cur?.parentElement; i++) {
+          cur = cur.parentElement;
+          const t = cur.textContent || "";
+          if (
+            t.length < 400 &&
+            (priceOf(t) != null ||
+              /\b(suite|room|king|queen|deluxe|standard|superior|junior|villa|cabana)\b/i.test(
+                t,
+              ))
+          ) {
+            return cur;
+          }
+        }
+        return el.parentElement || el;
+      };
+      const seen = new Set<HTMLElement>();
+      const rooms: { cta: HTMLElement; price: number | null; book: boolean }[] = [];
+      for (const cta of ctaEls) {
+        const card = cardOf(cta);
+        if (seen.has(card)) continue;
+        seen.add(card);
+        // Within this card prefer a booking-forward CTA over an info link.
+        const ctas = Array.from(
+          card.querySelectorAll<HTMLElement>(
+            "a,button,[role=button],input[type=button],input[type=submit]",
+          ),
+        ).filter((e) => isVisible(e) && labelOf(e).length <= 24);
+        const booking = ctas.find((e) => BOOK_CTA.test(labelOf(e)));
+        const chosen = booking || cta;
+        rooms.push({
+          cta: chosen,
+          price: priceOf(card.textContent || ""),
+          book: !!booking,
+        });
+      }
+      if (rooms.length === 0) return null;
+      // Cheapest priced card; nulls last. Tie-break toward a booking CTA.
+      rooms.sort((a, b) => {
+        const pa = a.price ?? Infinity;
+        const pb = b.price ?? Infinity;
+        if (pa !== pb) return pa - pb;
+        return (b.book ? 1 : 0) - (a.book ? 1 : 0);
+      });
+      rooms[0].cta.click();
+      return `room=${rooms[0].price != null ? "$" + rooms[0].price : "first"}`;
+    });
   } catch {
     return null;
   }
