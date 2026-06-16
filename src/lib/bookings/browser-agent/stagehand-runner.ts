@@ -1797,21 +1797,7 @@ async function clickStayDatesDeterministically(
         const findCellByText = (iso: string): HTMLElement | null => {
           const [y, m, d] = iso.split("-").map((n) => parseInt(n, 10));
           const wantDay = String(d);
-          const monLong = MONTHS[m - 1].toLowerCase();
-          const monShort = monLong.slice(0, 3);
-          const yr = String(y);
-          // Headers that name the target month+year. Keep it tight so we
-          // don't grab a paragraph that merely mentions the month.
-          const headers = Array.from(
-            document.querySelectorAll<HTMLElement>("*"),
-          ).filter((el) => {
-            if (el.children.length > 3) return false;
-            const t = (el.textContent || "").trim().toLowerCase();
-            if (!t || t.length > 24) return false;
-            return (
-              (t.includes(monLong) || t.includes(monShort)) && t.includes(yr)
-            );
-          });
+          const targetKey = `${MONTHS[m - 1].toLowerCase()} ${y}`; // "september 2026"
           const looksDisabled = (el: HTMLElement): boolean => {
             const cls = (el.className || "").toString().toLowerCase();
             if (el.getAttribute("aria-disabled") === "true") return true;
@@ -1820,34 +1806,63 @@ async function clickStayDatesDeterministically(
               cls,
             );
           };
-          for (const h of headers) {
-            // Climb a few levels to the container that actually holds the grid.
-            let container: HTMLElement | null = h;
-            for (let up = 0; up < 4 && container; up++) {
-              const cands = Array.from(
-                container.querySelectorAll<HTMLElement>(
-                  "td,button,a,[role=gridcell],[role=button],li,span,div",
-                ),
-              ).filter(
-                (el) =>
-                  isVisible(el) &&
-                  (el.textContent || "").trim() === wantDay &&
-                  el.children.length === 0 &&
-                  !looksDisabled(el),
-              );
-              // A clean month grid yields exactly one cell for a given day.
-              // Two side-by-side months in one container would yield 2 — bail
-              // rather than guess wrong.
-              if (cands.length === 1) {
-                return (
-                  cands[0].closest<HTMLElement>(
-                    "td,button,a,[role=gridcell],[role=button],li",
-                  ) || cands[0]
-                );
-              }
-              if (cands.length > 1) break; // ambiguous at this level → stop
-              container = container.parentElement;
+          // ALL month headers on the page, in document order, with their key.
+          const headerKey = (el: HTMLElement): string | null => {
+            const t = (el.textContent || "").trim().toLowerCase();
+            const yr = t.match(/\b(20\d{2})\b/)?.[1];
+            const mon = MONTHS.find((mn) => t.includes(mn.toLowerCase()));
+            return mon && yr ? `${mon.toLowerCase()} ${yr}` : null;
+          };
+          const headers = Array.from(
+            document.querySelectorAll<HTMLElement>("*"),
+          ).filter((el) => {
+            if (el.children.length > 3) return false;
+            const t = (el.textContent || "").trim();
+            if (!t || t.length > 24) return false;
+            return headerKey(el) != null;
+          });
+          if (headers.length === 0) return null;
+          // Candidate day cells anywhere — a leaf showing exactly the day number
+          // (the price is a SIBLING node, e.g. "16" + "€2550").
+          const cands = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              "td,button,a,[role=gridcell],[role=button],li,span,div",
+            ),
+          ).filter(
+            (el) =>
+              isVisible(el) &&
+              (el.textContent || "").trim() === wantDay &&
+              el.children.length === 0 &&
+              !looksDisabled(el),
+          );
+          if (cands.length === 0) return null;
+          // For a DUAL-MONTH calendar the same day appears twice. Disambiguate
+          // by document order: pick the candidate whose NEAREST PRECEDING month
+          // header is the target month.
+          const FOLLOWING = 4; // Node.DOCUMENT_POSITION_FOLLOWING
+          const nearestKey = (cell: HTMLElement): string | null => {
+            let best: HTMLElement | null = null;
+            for (const h of headers) {
+              if (h.compareDocumentPosition(cell) & FOLLOWING) best = h; // h precedes cell
             }
+            return best ? headerKey(best) : null;
+          };
+          for (const cell of cands) {
+            if (nearestKey(cell) === targetKey) {
+              return (
+                cell.closest<HTMLElement>(
+                  "td,button,a,[role=gridcell],[role=button],li",
+                ) || cell
+              );
+            }
+          }
+          // Single-month calendar (only one candidate, section match unclear).
+          if (cands.length === 1) {
+            return (
+              cands[0].closest<HTMLElement>(
+                "td,button,a,[role=gridcell],[role=button],li",
+              ) || cands[0]
+            );
           }
           return null;
         };
