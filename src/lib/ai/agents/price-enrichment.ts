@@ -194,6 +194,8 @@ async function priceLodging(
   const queries = [
     `${hotelName} ${where} nightly room rate per night USD`,
     `${hotelName} ${where} rooms price booking`,
+    `${hotelName} ${where} price per night 2026`,
+    `${hotelName} cost per night average rate`,
   ];
   for (const q of queries) {
     const extracted = await searchAndExtract(q, hotelName);
