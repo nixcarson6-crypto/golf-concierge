@@ -399,7 +399,8 @@ export async function runBrowserBooking(args: {
       // back to the old screenshot agent if ever needed.
       const engine =
         (optionalEnv("BOOKING_ENGINE") ?? "stagehand").toLowerCase();
-      const useStagehand = engine !== "computer-use";
+      const useStagehand = engine !== "computer-use" && engine !== "skyvern";
+      const useSkyvern = engine === "skyvern";
       const captchaOn =
         optionalEnv("BROWSERBASE_PREMIUM") === "true" ||
         optionalEnv("BROWSERBASE_SOLVE_CAPTCHAS") === "true";
@@ -413,6 +414,61 @@ export async function runBrowserBooking(args: {
       // on the next try.
       const attemptOnce = async (attempt: number) => {
         try {
+          // SKYVERN ENGINE (BOOKING_ENGINE=skyvern): hand the whole booking to
+          // Skyvern's hosted vision agent. Steel/Browserbase + Stagehand remain
+          // the default + fallback — this only runs when explicitly selected.
+          if (useSkyvern) {
+            const { runSkyvernBooking } = await import("./skyvern-runner");
+            const result = await runSkyvernBooking({
+              startUrl,
+              navigationGoal: goal.firstUserMessage,
+              payload: {
+                check_in: task.isoDate,
+                check_out: task.isoCheckOut,
+                tee_time: task.displayTime ?? null,
+                party_size: task.traveler.partySize,
+                first_name: traveler.givenName,
+                last_name: traveler.familyName,
+                email: traveler.email,
+                phone: traveler.phone,
+                address_line1: traveler.addressLine1,
+                city: traveler.addressCity,
+                state: traveler.addressState,
+                postal_code: traveler.addressPostalCode,
+                country: traveler.addressCountry ?? "US",
+              },
+              timeoutMs:
+                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
+                (item.type === "LODGING" ? 540_000 : 300_000),
+              onStep: async (label) => {
+                await bridgeNudge(label);
+              },
+              onSessionReady: async (sessionUrl) => {
+                if (!sessionUrl) return;
+                try {
+                  const cur = await db.booking.findUnique({
+                    where: { id: booking.id },
+                    select: { metadata: true },
+                  });
+                  const meta =
+                    (cur?.metadata as Record<string, unknown> | null) ?? {};
+                  await db.booking.update({
+                    where: { id: booking.id },
+                    data: {
+                      metadata: { ...meta, liveViewUrl: sessionUrl } as object,
+                    },
+                  });
+                  await bridgeNudge("Live view ready…");
+                } catch {
+                  /* best-effort */
+                }
+              },
+            });
+            return {
+              outcome: result.outcome,
+              finalScreenshot: result.finalScreenshot,
+            };
+          }
           if (useStagehand) {
             const { runStagehandBooking, browserbaseRegionFor } = await import(
               "./stagehand-runner"

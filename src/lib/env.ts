@@ -106,6 +106,10 @@ const definitions = {
   // Booking engine: "stagehand" (DOM-driven, fast — default) or
   // "computer-use" (legacy vision loop, fallback).
   BOOKING_ENGINE: { required: false },
+  // Skyvern hosted vision agent — only used when BOOKING_ENGINE=skyvern.
+  // Additive: Steel/Browserbase + Stagehand stay the default + fallback.
+  SKYVERN_API_KEY: { required: false },
+  SKYVERN_BASE: { required: false },
   STAGEHAND_MODEL: { required: false },
   STAGEHAND_EXECUTION_MODEL: { required: false },
   STAGEHAND_MAX_STEPS: { required: false },
