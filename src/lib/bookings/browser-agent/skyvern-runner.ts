@@ -70,15 +70,24 @@ async function createRun(opts: SkyvernRunnerOptions): Promise<{
   id: string;
   liveUrl: string | null;
 }> {
+  // A tight, directive prompt on top of the booking goal — Skyvern's vision
+  // agent performs best with crisp "do this fast, then stop here" instructions.
+  const prompt = `${opts.navigationGoal}
+
+EXECUTION RULES (follow exactly):
+- Move FAST and decisively. Click the Book / Reserve / "Plan my stay" button immediately. Set the dates and party size from the data WITHOUT deliberating. Pick the cheapest available room (hotels) or the tee time at/nearest the requested time (golf). Fill all guest details from the data provided in ONE pass.
+- STOP at the credit-card / payment step. Do NOT type any card number and do NOT submit payment — reaching the filled-in card step is SUCCESS (our system enters payment).
+- If the venue is enquiry-only ("request a reservation", "our team will contact you"), fill and submit the enquiry form, then report that a request was sent.
+- When you finish, REPORT: the exact room or tee time selected, the total price, and a confirmation number if one appeared.`;
+
   const body = {
-    // The prompt-style "run task" API: a goal + a start URL + the data.
-    prompt: opts.navigationGoal,
+    prompt,
     url: opts.startUrl,
-    // Stop at the card step — the customer's payment is entered by our own
-    // Stripe-issuing flow, never by the agent. (Also stated in the prompt.)
     navigation_payload: opts.payload,
+    // What to hand back so we can map the outcome accurately.
+    data_extraction_goal:
+      "Extract: confirmation_number (if the booking confirmed), room_or_tee_time selected, total_price, reached_payment_step (true/false), and enquiry_submitted (true/false).",
     proxy_location: "RESIDENTIAL",
-    // Cap the agent's own loop so a hung run can't outlive our wall-clock.
     max_steps: 40,
   };
   const res = await fetch(`${BASE}/v1/run/tasks`, {
