@@ -2624,7 +2624,13 @@ async function clickBookingEntryDeterministically(
           (el as HTMLInputElement).value ||
           el.getAttribute("aria-label") ||
           ""
-        ).trim();
+        )
+          .trim()
+          // Strip decorative arrows/chevrons that luxury sites append to CTAs
+          // ("BOOK ›", "Reserve →") — they made the exact-match regex miss the
+          // button (a real Hôtel du Cap run burned 40s hunting for "BOOK ›").
+          .replace(/^[\s›»→⟶▶‹«←◀<>·•|]+|[\s›»→⟶▶‹«←◀<>·•|]+$/g, "")
+          .trim();
       for (const re of [PRIMARY, SECONDARY]) {
         for (const el of nodes) {
           const txt = labelOf(el);
