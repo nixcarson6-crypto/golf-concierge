@@ -432,7 +432,15 @@ export async function runBrowserBooking(args: {
               startUrl,
               system: goal.system,
               task: goal.firstUserMessage,
-              solveCaptchas: captchaOn,
+              // Proxy + captcha-solving slows EVERY request (residential-proxy
+              // hop) — worth it for bot-protected GOLF (Troon/Access verify
+              // walls, which appear DEEP in the flow so we can't afford to
+              // fail-then-retry), but pure overhead for HOTELS/cars, which
+              // rarely bot-protect and, when they do (Marriott/Akamai), fail
+              // FAST at landing → a retry then turns the proxy on. So: golf
+              // always; everything else only on a retry.
+              solveCaptchas:
+                captchaOn && (item.type === "TEE_TIME" || attempt > 1),
               // Advanced Stealth is a Browserbase SCALE-plan feature — sending
               // it on a Developer/Startup plan can error the session. So only
               // request it when EXPLICITLY enabled (BROWSERBASE_PREMIUM /
