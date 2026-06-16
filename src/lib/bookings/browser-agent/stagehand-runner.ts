@@ -843,20 +843,25 @@ export async function runStagehandBooking(
           stepCount += 1;
           console.log(`[stagehand]   step ${stepCount} done (${elapsed()})`);
           await opts.onStep?.(progressLabel(stepCount));
-          // BROWSER-VERIFICATION WALL: "We were unable to verify your browser"
-          // is Access's BOT DETECTION — reloading does NOT clear it (it just
-          // re-shows). If it persists across steps, abort fast so the retry
-          // runs with ADVANCED STEALTH, which is the only thing that slips past
-          // this kind of check. Tracked, not reloaded.
+          // BOT-DETECTION WALL mid-flow: Access's "verify your browser", or a
+          // Hilton/Marriott/Akamai "Something went wrong / Reference No." block
+          // that appears AFTER navigation (not just at landing). Reloading
+          // doesn't clear these — if it persists across steps, abort fast so the
+          // retry runs through the residential proxy / stealth, which is the
+          // only thing that slips past fingerprint detection.
           if (!verifyWallBlocked) {
             try {
               const active = stagehand.context.activePage();
-              if (active && (await detectVerifyWall(active))) {
+              const walled =
+                active &&
+                ((await detectVerifyWall(active)) ||
+                  (await detectBotBlock(active)) != null);
+              if (walled) {
                 verifyWallHits += 1;
                 if (verifyWallHits >= 2) {
                   verifyWallBlocked = true;
                   console.warn(
-                    `[stagehand] ✗ browser-verification wall persists — aborting for a stealth retry (${elapsed()})`,
+                    `[stagehand] ✗ bot-detection wall persists — aborting for a proxy/stealth retry (${elapsed()})`,
                   );
                   controller.abort();
                 }
@@ -2556,6 +2561,14 @@ async function detectBotBlock(page: unknown): Promise<string | null> {
         return "cloudfront-403";
       if (/access denied|reference\s*#?\d{2}\.|akamai/.test(hay))
         return "akamai-block";
+      // Hilton/Marriott Akamai block dressed up as a friendly error:
+      // "Something went wrong … Reference No. 27.f9c…" / "maybe it's us…".
+      if (
+        /something went wrong/.test(hay) &&
+        /reference\s*(no\.?|number|#|id)/.test(hay)
+      )
+        return "akamai-block";
+      if (/maybe it.?s us.*maybe it.?s you/.test(hay)) return "akamai-block";
       if (/attention required|cloudflare|error 1020|ray id/.test(hay))
         return "cloudflare-block";
       if (/verify you are (a )?human|are you a human|unusual traffic|automated requests/.test(hay))
