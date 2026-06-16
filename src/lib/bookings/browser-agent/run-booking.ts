@@ -666,6 +666,13 @@ export async function runBrowserBooking(args: {
         },
       });
 
+      // Write the REAL checkout total back onto the item (Carson's ask): when
+      // the agent reached the payment step it read the venue's exact total for
+      // these dates/party — far better than a web-search estimate. This
+      // replaces "at checkout" with the confirmed price in the UI.
+      const itemMeta = (item.metadata as Record<string, unknown> | null) ?? {};
+      const writeRealPrice =
+        quotedPriceCents != null && quotedPriceCents > 0;
       await db.itineraryItem.update({
         where: { id: item.id },
         data: {
@@ -676,6 +683,17 @@ export async function runBrowserBooking(args: {
               : verified.status === "FAILED"
                 ? "Couldn't book — see fallback"
                 : "Pyltrix concierge reviewing…",
+          ...(writeRealPrice
+            ? {
+                cost: quotedPriceCents,
+                metadata: {
+                  ...itemMeta,
+                  priceConfirmed: true,
+                  priceBasis: "Confirmed at checkout",
+                  priceSource: startUrl,
+                } as object,
+              }
+            : {}),
         },
       });
 

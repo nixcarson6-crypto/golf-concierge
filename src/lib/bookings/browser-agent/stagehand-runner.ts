@@ -1133,6 +1133,9 @@ export async function runStagehandBooking(
           return {
             outcome: {
               status: "needs_review",
+              // Carry the REAL checkout total back so the app can show the
+              // exact, confirmed price on the item (replaces "at checkout").
+              priceCents: pay.amountCents ?? undefined,
               message:
                 "Everything's filled in and ready to pay — we paused at the payment step. " +
                 card.reason.replace(/\s*(Stop entering payment and )?call report_outcome[^.]*\.?/gi, "").trim(),
