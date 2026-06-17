@@ -829,6 +829,7 @@ export async function runStagehandBooking(
     // card step with NO model calls at all — fast and consistent, every form.
     let conductorReachedCard = false;
     let dateArmAttempts = 0;
+    let datesConfirmed = false; // true ONLY when the setter confirmed "in=…"
     try {
       const tick = async (): Promise<string | null> => {
         const p = stagehand.context.activePage() ?? page;
@@ -855,8 +856,27 @@ export async function runStagehandBooking(
             if (r) { rateSelected = true; return `rate ${r}`; }
           }
         }
-        // HOTEL: room → rate.
-        if (opts.selectRoom) {
+        // DATES FIRST (hotel + golf). On a single pre-filled RANGE input the
+        // setter can't confirm "in=…" and would "OPENED"-arm forever, blocking
+        // the advance click — so after a few arm attempts assume the dates are
+        // already right and move on.
+        if (opts.checkinISO && !datesAlreadySet) {
+          const r = await clickStayDatesDeterministically(p, opts.checkinISO ?? null, opts.checkoutISO ?? null);
+          if (r && r !== "OPENED" && r.startsWith("in=")) {
+            datesAlreadySet = true;
+            datesConfirmed = true;
+            return `dates ${r}`;
+          }
+          if (r) {
+            dateArmAttempts += 1;
+            if (dateArmAttempts >= 3) datesAlreadySet = true; // give up → advance
+            return `dates ${r}`;
+          }
+        }
+        // HOTEL: room → rate — ONLY once the dates are really set, so the
+        // room-picker can't false-fire on the calendar/dates page (it did on
+        // Aman: "room=first" before any dates were chosen).
+        if (opts.selectRoom && datesConfirmed) {
           if (!roomPicked) {
             const r = await clickCheapestRoomDeterministically(p);
             if (r) { roomPicked = true; return `room ${r}`; }
@@ -864,22 +884,6 @@ export async function runStagehandBooking(
           if (!rateSelected) {
             const r = await selectCheapestRateRadioDeterministically(p);
             if (r) { rateSelected = true; return `rate ${r}`; }
-          }
-        }
-        // DATES (hotel + golf). On a single pre-filled RANGE input the setter
-        // can't confirm "in=…" and would keep "OPENED"-arming forever, blocking
-        // the advance click — so after a few arm attempts assume the dates are
-        // already right and move on.
-        if (opts.checkinISO && !datesAlreadySet) {
-          const r = await clickStayDatesDeterministically(p, opts.checkinISO ?? null, opts.checkoutISO ?? null);
-          if (r && r !== "OPENED" && r.startsWith("in=")) {
-            datesAlreadySet = true;
-            return `dates ${r}`;
-          }
-          if (r) {
-            dateArmAttempts += 1;
-            if (dateArmAttempts >= 3) datesAlreadySet = true; // give up → advance
-            return `dates ${r}`;
           }
         }
         // GUEST DETAILS autofill.
@@ -891,8 +895,11 @@ export async function runStagehandBooking(
         const cta = await clickBookingEntryDeterministically(p);
         if (cta) return `book-cta "${cta}"`;
         // Advance to the next step (Search / Continue / Next) — never commits.
-        const adv = await clickAdvanceButtonDeterministically(p);
-        if (adv) return `advance "${adv}"`;
+        // Only advance once dates are handled, so we don't skip the date step.
+        if (datesAlreadySet || !opts.checkinISO) {
+          const adv = await clickAdvanceButtonDeterministically(p);
+          if (adv) return `advance "${adv}"`;
+        }
         return null;
       };
       let stalls = 0;
@@ -1998,9 +2005,12 @@ async function clickStayDatesDeterministically(
           const headers = Array.from(
             document.querySelectorAll<HTMLElement>("*"),
           ).filter((el) => {
-            if (el.children.length > 3) return false;
             const t = (el.textContent || "").trim();
-            if (!t || t.length > 24) return false;
+            // The element's WHOLE text must be "Month YYYY" (e.g. "AUGUST
+            // 2026") — that excludes a container holding the whole calendar
+            // (whose text is long) without a fragile children-count guard.
+            if (!t || t.length > 20) return false;
+            if (!/^[a-zà-ÿ.]+\s+\d{4}$/i.test(t)) return false;
             return headerKey(el) != null;
           });
           if (headers.length === 0) return null;
