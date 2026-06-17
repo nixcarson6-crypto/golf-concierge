@@ -712,6 +712,8 @@ export async function runStagehandBooking(
     // picked on an EARLIER step (so it can't re-click the room on the same DOM).
     let rateCardPicked = false;
     let roomPickedAtStep = -1;
+    // One-shot guard so the calendar diagnostic dumps at most once per run.
+    let calendarDiagnosed = false;
     // true ONLY when the date setter confirmed "in=…". Gates the room picker
     // (in the conductor AND the per-step pass) so it can't fire on a calendar.
     let datesConfirmed = false;
@@ -878,6 +880,13 @@ export async function runStagehandBooking(
             return `dates ${r}`;
           }
           if (r) {
+            // First time the calendar comes back un-settable, dump what's on
+            // the page so we can fix the recognizer precisely (vs. guessing).
+            if (r === "OPENED" && !calendarDiagnosed) {
+              calendarDiagnosed = true;
+              const diag = await diagnoseCalendar(p);
+              console.log(`[stagehand] 🔬 calendar diag :: ${diag}`);
+            }
             dateArmAttempts += 1;
             if (dateArmAttempts >= 3) datesAlreadySet = true; // give up → advance
             return `dates ${r}`;
@@ -2298,6 +2307,116 @@ async function clickStayDatesDeterministically(
     );
   } catch {
     return null;
+  }
+}
+
+/**
+ * DIAGNOSTIC: when the deterministic date-setter can't find the calendar (it
+ * returns OPENED and the slow AI takes over), dump WHAT THE PAGE ACTUALLY HAS
+ * so we can fix the recognizer precisely instead of guessing at the DOM. Logs
+ * once per run. Reports: iframes, shadow roots, month-header text nodes (+
+ * samples), day-number candidates (+ samples), date-bearing aria-labels (+
+ * samples), and the custom-element tags present (SynXis = sb-express, etc.).
+ */
+async function diagnoseCalendar(page: unknown): Promise<string> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return "(no evaluate)";
+  try {
+    return await cdp.evaluate<string>(() => {
+      const MONTHS =
+        "january february march april may june july august september october november december";
+      const visible = (el: Element): boolean => {
+        const r = (el as HTMLElement).getClientRects?.();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return s.visibility !== "hidden" && s.display !== "none";
+      };
+      // Month-header text nodes (loose: a month word + a 20xx year).
+      const headerSamples: string[] = [];
+      let headerCount = 0;
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+      );
+      let tn: Node | null;
+      while ((tn = walker.nextNode())) {
+        const t = (tn.nodeValue || "").replace(/\s+/g, " ").trim();
+        if (t.length > 30) continue;
+        const low = t.toLowerCase();
+        if (!/\b20\d{2}\b/.test(low)) continue;
+        if (!MONTHS.split(" ").some((m) => low.includes(m.slice(0, 3))))
+          continue;
+        headerCount++;
+        if (headerSamples.length < 5)
+          headerSamples.push(
+            `"${t}"<${(tn.parentElement?.tagName || "?").toLowerCase()}>`,
+          );
+      }
+      // Day-number candidates: short visible elements whose text starts with a
+      // 1-2 digit day.
+      const dayEls = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "td,button,a,[role=gridcell],[role=button],li,span,div",
+        ),
+      ).filter((el) => {
+        if (!visible(el)) return false;
+        const t = (el.textContent || "").trim();
+        return t.length > 0 && t.length <= 20 && /^\d{1,2}(\D|$)/.test(t);
+      });
+      const daySamples = dayEls
+        .slice(0, 8)
+        .map(
+          (el) =>
+            `"${(el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 16)}"<${el.tagName.toLowerCase()}${
+              el.getAttribute("aria-label")
+                ? ` al="${el.getAttribute("aria-label")!.slice(0, 24)}"`
+                : ""
+            }>`,
+        );
+      // Elements carrying a 2026 date in aria-label / title / data-date.
+      const metaEls = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "[aria-label],[title],[data-date],[data-day]",
+        ),
+      ).filter((el) => {
+        const m = (
+          (el.getAttribute("aria-label") || "") +
+          (el.getAttribute("title") || "") +
+          (el.getAttribute("data-date") || "") +
+          (el.getAttribute("data-day") || "")
+        ).toLowerCase();
+        return /20\d{2}|\d{4}-\d{2}-\d{2}/.test(m);
+      });
+      const metaSamples = metaEls
+        .slice(0, 5)
+        .map((el) => {
+          const a =
+            el.getAttribute("aria-label") ||
+            el.getAttribute("title") ||
+            el.getAttribute("data-date") ||
+            el.getAttribute("data-day") ||
+            "";
+          return `<${el.tagName.toLowerCase()} "${a.slice(0, 32)}">`;
+        });
+      // Shadow roots + custom-element tags (SynXis = sb-express).
+      let shadowCount = 0;
+      const customTags = new Set<string>();
+      for (const el of Array.from(document.querySelectorAll("*"))) {
+        if ((el as HTMLElement).shadowRoot) shadowCount++;
+        const tag = el.tagName.toLowerCase();
+        if (tag.includes("-")) customTags.add(tag);
+      }
+      return [
+        `iframes=${document.querySelectorAll("iframe").length}`,
+        `shadowRoots=${shadowCount}`,
+        `headerNodes=${headerCount} ${headerSamples.join(" ") || "(none)"}`,
+        `dayCands=${dayEls.length} ${daySamples.join(" ") || "(none)"}`,
+        `dateMeta=${metaEls.length} ${metaSamples.join(" ") || "(none)"}`,
+        `customTags=${Array.from(customTags).slice(0, 12).join(",") || "(none)"}`,
+      ].join(" | ");
+    });
+  } catch (e) {
+    return `(diag failed: ${e instanceof Error ? e.message : e})`;
   }
 }
 
