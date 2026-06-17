@@ -19,11 +19,15 @@ export function anthropic(): Anthropic {
       "anthropic-version": "2023-06-01",
     },
     // Anthropic returns 529 ("overloaded") during traffic spikes. The SDK
-    // retries 408/409/429/5xx with exponential backoff + jitter — bumping
-    // from the default 2 to 5 absorbs brief overload windows without the
-    // user seeing a dead chat.
-    maxRetries: 5,
-    timeout: 120_000,
+    // retries 408/409/429/5xx with exponential backoff + jitter. FAIL FAST
+    // (Carson's call): 5 retries × a 120s timeout could hang a build for ~10
+    // minutes when Opus is overloaded — the customer just watches a spinner.
+    // 2 retries × 75s caps the worst case near ~2.5 min, then a clean error
+    // ("try again / simpler request") instead of an endless hang. 75s still
+    // comfortably covers a legit itinerary generation (multi-leg trips fan
+    // out per leg, so each call is bounded).
+    maxRetries: 2,
+    timeout: 75_000,
   });
   return _client;
 }

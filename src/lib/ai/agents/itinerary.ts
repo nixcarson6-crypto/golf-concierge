@@ -120,14 +120,15 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
        * Patterns that mean the model dropped the ball in a way a retry can
        * fix. The orchestrator throws these as labelled strings — we match
        * them and try again instead of bouncing the customer with a Zod dump.
+       * NOTE: we deliberately do NOT agent-level-retry on overload / rate_limit
+       * / 5xx — the SDK already retries those transient errors internally, and
+       * firing a SECOND full Opus call (at 24k tokens, no less) when Opus is
+       * already overloaded just doubles the hang. Those now fail fast.
        */
       const isRetryableModelGlitch = (msg: string): boolean =>
         msg.includes("truncated at max_tokens") ||
         msg.includes("schema validation failed") || // empty tool_use input
-        msg.includes("did not return a tool_use") || // refusal / null response
-        msg.includes("overloaded") || // 529
-        msg.includes("rate_limit") || // 429 leaked past the SDK
-        msg.includes("Internal server error");
+        msg.includes("did not return a tool_use"); // refusal / null response
 
       // Up to THREE attempts. First at 14k. On any retryable glitch, retry
       // at 24k (handles truncation AND incidentally gives a glitched model

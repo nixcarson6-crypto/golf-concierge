@@ -133,7 +133,7 @@ export function QuizContainer({ tripId }: { tripId: string }) {
     // long spinner with clear progress text. (Server maxDuration is the
     // hard cap in production; this just stops the browser giving up early.)
     const controller = new AbortController();
-    const abortTimer = setTimeout(() => controller.abort(), 12 * 60 * 1000);
+    const abortTimer = setTimeout(() => controller.abort(), 6 * 60 * 1000);
     // One silent auto-retry on transient server failures (502, network
     // blip) before we dump the customer to the error banner. Most
     // 'we couldn't finish your itinerary' failures are model-tier
