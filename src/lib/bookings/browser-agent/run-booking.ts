@@ -53,7 +53,99 @@ import { buildCardProviderForBooking } from "./card-provider";
 import { resolveGolfBookingUrl } from "../golf-platform-url";
 import type { BookingRequest } from "../types";
 
+/**
+ * SAFETY NET (launch-critical): guarantee a booking NEVER strands in a
+ * non-terminal state. `runBrowserBookingInner` writes a terminal status on
+ * every PLANNED path, but an unhandled throw in prep (before the withAgentRun
+ * wrapper), or a true engine HANG past the time cap, would leave the booking
+ * in SEARCHING forever — an eternal spinner the customer sees and the concierge
+ * queue (which only lists FAILED / NEEDS_REVIEW) never catches. This wrapper
+ * closes both holes: a try/catch routes any unhandled error to the queue, and
+ * a watchdog routes a hang there too. We use NEEDS_REVIEW (not FAILED) because
+ * a hang MIGHT have actually completed on the venue's side — a human verifies.
+ */
 export async function runBrowserBooking(args: {
+  tripId: string;
+  bookingId: string;
+  itineraryItemId: string;
+  userId: string;
+}): Promise<void> {
+  // Hard ceiling ABOVE every per-type time cap (LODGING 540s + retry, etc.).
+  // If we blow past this, the run is hung — route it to the concierge queue.
+  const WATCHDOG_MS = 13 * 60_000;
+  let settled = false;
+  const watchdog = setTimeout(() => {
+    if (settled) return;
+    void failSafeToReview(
+      args,
+      "Agent exceeded the hard time ceiling — routed to concierge to finalize.",
+    );
+  }, WATCHDOG_MS);
+  // Don't let the watchdog keep the process alive on its own.
+  (watchdog as unknown as { unref?: () => void }).unref?.();
+  try {
+    await runBrowserBookingInner(args);
+  } catch (err) {
+    console.error(
+      "[browser-booking] unhandled error — routing to concierge queue:",
+      err,
+    );
+    await failSafeToReview(
+      args,
+      err instanceof Error ? err.message : String(err),
+    );
+  } finally {
+    settled = true;
+    clearTimeout(watchdog);
+  }
+}
+
+/**
+ * Flip a booking to NEEDS_REVIEW so it lands in the concierge queue with an
+ * honest customer-facing status — but ONLY if it isn't already terminal
+ * (never clobber a CONFIRMED/FAILED outcome the inner run already wrote).
+ */
+async function failSafeToReview(
+  args: { tripId: string; bookingId: string; itineraryItemId: string },
+  reason: string,
+): Promise<void> {
+  try {
+    const b = await db.booking.findUnique({
+      where: { id: args.bookingId },
+      select: { status: true },
+    });
+    if (!b) return;
+    if (
+      b.status === "CONFIRMED" ||
+      b.status === "FAILED" ||
+      b.status === "CANCELLED" ||
+      b.status === "NEEDS_REVIEW"
+    ) {
+      return; // already terminal — leave it alone
+    }
+    await db.booking.update({
+      where: { id: args.bookingId },
+      data: { status: "NEEDS_REVIEW", lastError: reason.slice(0, 1000) },
+    });
+    await db.itineraryItem
+      .update({
+        where: { id: args.itineraryItemId },
+        data: {
+          confirmationState: "HOLDING",
+          status: "Pyltrix concierge is finalizing this",
+        },
+      })
+      .catch(() => {});
+    await postInternalNudge({ tripId: args.tripId }).catch(() => {});
+    console.warn(
+      `[browser-booking] booking ${args.bookingId} → NEEDS_REVIEW (safety net): ${reason.slice(0, 200)}`,
+    );
+  } catch (e) {
+    console.error("[browser-booking] failSafeToReview itself failed:", e);
+  }
+}
+
+async function runBrowserBookingInner(args: {
   tripId: string;
   bookingId: string;
   itineraryItemId: string;
