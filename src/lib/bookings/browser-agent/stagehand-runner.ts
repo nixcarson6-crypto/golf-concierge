@@ -2419,6 +2419,33 @@ async function diagnoseCalendar(page: unknown): Promise<string> {
         const tag = el.tagName.toLowerCase();
         if (tag.includes("-")) customTags.add(tag);
       }
+      // THE GOLDMINE: the actual HTML of the calendar region. Find the densest
+      // cluster of day cells (the common ancestor of the day candidates) and
+      // dump its markup — that shows EXACTLY how this engine encodes a day, so
+      // the recognizer can be fixed precisely instead of guessed. Truncated +
+      // whitespace-collapsed so it fits one log line.
+      let calendarHTML = "(none)";
+      if (dayEls.length >= 5) {
+        // Walk up from a middle day cell a few levels to a container that holds
+        // many day candidates — that's the month grid.
+        let node: HTMLElement | null = dayEls[Math.floor(dayEls.length / 2)];
+        let best: HTMLElement | null = node;
+        for (let i = 0; i < 6 && node?.parentElement; i++) {
+          node = node.parentElement;
+          const here = dayEls.filter((d) => node!.contains(d)).length;
+          if (here >= Math.min(14, dayEls.length)) {
+            best = node;
+            break;
+          }
+          best = node;
+        }
+        if (best) {
+          calendarHTML = (best.outerHTML || "")
+            .replace(/\s+/g, " ")
+            .replace(/> </g, "><")
+            .slice(0, 2200);
+        }
+      }
       return [
         `iframes=${document.querySelectorAll("iframe").length}`,
         `shadowRoots=${shadowCount}`,
@@ -2426,6 +2453,7 @@ async function diagnoseCalendar(page: unknown): Promise<string> {
         `dayCands=${dayEls.length} ${daySamples.join(" ") || "(none)"}`,
         `dateMeta=${metaEls.length} ${metaSamples.join(" ") || "(none)"}`,
         `customTags=${Array.from(customTags).slice(0, 12).join(",") || "(none)"}`,
+        `\n  calendarHTML=${calendarHTML}`,
       ].join(" | ");
     });
   } catch (e) {
