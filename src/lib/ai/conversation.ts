@@ -409,6 +409,13 @@ async function persistItineraryOnce(tripId: string, ai: ItineraryAI) {
     ];
     const cleanItems = ai.items
       .filter((i) => {
+        // Ground transport is out of the MVP — drop ANY TRANSPORT item the
+        // model still emits despite the prompt (defense in depth, same shape
+        // as the noise/duplicate guards). No Uber, rentals, or transfers.
+        if (i.type === "TRANSPORT") {
+          console.warn(`[persistItinerary] dropped TRANSPORT item "${i.title}" (out of scope).`);
+          return false;
+        }
         const haystack = `${i.title ?? ""} ${i.description ?? ""}`;
         return !NOISE_PATTERNS.some((rx) => rx.test(haystack));
       })

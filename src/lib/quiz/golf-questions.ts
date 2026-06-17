@@ -436,41 +436,6 @@ export const GOLF_QUIZ: QuizQuestion[] = [
     },
   },
   {
-    kind: "single-select",
-    id: "transport",
-    sectionId: "extras",
-    title: "Ground transport?",
-    subtitle:
-      "Uber is the Pyltrix default — door-to-door, no driving, no parking after dinner.",
-    options: [
-      {
-        value: "uber",
-        label: "Uber",
-        description: "Pyltrix default — Black/LUX where available",
-      },
-      {
-        value: "private_driver",
-        label: "Blacklane chauffeur",
-        description: "Mercedes S-Class, suited driver, full day",
-      },
-      {
-        value: "rental_luxury_suv",
-        label: "Luxury SUV rental",
-        description: "Self-drive option",
-      },
-      {
-        value: "rental_standard",
-        label: "Standard rental",
-      },
-    ],
-    freeTextField: {
-      writesTo: "transportCustom",
-      selectsValue: "custom",
-      label: "Or specify (e.g. limo, helicopter transfer)",
-      placeholder: "e.g. helicopter from JFK to East Hampton",
-    },
-  },
-  {
     kind: "free-text",
     id: "notes",
     sectionId: "extras",
@@ -569,10 +534,6 @@ export function quizAnswersToConstraints(answers: QuizAnswers): TripConstraints 
   pushIf("Dining notes", answers.diningNotes);
   pushIf("Activities", answers.activities);
   pushIf("Activities notes", answers.activitiesNotes);
-  if (answers.transport && answers.transport !== "custom") {
-    pushIf("Ground transport", answers.transport);
-  }
-  pushIf("Ground transport (custom)", answers.transportCustom);
   pushIf("Notes", answers.notes);
 
   return {
@@ -586,7 +547,7 @@ export function quizAnswersToConstraints(answers: QuizAnswers): TripConstraints 
     golfPriority: 80, // they're using a golf travel app
     nightlifePriority,
     lodgingPreference: lodging ?? null,
-    transportPreference: (answers.transport as string | undefined) ?? null,
+    transportPreference: null, // ground transport removed from the MVP
     notes: noteFragments.join(" · ") || null,
   };
 }

@@ -160,15 +160,7 @@ partner access."
   honestly and note you'll lock it once OpenTable access lands. Never
   paste a Resy/OpenTable URL and tell the user to book it themselves.
 
-- book_car — Reserve a rental car. ONLY use this when the customer's
-  transportPreference is "rental_luxury_suv" or "rental_standard" —
-  Pyltrix defaults to Uber for ground transport (see Ground transport
-  guidance above). For Uber-default trips, do NOT call book_car;
-  surface per-transfer Uber line items in the itinerary instead.
-  When you do call it: use IATA airport codes; class is one of
-  economy, midsize, fullsize, luxury, suv, "luxury suv"; default to
-  luxury suv for our clientele. If isStub:true, pencilled in pending
-  API access.
+- book_car — DISABLED. Ground transport is out of scope. NEVER call this.
 
 - tavily_search — AI-optimized web search. PREFER this for narrow factual
   lookups: course green fees, restaurant dress codes/menus, hotel
@@ -366,7 +358,7 @@ Per-category (applies to BOTH cases — only the ceiling differs):
   chef's-table / iconic picks, not the cheap casual spots. (Cost stays
   null for these per the pricing rules, but the RECOMMENDATION quality
   must be best-in-class.)
-- TRANSPORT: Uber Black / LUX / private driver, never economy.
+- TRANSPORT: out of scope — emit none.
 
 ## STAY WHERE THE GOLF IS — one base by default
 This is a GOLF trip. The lodging exists to put the golfer next to their
@@ -473,52 +465,12 @@ Coverage:
   RDU over CLT (much shorter ground transfer). The downstream Duffel
   search ranks offers by stops + duration, so emitting the right
   airport pair is what gates whether a nonstop is even possible.
-- Ground transport: only emit Uber TRANSPORT items for the ESSENTIAL,
-  hard-to-undo transfers — the airport runs and OFF-property golf.
-  Specifically:
-    · arrival: airport → hotel/resort
-    · departure: hotel/resort → airport
-    · golf: see the ON/OFF-PROPERTY rule below.
-  GOLF ON/OFF-PROPERTY RULE — decide this for EVERY round, because you
-  picked both the lodging and the course, so you know the relationship:
-    · ON-PROPERTY (course is part of, operated by, or on the grounds of
-      the SAME resort the guest is staying at — e.g. staying at Pinehurst
-      Resort and playing a Pinehurst course; Omni Barton Creek → Barton
-      Creek courses; Pebble Beach Resort → Pebble Beach Links / Spyglass /
-      Spanish Bay; Bandon Dunes, Streamsong, Kiawah, Sea Island,
-      Greenbrier resort courses): NO Uber. The guest walks or rides the
-      free resort shuttle — emit NO transport line item for that round.
-    · OFF-PROPERTY (guest is staying at a city/standalone hotel and the
-      course is a SEPARATE venue a real drive away, or the course is a
-      different club not affiliated with the lodging — e.g. staying at a
-      downtown Austin hotel and playing a course 30 min out): emit ONE
-      round-trip hotel → course → hotel Uber for that round.
-    · How to decide when unsure: do the lodging and the course share a
-      resort name/brand and sit on the same grounds? Same resort ⇒
-      on-property ⇒ shuttle, no item. Different names/operators with
-      real distance between them ⇒ off-property ⇒ Uber. When genuinely
-      uncertain, lean toward NO Uber (a resort guest can always ask the
-      front desk) rather than adding a ride they may not need.
-  DO NOT emit Uber items for dinners, bars, activities, sightseeing, or
-  any optional outing (no "resort → dinner / dinner → resort"). Reason:
-  guests often get in tired and decide to stay at the hotel, or change
-  plans on a whim — a pre-listed Uber to a restaurant they then skip just
-  confuses them ("how do I cancel this?"). Getting around town for meals
-  and fun is a 30-second in-app Uber they summon themselves in the
-  moment; we don't pre-plan or pre-book those. Default ground transport
-  is Uber Black / Uber LUX for the transfers we DO emit. Only suggest a
-  rental car if the customer's transportPreference explicitly is
-  "rental_luxury_suv" or "rental_standard". For "private_driver" use
-  Blacklane (Mercedes S-Class chauffeur) for the airport runs + any
-  off-property golf; for "uber" (default) use per-transfer Ubers for
-  those same essential transfers only.
-  Course-to-course movement within a single resort: use the resort
-  shuttle (free, no transport line item needed).
-  NEVER add fuel, gas, mileage, "incidental driving budget", parking,
-  tolls, or any other car-running-cost line items. Customers don't
-  care what gas costs — surfacing it makes Pyltrix look like a budget
-  spreadsheet. If a rental car is in the trip, the rental line is the
-  only car-related cost we show.
+- Ground transport: OUT OF SCOPE — do NOT emit ANY transport at all.
+  No TRANSPORT items, no Uber, no rentals, no private drivers, no airport
+  transfers, no hotel→course rides, no resort shuttle line items. Never
+  call book_car. The customer arranges their own ground transport. Emit
+  ZERO transport line items of any kind. Also never add fuel, parking,
+  tolls, or mileage costs.
 - Dining: use real names from the brief; vary cuisine across nights.
 - 1–2 nightlife moments OR experiences depending on group vibe.
 - Downtime/spa where pace warrants it.
