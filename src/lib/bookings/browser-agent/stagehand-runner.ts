@@ -828,58 +828,80 @@ export async function runStagehandBooking(
     // to the AI agent below. On forms it recognizes end-to-end, this reaches the
     // card step with NO model calls at all — fast and consistent, every form.
     let conductorReachedCard = false;
+    let dateArmAttempts = 0;
     try {
-      const tick = async (): Promise<boolean> => {
-        let acted = false;
+      const tick = async (): Promise<string | null> => {
         const p = stagehand.context.activePage() ?? page;
-        if (!p) return false;
+        if (!p) return null;
         await forceSingleTab(p);
         await dismissConsentDeterministically(p, { safe: true });
         // Reached the card step → stop, the payment phase takes over.
         if (await detectCardFieldPresent(p)) {
           conductorReachedCard = true;
-          return false;
+          return null;
         }
         // GOLF: search → slot → rate.
-        if (opts.selectTeeSlot && !acted) {
-          if (!slotAlreadyPicked && (await clickTeeTimeSlotDeterministically(p, opts.teeTimeLabel ?? null))) {
-            slotAlreadyPicked = true; acted = true;
-          } else if (!golfSearchSubmitted && (await clickGolfSearchDeterministically(p))) {
-            golfSearchSubmitted = true; acted = true;
-          } else if (!rateSelected && (await selectCheapestRateRadioDeterministically(p))) {
-            rateSelected = true; acted = true;
+        if (opts.selectTeeSlot) {
+          if (!slotAlreadyPicked) {
+            const r = await clickTeeTimeSlotDeterministically(p, opts.teeTimeLabel ?? null);
+            if (r) { slotAlreadyPicked = true; return `slot ${r}`; }
+          }
+          if (!golfSearchSubmitted) {
+            const s = await clickGolfSearchDeterministically(p);
+            if (s) { golfSearchSubmitted = true; return `golf-search "${s}"`; }
+          }
+          if (!rateSelected) {
+            const r = await selectCheapestRateRadioDeterministically(p);
+            if (r) { rateSelected = true; return `rate ${r}`; }
           }
         }
         // HOTEL: room → rate.
-        if (opts.selectRoom && !acted) {
-          if (!roomPicked && (await clickCheapestRoomDeterministically(p))) {
-            roomPicked = true; acted = true;
-          } else if (!rateSelected && (await selectCheapestRateRadioDeterministically(p))) {
-            rateSelected = true; acted = true;
+        if (opts.selectRoom) {
+          if (!roomPicked) {
+            const r = await clickCheapestRoomDeterministically(p);
+            if (r) { roomPicked = true; return `room ${r}`; }
+          }
+          if (!rateSelected) {
+            const r = await selectCheapestRateRadioDeterministically(p);
+            if (r) { rateSelected = true; return `rate ${r}`; }
           }
         }
-        // DATES (hotel + golf).
-        if (opts.checkinISO && !datesAlreadySet && !acted) {
+        // DATES (hotel + golf). On a single pre-filled RANGE input the setter
+        // can't confirm "in=…" and would keep "OPENED"-arming forever, blocking
+        // the advance click — so after a few arm attempts assume the dates are
+        // already right and move on.
+        if (opts.checkinISO && !datesAlreadySet) {
           const r = await clickStayDatesDeterministically(p, opts.checkinISO ?? null, opts.checkoutISO ?? null);
-          if (r && r !== "OPENED" && r.startsWith("in=")) { datesAlreadySet = true; acted = true; }
-          else if (r) acted = true;
+          if (r && r !== "OPENED" && r.startsWith("in=")) {
+            datesAlreadySet = true;
+            return `dates ${r}`;
+          }
+          if (r) {
+            dateArmAttempts += 1;
+            if (dateArmAttempts >= 3) datesAlreadySet = true; // give up → advance
+            return `dates ${r}`;
+          }
         }
         // GUEST DETAILS autofill.
-        if (opts.autofill && !acted) {
-          if ((await deterministicGuestFill(p, opts.autofill)) > 0) acted = true;
+        if (opts.autofill) {
+          const n = await deterministicGuestFill(p, opts.autofill);
+          if (n > 0) return `autofill ${n} fields`;
         }
         // Off a marketing page → click the Book CTA.
-        if (!acted && (await clickBookingEntryDeterministically(p))) acted = true;
+        const cta = await clickBookingEntryDeterministically(p);
+        if (cta) return `book-cta "${cta}"`;
         // Advance to the next step (Search / Continue / Next) — never commits.
-        if (!acted && (await clickAdvanceButtonDeterministically(p))) acted = true;
-        return acted;
+        const adv = await clickAdvanceButtonDeterministically(p);
+        if (adv) return `advance "${adv}"`;
+        return null;
       };
       let stalls = 0;
       for (let i = 0; i < 24 && !controller.signal.aborted; i++) {
-        const acted = await tick();
+        const action = await tick();
         if (conductorReachedCard) break;
-        if (acted) {
+        if (action) {
           stalls = 0;
+          console.log(`[stagehand] ⚙ conductor → ${action} (${elapsed()})`);
           await opts.onStep?.(progressLabel(i + 1));
         } else if (++stalls >= 3) {
           break; // novel widget — hand to the AI agent
