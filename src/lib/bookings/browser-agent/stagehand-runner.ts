@@ -820,8 +820,82 @@ export async function runStagehandBooking(
       }
     }
 
+    // ── DETERMINISTIC CONDUCTOR (Carson's "just click, don't read") ──────────
+    // Drive the booking with our zero-LLM recognizers in a loop — consent →
+    // Book CTA → dates → search → room/slot → rate → guest fill → advance — each
+    // step matched by MEANING so it adapts to any form's layout. Only when the
+    // recognizers can't make progress (a genuinely novel widget) do we hand off
+    // to the AI agent below. On forms it recognizes end-to-end, this reaches the
+    // card step with NO model calls at all — fast and consistent, every form.
+    let conductorReachedCard = false;
+    try {
+      const tick = async (): Promise<boolean> => {
+        let acted = false;
+        const p = stagehand.context.activePage() ?? page;
+        if (!p) return false;
+        await forceSingleTab(p);
+        await dismissConsentDeterministically(p, { safe: true });
+        // Reached the card step → stop, the payment phase takes over.
+        if (await detectCardFieldPresent(p)) {
+          conductorReachedCard = true;
+          return false;
+        }
+        // GOLF: search → slot → rate.
+        if (opts.selectTeeSlot && !acted) {
+          if (!slotAlreadyPicked && (await clickTeeTimeSlotDeterministically(p, opts.teeTimeLabel ?? null))) {
+            slotAlreadyPicked = true; acted = true;
+          } else if (!golfSearchSubmitted && (await clickGolfSearchDeterministically(p))) {
+            golfSearchSubmitted = true; acted = true;
+          } else if (!rateSelected && (await selectCheapestRateRadioDeterministically(p))) {
+            rateSelected = true; acted = true;
+          }
+        }
+        // HOTEL: room → rate.
+        if (opts.selectRoom && !acted) {
+          if (!roomPicked && (await clickCheapestRoomDeterministically(p))) {
+            roomPicked = true; acted = true;
+          } else if (!rateSelected && (await selectCheapestRateRadioDeterministically(p))) {
+            rateSelected = true; acted = true;
+          }
+        }
+        // DATES (hotel + golf).
+        if (opts.checkinISO && !datesAlreadySet && !acted) {
+          const r = await clickStayDatesDeterministically(p, opts.checkinISO ?? null, opts.checkoutISO ?? null);
+          if (r && r !== "OPENED" && r.startsWith("in=")) { datesAlreadySet = true; acted = true; }
+          else if (r) acted = true;
+        }
+        // GUEST DETAILS autofill.
+        if (opts.autofill && !acted) {
+          if ((await deterministicGuestFill(p, opts.autofill)) > 0) acted = true;
+        }
+        // Off a marketing page → click the Book CTA.
+        if (!acted && (await clickBookingEntryDeterministically(p))) acted = true;
+        // Advance to the next step (Search / Continue / Next) — never commits.
+        if (!acted && (await clickAdvanceButtonDeterministically(p))) acted = true;
+        return acted;
+      };
+      let stalls = 0;
+      for (let i = 0; i < 24 && !controller.signal.aborted; i++) {
+        const acted = await tick();
+        if (conductorReachedCard) break;
+        if (acted) {
+          stalls = 0;
+          await opts.onStep?.(progressLabel(i + 1));
+        } else if (++stalls >= 3) {
+          break; // novel widget — hand to the AI agent
+        }
+        await new Promise((r) => setTimeout(r, 1400));
+      }
+      console.log(
+        `[stagehand] conductor ${conductorReachedCard ? "reached card step — skipping agent" : "handed off to agent"} (${elapsed()})`,
+      );
+    } catch (e) {
+      console.warn(`[stagehand] conductor error (continuing to agent): ${e instanceof Error ? e.message : e}`);
+    }
+
     // DOM-mode agent: act / fillForm / extract / goto via the page's
-    // accessibility tree — no screenshots, no coordinate guessing.
+    // accessibility tree — no screenshots, no coordinate guessing. Runs ONLY
+    // when the conductor above didn't already reach the card step.
     //
     // SPEED via split models (NOT downgrading the brain):
     //   model          = Sonnet — high-level planning ("now set the
@@ -841,11 +915,25 @@ export async function runStagehandBooking(
     });
 
     const maxSteps = opts.maxSteps ?? MAX_STEPS;
+    let stepCount = 0;
+    // The conductor already drove to the card step → skip the AI booking loop
+    // entirely (the payment phase below still uses `agent` to enter the card).
+    type ExecResult = Awaited<ReturnType<typeof agent.execute>>;
+    let result: ExecResult;
+    if (conductorReachedCard) {
+      console.log("[stagehand] ✓ conductor reached the card step — no AI booking loop needed.");
+      result = {
+        success: true,
+        completed: false,
+        message:
+          "Filled in the whole reservation and reached the card step (deterministic conductor).",
+        actions: [],
+      } as unknown as ExecResult;
+    } else {
     console.log(
       `[stagehand] agent.execute starting (maxSteps=${maxSteps}, toolTimeout=${TOOL_TIMEOUT_MS}ms)…`,
     );
-    let stepCount = 0;
-    const result = await agent.execute({
+    result = await agent.execute({
       instruction: opts.task,
       maxSteps,
       // Cap each individual tool call so a hung action recovers fast instead
@@ -1035,6 +1123,7 @@ export async function runStagehandBooking(
         },
       },
     });
+    }
     console.log(
       `[stagehand] ✓ agent finished (${elapsed()}) success=${result.success} completed=${result.completed} steps=${result.actions?.length ?? stepCount}\n  agent message: ${result.message?.slice(0, 600) || "(no message)"}`,
     );
@@ -2089,6 +2178,116 @@ async function clickStayDatesDeterministically(
  * slot list never appeared and the slot-picker had nothing to click. This
  * submits the search. Returns the button label clicked, or null.
  */
+/**
+ * Cheap (DOM-only) check: is a credit-card NUMBER field on the page? This is
+ * the "we've reached the card step — stop driving, hand to the payment flow"
+ * signal for the deterministic conductor, without the LLM extract that
+ * detectPaymentStep uses.
+ */
+async function detectCardFieldPresent(page: unknown): Promise<boolean> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return false;
+  try {
+    return await cdp.evaluate<boolean>(() => {
+      const inputs = Array.from(document.querySelectorAll<HTMLInputElement>("input"));
+      return inputs.some((el) => {
+        const r = el.getClientRects();
+        if (!r || r.length === 0) return false;
+        const m = [
+          el.getAttribute("autocomplete"),
+          el.name,
+          el.id,
+          el.getAttribute("placeholder"),
+          el.getAttribute("aria-label"),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return (
+          el.getAttribute("autocomplete") === "cc-number" ||
+          /cc-?number|card.?number|cardnumber|credit.?card|\bpan\b/.test(m)
+        );
+      });
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Click the button that ADVANCES to the next step — Search / Check Rates /
+ * Continue / Next / Proceed — by meaning, on any layout. Deliberately EXCLUDES
+ * the final commit verbs (Book / Reserve / Pay / Confirm / Complete) and never
+ * fires when a card field is present, so the conductor can move through a form
+ * without ever committing the booking. Returns the label clicked, or null.
+ */
+async function clickAdvanceButtonDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      // Never advance from the card step.
+      const cardField = Array.from(
+        document.querySelectorAll<HTMLInputElement>("input"),
+      ).some((el) => {
+        const m = [
+          el.getAttribute("autocomplete"),
+          el.name,
+          el.id,
+          el.getAttribute("placeholder"),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return (
+          el.getAttribute("autocomplete") === "cc-number" ||
+          /cc-?number|card.?number|cardnumber/.test(m)
+        );
+      });
+      if (cardField) return null;
+      const ADV =
+        /^(search( tee times?| availability| rates?)?|check (rates?|availability)|find( tee)? times?|continue|next|proceed|select rate to continue|continue to (guest|details|checkout|payment)|go to checkout|review|view rates?|update search)$/i;
+      const isOk = (el: HTMLElement): boolean => {
+        const r = el.getClientRects();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el);
+        if (s.visibility === "hidden" || s.display === "none") return false;
+        if ((el as HTMLButtonElement).disabled) return false;
+        if (el.getAttribute("aria-disabled") === "true") return false;
+        return true;
+      };
+      const nodes = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "button,[role=button],a,input[type=submit],input[type=button]",
+        ),
+      );
+      for (const el of nodes) {
+        const raw =
+          el.innerText ||
+          el.textContent ||
+          (el as HTMLInputElement).value ||
+          el.getAttribute("aria-label") ||
+          "";
+        const txt = raw
+          .trim()
+          .replace(/^[\s›»→⟶▶‹«←◀<>·•|]+|[\s›»→⟶▶‹«←◀<>·•|]+$/g, "")
+          .trim();
+        if (!txt || txt.length > 30) continue;
+        if (ADV.test(txt) && isOk(el)) {
+          if (el instanceof HTMLAnchorElement) el.target = "_self";
+          el.click();
+          return txt;
+        }
+      }
+      return null;
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function clickGolfSearchDeterministically(
   page: unknown,
 ): Promise<string | null> {
