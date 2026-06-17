@@ -1893,8 +1893,19 @@ async function clickStayDatesDeterministically(
             return headerKey(el) != null;
           });
           if (headers.length === 0) return null;
-          // Candidate day cells anywhere — a leaf showing exactly the day number
-          // (the price is a SIBLING node, e.g. "16" + "€2550").
+          // A cell matches the day when its text is EITHER exactly the day
+          // number (clean leaf, "16") OR starts with the day followed by a
+          // price (Streamsong/quick18 mash the price into the cell: "5$295").
+          // Skip sold-out/unavailable cells outright.
+          const SOLD_OUT = /sold\s*out|unavailable|not\s*available|\bn\/a\b/i;
+          const matchesDay = (raw: string): boolean => {
+            const t = raw.trim();
+            if (!t || t.length > 30) return false;
+            if (t === wantDay) return true;
+            const first = t.match(/^(\d{1,2})(?=\D|$)/)?.[1];
+            return first === wantDay && /[$€£]\s?\d/.test(t);
+          };
+          // Candidate day cells anywhere in the calendar.
           const cands = Array.from(
             document.querySelectorAll<HTMLElement>(
               "td,button,a,[role=gridcell],[role=button],li,span,div",
@@ -1902,9 +1913,9 @@ async function clickStayDatesDeterministically(
           ).filter(
             (el) =>
               isVisible(el) &&
-              (el.textContent || "").trim() === wantDay &&
-              el.children.length === 0 &&
-              !looksDisabled(el),
+              !looksDisabled(el) &&
+              !SOLD_OUT.test(el.textContent || "") &&
+              matchesDay(el.textContent || ""),
           );
           if (cands.length === 0) return null;
           // For a DUAL-MONTH calendar the same day appears twice. Disambiguate
