@@ -18,16 +18,16 @@ export function anthropic(): Anthropic {
     defaultHeaders: {
       "anthropic-version": "2023-06-01",
     },
-    // Anthropic returns 529 ("overloaded") during traffic spikes. The SDK
-    // retries 408/409/429/5xx with exponential backoff + jitter. FAIL FAST
-    // (Carson's call): 5 retries × a 120s timeout could hang a build for ~10
-    // minutes when Opus is overloaded — the customer just watches a spinner.
-    // 2 retries × 75s caps the worst case near ~2.5 min, then a clean error
-    // ("try again / simpler request") instead of an endless hang. 75s still
-    // comfortably covers a legit itinerary generation (multi-leg trips fan
-    // out per leg, so each call is bounded).
-    maxRetries: 1,
-    timeout: 60_000,
+    // Anthropic returns 529 ("overloaded") during traffic spikes. FAIL-FAST
+    // but don't guillotine HEALTHY calls: a legit itinerary generation takes
+    // 60-120s, so a 60s timeout was killing good Opus calls (a regression that
+    // failed builds even when the model was fine). 110s comfortably fits a real
+    // generation; maxRetries 0 means a genuine overload/timeout fails
+    // IMMEDIATELY (no 2nd SDK attempt) so the itinerary agent's own Opus→Sonnet
+    // fallback runs right away, within the per-leg budget. That fallback is a
+    // better recovery than a blind SDK retry of the same overloaded model.
+    maxRetries: 0,
+    timeout: 110_000,
   });
   return _client;
 }
