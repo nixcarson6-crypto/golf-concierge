@@ -891,6 +891,13 @@ export async function runStagehandBooking(
             if (r) { rateSelected = true; return `rate ${r}`; }
           }
         }
+        // HOTEL ENHANCEMENTS/UPSELL step → continue past it in one click
+        // (Aman/SHR/Marriott interpose a spa/breakfast/transfer add-on page;
+        // a real run wasted 330s grinding it). Self-guards to the upsell step.
+        if (opts.selectRoom) {
+          const up = await clickThroughUpsellDeterministically(p);
+          if (up) return `upsell-skip "${up}"`;
+        }
         // GUEST DETAILS autofill.
         if (opts.autofill) {
           const n = await deterministicGuestFill(p, opts.autofill);
@@ -1154,6 +1161,25 @@ export async function runStagehandBooking(
                     `[stagehand] ⚡ room picked mid-run (${r}) (${elapsed()})`,
                   );
                 }
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
+          // ENHANCEMENTS/UPSELL step (hotels): the moment we land on the
+          // add-on page, continue past it in one click so the agent doesn't
+          // grind every spa/breakfast/transfer upsell by hand (a real Aman run
+          // burned 330s / ~25 steps here then timed out 2s from the card step).
+          // Self-guards to the upsell step + never fires on the card step.
+          if (opts.selectRoom) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active) {
+                const up = await clickThroughUpsellDeterministically(active);
+                if (up)
+                  console.log(
+                    `[stagehand] ⚡ skipped enhancements upsell ("${up}") (${elapsed()})`,
+                  );
               }
             } catch {
               /* best-effort */
@@ -2338,6 +2364,107 @@ async function clickAdvanceButtonDeterministically(
           .trim();
         if (!txt || txt.length > 30) continue;
         if (ADV.test(txt) && isOk(el)) {
+          if (el instanceof HTMLAnchorElement) el.target = "_self";
+          el.click();
+          return txt;
+        }
+      }
+      return null;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Blow through a hotel ENHANCEMENTS / upsell step in ONE click — zero LLM.
+ * After the room/rate, luxury engines (Aman, SHR, Marriott) interpose an
+ * "Enhancements / Enhance your stay" page of add-ons (spa, breakfast,
+ * transfers, ski butler). You don't need to select anything — just continue.
+ * A real Aman run spent 330s / ~25 AI steps grinding this page and then hit
+ * the time cap 2s from the card step. This detects that we're ON an upsell
+ * step (its heading/step-indicator is unmistakable) and clicks the forward
+ * button — but ONLY there, so it can't skip the date or room step. Never fires
+ * on the card step. Returns the button label, or null.
+ */
+async function clickThroughUpsellDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const isVisible = (el: Element | null): boolean => {
+        if (!el) return false;
+        const r = (el as HTMLElement).getClientRects();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return s.visibility !== "hidden" && s.display !== "none";
+      };
+      // Bail on the card step — never advance past payment.
+      const hasCard = Array.from(
+        document.querySelectorAll<HTMLInputElement>("input"),
+      ).some((el) => {
+        const m = [
+          el.getAttribute("autocomplete"),
+          el.name,
+          el.id,
+          el.getAttribute("placeholder"),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return /cc-?number|card.?number|cardnumber/.test(m);
+      });
+      if (hasCard) return null;
+      // Are we actually on an enhancements/upsell step? Look for its heading
+      // or an active step-indicator — short, unmistakable text only.
+      const UPSELL =
+        /^(enhancements?|enhance your stay|enhance your experience|add-?ons?|extras|upgrade your stay|personali[sz]e your stay|make it special|optional extras|enrich your stay)$/i;
+      const onUpsell = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "h1,h2,h3,h4,[class*=step],[class*=Step],[aria-current],li,span",
+        ),
+      ).some((el) => {
+        if (!isVisible(el)) return false;
+        const t = (el.textContent || "").trim();
+        return t.length <= 30 && UPSELL.test(t);
+      });
+      if (!onUpsell) return null;
+      // Click the forward button. Prefer an explicit skip/no-thanks, else the
+      // generic Continue/Next/Proceed — never an "Add"/"Select" upsell button.
+      const FORWARD =
+        /^(no thanks?|skip|skip this( step)?|not now|maybe later|continue( to .*)?|next|proceed|review( & continue)?|continue to (guest|details|checkout|payment)|go to checkout|done)$/i;
+      const nodes = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "button,[role=button],a,input[type=submit],input[type=button]",
+        ),
+      );
+      // Two passes: skip/no-thanks first, then the generic continue verbs.
+      for (const skipFirst of [true, false]) {
+        for (const el of nodes) {
+          const raw =
+            el.innerText ||
+            el.textContent ||
+            (el as HTMLInputElement).value ||
+            el.getAttribute("aria-label") ||
+            "";
+          const txt = raw
+            .trim()
+            .replace(/^[\s›»→⟶▶‹«←◀<>·•|]+|[\s›»→⟶▶‹«←◀<>·•|]+$/g, "")
+            .trim();
+          if (!txt || txt.length > 30) continue;
+          if (!FORWARD.test(txt)) continue;
+          const isSkip = /^(no thanks?|skip|not now|maybe later)/i.test(txt);
+          if (skipFirst !== isSkip) continue;
+          const s = window.getComputedStyle(el);
+          if (
+            !isVisible(el) ||
+            (el as HTMLButtonElement).disabled ||
+            el.getAttribute("aria-disabled") === "true" ||
+            s.pointerEvents === "none"
+          )
+            continue;
           if (el instanceof HTMLAnchorElement) el.target = "_self";
           el.click();
           return txt;
