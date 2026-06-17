@@ -349,6 +349,7 @@ DATES (get these right — most failures start here, especially the calendar)
 - DO NOT GET STUCK. If you've tried the SAME action ~2-3 times and the dates still aren't set (the field hasn't changed), STOP repeating it and switch tactics: try typing the date into the field instead; or click a different element (the field label vs the cell); or close the calendar and reopen it. Spinning on one stubborn calendar is the #1 way runs die — change your approach instead of repeating.
 - HOTEL: set BOTH check-in AND check-out so the night count matches — never leave it at one night or "today".
 - Many sites default to today's date and show "no availability" — always set the requested date FIRST, then read availability.
+- SOLD-OUT REQUESTED DATES: if the task's check-in/check-out (or ANY night of the stay, for a hotel) is marked "Sold out" / greyed-out / unavailable on the calendar, do NOT substitute different dates. The customer's trip is fixed to their flights — booking other dates is a serious failure. Report failed / no_availability and name the dates that are sold out. (Our system then offers the customer a bookable alternative property — that's not your job; just report it cleanly.) Only the EXACT requested dates are acceptable; if they're unavailable, stop and say so.
 
 HOTEL PLAYBOOK
 1. The booking widget is almost always RIGHT ON THE HOMEPAGE — the "Check in — Check out / Guests / Check Rates" bar in the hero. USE IT IN PLACE. Do NOT navigate off to a separate "Reservations" / "Book" page hunting for a form when one is already on screen. Only go looking for a "Book"/"Reserve"/"Check Availability" link if there is genuinely no date widget visible.
@@ -597,6 +598,11 @@ export async function runStagehandBooking(
       timeoutMs: 30_000,
     });
     console.log(`[stagehand] ✓ navigated to ${opts.startUrl} (${elapsed()})`);
+    // ONE TAB: force all links + window.open into THIS tab so the booking can
+    // never split across tabs (which makes the live view look idle on the
+    // wrong tab — Carson's "is it even working?" confusion). Re-applied per
+    // step after navigations.
+    await forceSingleTab(page);
 
     // BOT-WALL on landing: many venue MARKETING sites (Troon's troonnorthgolf
     // .com, big chains) sit behind CloudFront/Akamai/Cloudflare and return a
@@ -904,6 +910,8 @@ export async function runStagehandBooking(
                 console.log(
                   `[stagehand] ⚡ dismissed sticky popup ("${cleared}") (${elapsed()})`,
                 );
+              // Keep everything in one tab (the override resets on navigation).
+              if (active) await forceSingleTab(active);
             }
           } catch {
             /* best-effort */
@@ -1671,6 +1679,48 @@ async function slimHeavyDom(page: unknown): Promise<void> {
     });
     if (removed > 0)
       console.log(`[stagehand] ✓ dom diet removed ${removed} heavy nodes`);
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * Force all navigation to stay in ONE tab. Booking-engine links (and JS
+ * window.open calls) routinely spawn a second tab, which (a) splits the work
+ * so the live view shows an idle tab and looks dead, and (b) leaves the agent's
+ * deterministic passes running on the wrong page. This rewrites target=_blank
+ * to _self and overrides window.open to navigate in-place. Re-run per step
+ * (it resets on navigation). Best-effort — never throws.
+ */
+async function forceSingleTab(page: unknown): Promise<void> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return;
+  try {
+    await cdp.evaluate(() => {
+      document
+        .querySelectorAll<HTMLAnchorElement>('a[target="_blank"]')
+        .forEach((a) => {
+          a.target = "_self";
+        });
+      const w = window as unknown as { __pyltrixSingleTab?: boolean };
+      if (!w.__pyltrixSingleTab) {
+        w.__pyltrixSingleTab = true;
+        try {
+          window.open = function (u?: string | URL): Window | null {
+            if (u) {
+              try {
+                location.href = String(u);
+              } catch {
+                /* ignore */
+              }
+            }
+            return null;
+          } as typeof window.open;
+        } catch {
+          /* some sites freeze window.open — ignore */
+        }
+      }
+    });
   } catch {
     /* best-effort */
   }
