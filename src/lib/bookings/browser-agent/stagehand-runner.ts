@@ -2926,12 +2926,24 @@ async function clickTeeTimeSlotDeterministically(
             "a,button,[role=button],li,tr,div,span",
           ),
         );
+        // A real bookable tee-time card, not a label. Rejects the time-RANGE
+        // slider ("7:00 AM–6:00 PM" — two times) that a real run mistook for a
+        // 7:00 slot, and the page timestamp; requires a bookable signal (price,
+        // players, or a Book/View/Reserve word).
+        const looksLikeSlot = (txt: string): boolean => {
+          const times = txt.match(/\b\d{1,2}:\d{2}\s*[ap]?\.?m?\.?/gi) || [];
+          if (times.length >= 2) return false; // a range / window, not a slot
+          return /\$\s?\d|\bplayer|\bbook\b|\breserve\b|\bselect\b|\bview\b|tee\s*time/i.test(
+            txt,
+          );
+        };
         const slots: { el: HTMLElement; min: number }[] = [];
         const seen = new Set<HTMLElement>();
         for (const el of nodes) {
           if (!isVisible(el)) continue;
           const txt = (el.textContent || "").trim();
           if (!txt || txt.length > 140) continue;
+          if (!looksLikeSlot(txt)) continue;
           const min = parseMin(txt);
           if (min == null) continue;
           const target = clickTarget(el);
@@ -2940,13 +2952,24 @@ async function clickTeeTimeSlotDeterministically(
           slots.push({ el: target, min });
         }
         if (slots.length === 0) return null;
-        slots.sort((a, b) =>
-          want != null
-            ? Math.abs(a.min - want) - Math.abs(b.min - want)
-            : a.min - b.min,
-        );
-        slots[0].el.click();
-        return `slot=${slots[0].min}`;
+        const ascending = [...slots].sort((a, b) => a.min - b.min);
+        let chosen = ascending[0];
+        if (want != null) {
+          // Is the requested time actually offered (within ~45 min of a real
+          // slot)? If yes → nearest to it. If NOT (e.g. wanted 7am, earliest is
+          // 11:30) → take the SECOND-earliest available (Carson's rule), or the
+          // earliest if only one exists.
+          const near = ascending.find((s) => Math.abs(s.min - want) <= 45);
+          if (near) {
+            chosen = [...slots].sort(
+              (a, b) => Math.abs(a.min - want) - Math.abs(b.min - want),
+            )[0];
+          } else {
+            chosen = ascending[1] ?? ascending[0];
+          }
+        }
+        chosen.el.click();
+        return `slot=${chosen.min}`;
       },
       { reqLabel: requestedLabel },
     );
@@ -3204,13 +3227,20 @@ async function selectCheapestRateRadioDeterministically(
       // Something already selected → leave it; the agent continues.
       if (opts.some((o) => o.checked)) return null;
 
-      let pool = opts.filter((o) => o.price != null && !o.membership);
+      // NEVER treat a CURRENCY selector as a rate. A real golf run picked
+      // "U.A.E Dirham" because the fallback grabbed any option when no priced
+      // rate was found. Exclude currency names/codes outright.
+      const CURRENCY =
+        /dirham|dollar|euro\b|pound|peso|yen|rupee|franc|krona|\b(usd|eur|gbp|mxn|aed|cad|aud|jpy|chf|inr)\b|currency/i;
+      const usable = opts.filter((o) => !o.membership && !CURRENCY.test(o.text));
+      let pool = usable.filter((o) => o.price != null);
       if (pool.length === 0)
-        pool = opts.filter(
-          (o) => /public|standard|guest/i.test(o.text) && !o.membership,
+        pool = usable.filter((o) =>
+          /public|standard|guest|green\s*fee|\brate\b|\d+\s*hole/i.test(o.text),
         );
-      if (pool.length === 0) pool = opts.filter((o) => !o.membership);
-      if (pool.length === 0) pool = opts;
+      // No clearly rate-like option → do NOT guess (prevents the currency /
+      // random-option mis-fire). Let the agent handle this step.
+      if (pool.length === 0) return null;
       pool.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
       const choice = pool[0];
       // Click the control; for a real <input> also force checked + dispatch
