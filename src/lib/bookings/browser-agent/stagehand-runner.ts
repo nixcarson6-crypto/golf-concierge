@@ -704,6 +704,9 @@ export async function runStagehandBooking(
     let golfSearchSubmitted = false;
     let rateSelected = false;
     let roomPicked = false;
+    // true ONLY when the date setter confirmed "in=…". Gates the room picker
+    // (in the conductor AND the per-step pass) so it can't fire on a calendar.
+    let datesConfirmed = false;
     let verifyWallHits = 0;
     let verifyWallBlocked = false;
 
@@ -829,7 +832,6 @@ export async function runStagehandBooking(
     // card step with NO model calls at all — fast and consistent, every form.
     let conductorReachedCard = false;
     let dateArmAttempts = 0;
-    let datesConfirmed = false; // true ONLY when the setter confirmed "in=…"
     try {
       const tick = async (): Promise<string | null> => {
         const p = stagehand.context.activePage() ?? page;
@@ -1069,6 +1071,7 @@ export async function runStagehandBooking(
                 );
                 if (r && r !== "OPENED" && r.startsWith("in=")) {
                   datesAlreadySet = true;
+                  datesConfirmed = true;
                   console.log(
                     `[stagehand] ⚡ dates set mid-run (${r}) (${elapsed()})`,
                   );
@@ -1133,7 +1136,9 @@ export async function runStagehandBooking(
           }
           // ROOM STEP (hotels): the moment a rooms/suites grid renders, click
           // the cheapest room's CTA so the agent never SITS on the list. Once.
-          if (opts.selectRoom && !roomPicked) {
+          // Gated on datesConfirmed so it can't false-fire on the calendar
+          // page (Aman: "room=first" before any date was chosen).
+          if (opts.selectRoom && !roomPicked && datesConfirmed) {
             try {
               const active = stagehand.context.activePage();
               if (active) {
@@ -2560,16 +2565,20 @@ async function clickCheapestRoomDeterministically(
           book: !!booking,
         });
       }
-      if (rooms.length === 0) return null;
-      // Cheapest priced card; nulls last. Tie-break toward a booking CTA.
-      rooms.sort((a, b) => {
+      // Require a real PRICE on the room. A priceless "room" is almost always
+      // a false match on a non-room page (a calendar cell, a nav tab) — that's
+      // the "room=first" phantom that clicked the wrong thing on Aman. A real
+      // room list shows "from $X/night", so demand one.
+      const priced = rooms.filter((r) => r.price != null);
+      if (priced.length === 0) return null;
+      priced.sort((a, b) => {
         const pa = a.price ?? Infinity;
         const pb = b.price ?? Infinity;
         if (pa !== pb) return pa - pb;
         return (b.book ? 1 : 0) - (a.book ? 1 : 0);
       });
-      rooms[0].cta.click();
-      return `room=${rooms[0].price != null ? "$" + rooms[0].price : "first"}`;
+      priced[0].cta.click();
+      return `room=$${priced[0].price}`;
     });
   } catch {
     return null;
