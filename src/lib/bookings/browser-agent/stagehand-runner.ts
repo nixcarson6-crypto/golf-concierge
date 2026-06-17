@@ -705,6 +705,13 @@ export async function runStagehandBooking(
     let golfSearchSubmitted = false;
     let rateSelected = false;
     let roomPicked = false;
+    // Hotels often need a SECOND priced pick after the room: a rate-plan list
+    // ("Standard Daily Rate · Reserve" / "Wellness Escape · Reserve" — Aman,
+    // SHR). Same shape as the room list (priced card + Reserve/Book CTA), so we
+    // re-use the room picker for it, gated on its own flag + that the room was
+    // picked on an EARLIER step (so it can't re-click the room on the same DOM).
+    let rateCardPicked = false;
+    let roomPickedAtStep = -1;
     // true ONLY when the date setter confirmed "in=…". Gates the room picker
     // (in the conductor AND the per-step pass) so it can't fire on a calendar.
     let datesConfirmed = false;
@@ -885,6 +892,12 @@ export async function runStagehandBooking(
           if (!roomPicked) {
             const r = await clickCheapestRoomDeterministically(p);
             if (r) { roomPicked = true; return `room ${r}`; }
+          } else if (!rateCardPicked) {
+            // SECOND priced list (rate plans with Reserve/Book buttons). Runs
+            // on the NEXT tick after the room pick (the return above splits
+            // them), so it can't re-click the room on the same DOM.
+            const r = await clickCheapestRoomDeterministically(p);
+            if (r) { rateCardPicked = true; return `rate-card ${r}`; }
           }
           if (!rateSelected) {
             const r = await selectCheapestRateRadioDeterministically(p);
@@ -1157,8 +1170,35 @@ export async function runStagehandBooking(
                 const r = await clickCheapestRoomDeterministically(active);
                 if (r) {
                   roomPicked = true;
+                  roomPickedAtStep = stepCount;
                   console.log(
                     `[stagehand] ⚡ room picked mid-run (${r}) (${elapsed()})`,
+                  );
+                }
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
+          // RATE-PLAN step (hotels): after the room, a SECOND priced list often
+          // appears — rate plans each with a "Reserve"/"Book" button (Aman:
+          // "Standard Daily Rate · Reserve"). Same shape as the room list, so
+          // re-use the room picker to click the cheapest. Only fires on a step
+          // AFTER the room pick, so it can't re-click the room on the same DOM.
+          else if (
+            opts.selectRoom &&
+            roomPicked &&
+            !rateCardPicked &&
+            stepCount > roomPickedAtStep
+          ) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active) {
+                const r = await clickCheapestRoomDeterministically(active);
+                if (r) {
+                  rateCardPicked = true;
+                  console.log(
+                    `[stagehand] ⚡ rate plan picked mid-run (${r}) (${elapsed()})`,
                   );
                 }
               }
