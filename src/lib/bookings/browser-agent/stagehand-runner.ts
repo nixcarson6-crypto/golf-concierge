@@ -2000,22 +2000,42 @@ async function clickStayDatesDeterministically(
               cls,
             );
           };
+          // Abbreviated month names → full, so headers like "AUG 2026" or
+          // "Sept 2026" resolve (luxury calendars love abbreviations).
+          const ABBR: Record<string, string> = {
+            jan: "january", feb: "february", mar: "march", apr: "april",
+            jun: "june", jul: "july", aug: "august", sep: "september",
+            sept: "september", oct: "october", nov: "november", dec: "december",
+          };
           // ALL month headers on the page, in document order, with their key.
           const headerKey = (el: HTMLElement): string | null => {
             const t = (el.textContent || "").trim().toLowerCase();
             const yr = t.match(/\b(20\d{2})\b/)?.[1];
-            const mon = MONTHS.find((mn) => t.includes(mn.toLowerCase()));
-            return mon && yr ? `${mon.toLowerCase()} ${yr}` : null;
+            let mon = MONTHS.find((mn) => t.includes(mn.toLowerCase()))?.toLowerCase();
+            // Fall back to an abbreviation (whole-word) if no full name matched.
+            if (!mon) {
+              for (const ab of Object.keys(ABBR)) {
+                if (new RegExp(`\\b${ab}\\b`).test(t)) { mon = ABBR[ab]; break; }
+              }
+            }
+            return mon && yr ? `${mon} ${yr}` : null;
           };
           const headers = Array.from(
             document.querySelectorAll<HTMLElement>("*"),
           ).filter((el) => {
-            const t = (el.textContent || "").trim();
-            // The element's WHOLE text must be "Month YYYY" (e.g. "AUGUST
+            // Strip leading/trailing nav arrows + punctuation that luxury
+            // calendars bake into the header ("‹ August 2026 ›", "« AUG 2026 »")
+            // — without this the whole-text regex rejects the header and the
+            // day cell is never found, so the slow AI clicks the dates instead.
+            const t = (el.textContent || "")
+              .replace(/[‹›<>«»→←⟨⟩❮❯|·•–—]+/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+            // The element's CLEANED text must be "Month YYYY" (e.g. "AUGUST
             // 2026") — that excludes a container holding the whole calendar
             // (whose text is long) without a fragile children-count guard.
-            if (!t || t.length > 20) return false;
-            if (!/^[a-zà-ÿ.]+\s+\d{4}$/i.test(t)) return false;
+            if (!t || t.length > 24) return false;
+            if (!/^[a-zà-ÿ.]+\.?\s+\d{4}$/i.test(t)) return false;
             return headerKey(el) != null;
           });
           if (headers.length === 0) return null;
