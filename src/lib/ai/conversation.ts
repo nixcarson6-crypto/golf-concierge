@@ -710,6 +710,15 @@ export function cleanDestination(raw: string | null | undefined): string | null 
     // the no-space dictation form.
     /^(?:head|hop|go|move|fly|drive|travel|press|carry)\s*(?:over|on|out|down|up|across|along|onwards?)$/i,
     /^(?:continue|onwards?|next|afterwards?|after\s+that)$/i,
+    // RELATIVE references, not place names — "the closest course there",
+    // "nearest hotel nearby", "the course near there". A user types these as
+    // a HINT ("Venice / the closest course there") and the slash/connector
+    // splitter turns the hint into a phantom destination ("The Closet Course
+    // There"). Resolve to null so the leg is dropped and the itinerary agent
+    // just picks the real course nearest the actual destination.
+    /^the\s+(closest|closet|nearest|nearby|local|surrounding)\b/i,
+    /\b(closest|closet|nearest|nearby)\s+(course|courses?|hotel|resort|club|place|spot|town|city|airport|one|golf)\b/i,
+    /\b(course|courses?|hotel|resort|club|place|spot)s?\s+(there|nearby|close\s?by|around\s+(there|here)|in\s+the\s+area)\b/i,
   ];
   if (garbagePatterns.some((re) => re.test(s))) return null;
   // Sentence-shape rejections:
