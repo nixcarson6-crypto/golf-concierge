@@ -876,10 +876,12 @@ export async function runStagehandBooking(
             return `dates ${r}`;
           }
         }
-        // HOTEL: room → rate — ONLY once the dates are really set, so the
-        // room-picker can't false-fire on the calendar/dates page (it did on
-        // Aman: "room=first" before any dates were chosen).
-        if (opts.selectRoom && datesConfirmed) {
+        // HOTEL: room → rate. The room-picker has its own calendar-step guard
+        // (it bails while a date picker is on screen) AND requires a real
+        // priced room CTA, so it's safe to run every tick — we do NOT gate it
+        // on datesConfirmed, which wrongly stayed false (disabling the picker
+        // for the whole run) whenever the AGENT, not our code, set the dates.
+        if (opts.selectRoom) {
           if (!roomPicked) {
             const r = await clickCheapestRoomDeterministically(p);
             if (r) { roomPicked = true; return `room ${r}`; }
@@ -1136,10 +1138,12 @@ export async function runStagehandBooking(
             }
           }
           // ROOM STEP (hotels): the moment a rooms/suites grid renders, click
-          // the cheapest room's CTA so the agent never SITS on the list. Once.
-          // Gated on datesConfirmed so it can't false-fire on the calendar
-          // page (Aman: "room=first" before any date was chosen).
-          if (opts.selectRoom && !roomPicked && datesConfirmed) {
+          // the cheapest room's CTA so the agent never SITS on the list (Aman
+          // sat 400s on it). The picker self-guards against the calendar step
+          // and requires a real priced room CTA, so it's safe to run every
+          // step — NOT gated on datesConfirmed (which stayed false, and so
+          // disabled this, whenever the agent set the dates itself).
+          if (opts.selectRoom && !roomPicked) {
             try {
               const active = stagehand.context.activePage();
               if (active) {
@@ -2521,6 +2525,23 @@ async function clickCheapestRoomDeterministically(
         const s = window.getComputedStyle(el as HTMLElement);
         return s.visibility !== "hidden" && s.display !== "none";
       };
+      // CALENDAR-STEP GUARD: never pick a "room" while the date picker is still
+      // on screen. Aman's calendar cells carry PRICES ("11 €5838"), so a priced
+      // cell could masquerade as a room — bail if a date-selection calendar is
+      // present (its title/legend is unmistakable). This replaces the old
+      // datesConfirmed gate, which wrongly stayed false (and disabled the room
+      // picker for the whole run) whenever the AGENT set the dates itself.
+      const onCalendarStep = Array.from(
+        document.querySelectorAll<HTMLElement>("*"),
+      ).some((el) => {
+        if (!isVisible(el)) return false;
+        const t = (el.textContent || "").trim();
+        if (t.length > 60) return false;
+        return /^(select your dates|choose your dates|minimum stay required|no availability)$/i.test(
+          t,
+        );
+      });
+      if (onCalendarStep) return null;
       const priceOf = (s: string): number | null => {
         const m = s.match(/[$€£]\s?([\d,]+(?:\.\d{1,2})?)/);
         return m ? parseFloat(m[1].replace(/,/g, "")) : null;
