@@ -1,9 +1,84 @@
 "use client";
 
 import * as React from "react";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { QuizQuestion } from "@/lib/quiz/golf-questions";
+
+/* -------------------------------------------------------------------------- */
+/* Shared option card — one component for every quiz page so all 15 questions  */
+/* read as one designed system: equal-height cards, a radio/checkbox indicator */
+/* that fills green when chosen, a green tint + ring on select, and a tactile  */
+/* hover. `multi` switches the indicator from a circle (radio) to a rounded    */
+/* square (checkbox) so the affordance matches single- vs multi-select.        */
+/* -------------------------------------------------------------------------- */
+function QuizOptionCard({
+  label,
+  description,
+  glyph,
+  selected,
+  multi = false,
+  onClick,
+}: {
+  label: string;
+  description?: string | null;
+  glyph?: string | null;
+  selected: boolean;
+  multi?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        "group relative flex h-full min-h-[4.25rem] w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition-all duration-150",
+        "active:scale-[0.99]",
+        selected
+          ? "border-accent bg-accent/[0.07] shadow-[0_0_0_1px_hsl(var(--accent))]"
+          : "border-border bg-background hover:border-foreground/40 hover:bg-surface-raised/50",
+      )}
+    >
+      {/* Indicator: circle (single) / rounded square (multi), fills green + a
+          check when selected. The clear "selectable" affordance the plain dot
+          was missing. */}
+      <span
+        className={cn(
+          "grid size-5 shrink-0 place-items-center border transition-all",
+          multi ? "rounded-md" : "rounded-full",
+          selected
+            ? "border-accent bg-accent text-accent-foreground"
+            : "border-border group-hover:border-foreground/40",
+        )}
+      >
+        <Check
+          className={cn(
+            "size-3 transition-transform",
+            selected ? "scale-100" : "scale-0",
+          )}
+          strokeWidth={3}
+        />
+      </span>
+      {glyph && (
+        <span className="shrink-0 text-lg leading-none opacity-80 grayscale">
+          {glyph}
+        </span>
+      )}
+      <span className="min-w-0">
+        <span className="block font-medium leading-snug text-foreground">
+          {label}
+        </span>
+        {description && (
+          <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+            {description}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
 
 /* -------------------------------------------------------------------------- */
 /* Single-select cards — auto-advance on tap (Hungry Root pattern).            */
@@ -26,50 +101,17 @@ export function SingleSelectView({
 }) {
   return (
     <div className="max-w-2xl mx-auto w-full space-y-6">
-      <div className="grid gap-2.5 sm:grid-cols-2">
-        {question.options.map((opt) => {
-          const selected = value === opt.value;
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => onAnswer(opt.value)}
-              className={cn(
-                "group relative text-left rounded-xl border bg-background px-5 py-4 transition-all duration-150",
-                "hover:border-accent hover:shadow-[0_1px_0_0_hsl(var(--accent))]",
-                selected
-                  ? "border-accent shadow-[0_1px_0_0_hsl(var(--accent))]"
-                  : "border-border",
-              )}
-            >
-              {/* Selected marker — a small filled square in the top-right.
-                  Monochrome version of the old copper ring + tint. */}
-              <span
-                className={cn(
-                  "absolute right-4 top-4 size-2 rounded-full transition-all",
-                  selected ? "bg-accent scale-100" : "bg-transparent scale-0",
-                )}
-              />
-              <div className="flex items-start gap-3 pr-4">
-                {opt.glyph && (
-                  <span className="text-xl leading-none shrink-0 mt-0.5 grayscale opacity-80">
-                    {opt.glyph}
-                  </span>
-                )}
-                <div className="min-w-0">
-                  <p className="font-medium text-foreground leading-snug">
-                    {opt.label}
-                  </p>
-                  {opt.description && (
-                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                      {opt.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </button>
-          );
-        })}
+      <div className="grid items-stretch gap-2.5 sm:grid-cols-2">
+        {question.options.map((opt) => (
+          <QuizOptionCard
+            key={opt.value}
+            label={opt.label}
+            description={opt.description}
+            glyph={opt.glyph}
+            selected={value === opt.value}
+            onClick={() => onAnswer(opt.value)}
+          />
+        ))}
       </div>
 
       {question.freeTextField && (
@@ -155,49 +197,18 @@ export function MultiSelectView({
 
   return (
     <div className="max-w-2xl mx-auto w-full space-y-6">
-      <div className="grid gap-2.5 sm:grid-cols-2">
-        {question.options.map((opt) => {
-          const isSelected = selected.includes(opt.value);
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => toggle(opt.value)}
-              className={cn(
-                "group relative text-left rounded-xl border bg-background px-5 py-4 transition-all duration-150",
-                "hover:border-accent",
-                isSelected
-                  ? "border-accent shadow-[0_1px_0_0_hsl(var(--accent))]"
-                  : "border-border",
-              )}
-            >
-              {/* Tiny filled square in the corner replaces the gold ring. */}
-              <span
-                className={cn(
-                  "absolute right-4 top-4 size-2 rounded-full transition-all",
-                  isSelected ? "bg-accent scale-100" : "bg-transparent scale-0",
-                )}
-              />
-              <div className="flex items-start gap-3 pr-4">
-                {opt.glyph && (
-                  <span className="text-xl leading-none shrink-0 mt-0.5 grayscale opacity-80">
-                    {opt.glyph}
-                  </span>
-                )}
-                <div className="min-w-0">
-                  <p className="font-medium text-foreground leading-snug">
-                    {opt.label}
-                  </p>
-                  {opt.description && (
-                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                      {opt.description}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </button>
-          );
-        })}
+      <div className="grid items-stretch gap-2.5 sm:grid-cols-2">
+        {question.options.map((opt) => (
+          <QuizOptionCard
+            key={opt.value}
+            label={opt.label}
+            description={opt.description}
+            glyph={opt.glyph}
+            multi
+            selected={selected.includes(opt.value)}
+            onClick={() => toggle(opt.value)}
+          />
+        ))}
       </div>
 
       {question.freeTextField && (
