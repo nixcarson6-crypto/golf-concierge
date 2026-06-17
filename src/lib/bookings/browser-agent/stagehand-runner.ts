@@ -2078,9 +2078,9 @@ async function clickStayDatesDeterministically(
             jun: "june", jul: "july", aug: "august", sep: "september",
             sept: "september", oct: "october", nov: "november", dec: "december",
           };
-          // ALL month headers on the page, in document order, with their key.
-          const headerKey = (el: HTMLElement): string | null => {
-            const t = (el.textContent || "").trim().toLowerCase();
+          // Month+year → normalized key, from a raw string.
+          const headerKey = (raw: string): string | null => {
+            const t = raw.trim().toLowerCase();
             const yr = t.match(/\b(20\d{2})\b/)?.[1];
             let mon = MONTHS.find((mn) => t.includes(mn.toLowerCase()))?.toLowerCase();
             // Fall back to an abbreviation (whole-word) if no full name matched.
@@ -2091,24 +2091,36 @@ async function clickStayDatesDeterministically(
             }
             return mon && yr ? `${mon} ${yr}` : null;
           };
-          const headers = Array.from(
-            document.querySelectorAll<HTMLElement>("*"),
-          ).filter((el) => {
-            // Strip leading/trailing nav arrows + punctuation that luxury
-            // calendars bake into the header ("‹ August 2026 ›", "« AUG 2026 »")
-            // — without this the whole-text regex rejects the header and the
-            // day cell is never found, so the slow AI clicks the dates instead.
-            const t = (el.textContent || "")
+          const cleanHdr = (s: string): string =>
+            s
+              // Strip nav arrows + punctuation luxury calendars bake into the
+              // header ("‹ August 2026 ›", "« AUG 2026 »").
               .replace(/[‹›<>«»→←⟨⟩❮❯|·•–—]+/g, " ")
               .replace(/\s+/g, " ")
               .trim();
-            // The element's CLEANED text must be "Month YYYY" (e.g. "AUGUST
-            // 2026") — that excludes a container holding the whole calendar
-            // (whose text is long) without a fragile children-count guard.
-            if (!t || t.length > 24) return false;
-            if (!/^[a-zà-ÿ.]+\.?\s+\d{4}$/i.test(t)) return false;
-            return headerKey(el) != null;
-          });
+          // Find month headers by scanning TEXT NODES, not whole elements. The
+          // month label ("AUGUST 2026") is often a BARE text child of a box
+          // that ALSO holds the day grid — so no element's whole text is just
+          // "AUGUST 2026", and element-matching finds zero headers and bails.
+          // This was why Aman's calendar never resolved (→ OPENED → slow AI).
+          const headers: { el: HTMLElement; key: string }[] = [];
+          const seenHdr = new Set<HTMLElement>();
+          const walker = document.createTreeWalker(
+            document.body,
+            NodeFilter.SHOW_TEXT,
+          );
+          let tnode: Node | null;
+          while ((tnode = walker.nextNode())) {
+            const t = cleanHdr(tnode.nodeValue || "");
+            if (!t || t.length > 24) continue;
+            if (!/^[a-zà-ÿ.]+\.?\s+\d{4}$/i.test(t)) continue;
+            const key = headerKey(t);
+            const parent = tnode.parentElement;
+            if (!key || !parent || seenHdr.has(parent) || !isVisible(parent))
+              continue;
+            seenHdr.add(parent);
+            headers.push({ el: parent, key });
+          }
           if (headers.length === 0) return null;
           // A cell matches the day when its text is EITHER exactly the day
           // number (clean leaf, "16") OR starts with the day followed by a
@@ -2140,11 +2152,12 @@ async function clickStayDatesDeterministically(
           // header is the target month.
           const FOLLOWING = 4; // Node.DOCUMENT_POSITION_FOLLOWING
           const nearestKey = (cell: HTMLElement): string | null => {
-            let best: HTMLElement | null = null;
+            let best: { el: HTMLElement; key: string } | null = null;
             for (const h of headers) {
-              if (h.compareDocumentPosition(cell) & FOLLOWING) best = h; // h precedes cell
+              // h precedes (or contains) the cell in document order.
+              if (h.el.compareDocumentPosition(cell) & FOLLOWING) best = h;
             }
-            return best ? headerKey(best) : null;
+            return best ? best.key : null;
           };
           for (const cell of cands) {
             if (nearestKey(cell) === targetKey) {
