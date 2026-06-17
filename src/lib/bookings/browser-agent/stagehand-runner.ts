@@ -384,6 +384,7 @@ ACCOUNT / REGISTRATION WALLS
 
 GOLF / TEE-TIME PLAYBOOK
 - The booking lives under "Tee Times", "Book a Tee Time", "Golf", "Reserve", or a resort's "Experiences" / "Recreation" section — open it.
+- RESORT / MARKETING GOLF PAGE — DIG, DON'T GIVE UP. When you land on a golf page that's pure marketing (a hero photo + "About the Course / Pro Shop / Golf Lessons" cards + a "Check Availability" bar that's really the HOTEL's room widget — e.g. One&Only "Experiences › Golf"), the tee sheet is almost always ONE or TWO clicks deeper behind a secondary link. Do NOT report form_not_found after one look — LOOK HARD and click the most booking-like link, in this order: "BOOK A TEE TIME" / "TEE TIMES" / "RESERVE" → then "ABOUT THE COURSE" / "VIEW THE COURSE" / "MORE INFO" / "PLAN YOUR GAME" → then the COURSE'S OWN NAME as a link (resorts link out to the golf club's own site / tee sheet, often on a different domain — follow it). Follow ONE hop; if that page has a Book / Tee-time button or a date+players widget, use it. The "Check Availability" date bar on a golf marketing page is usually for HOTEL ROOMS, not golf — don't book a room when the task is a tee time; find the golf-specific booking link instead. Only after you've tried the booking links AND the course-name link and there's genuinely no online tee sheet (phone / concierge / "arranged through the Golf Shop" only) do you report form_not_found, quoting the phone/email.
 - Many courses embed a booking widget (GolfNow, Lightspeed/Chronogolf, ForeUp, TeeQuest). That widget IS the real booking system — use it, even if the URL host changes.
 - Set the DATE and number of PLAYERS (light thinking — you KNOW both from the task), then the slot list is a REFLEX: click the tee time at or nearest the requested time on the SAME step you see the grid — don't compare slots, don't re-read. Clicking the slot opens the form; batch-fill the player/contact details and book. If a card/deposit is required, STOP per rule 6.
 - THE SPECIFIC COURSE IS A PREFERENCE, NOT A REQUIREMENT. Many clubs have MULTIPLE courses (Troon North = Monument + Pinnacle; Pebble, Bandon, Streamsong all have several). If the task names a course (e.g. "Monument Course") but that one has NO open tee times for the date, BOOK AN AVAILABLE TEE TIME AT ANOTHER COURSE AT THE SAME CLUB — the customer wants to play this CLUB; which of its courses is secondary. NEVER report "no availability" while other courses at the same facility have open slots (a real run found 58 tee times at Troon North, all Pinnacle, and wrongly quit because it wanted Monument). Clear/ignore the course filter, take ANY available course's nearest time, and book it. Only report no_availability when the WHOLE club has no tee times that day.
@@ -2966,6 +2967,18 @@ async function clickBookingEntryDeterministically(
         /^(book now|reserve now|book online|book your stay|book a stay|book a room|book your room|book your trip|book dates|reserve dates|reserve your stay|reserve a room|plan my stay|plan your stay|book accommodations? online|check availability|check rates|book a tee time|book tee times?|tee times? booking|book golf|book a round|book your round|golf booking|jetzt buchen|prenota ora|réservez?|reservar ahora)$/i;
       const SECONDARY =
         /^(reserve|reservations?|book|booking|tee times?|stay|buchen|prenota|réserver|reservar)$/i;
+      // GOLF-ONLY deeper tier: a resort's golf page is often pure MARKETING
+      // (One&Only "Experiences › Golf": hero + "About the Course / Pro Shop /
+      // Lessons" cards, no booking widget). The tee sheet is one hop behind a
+      // secondary link. We ONLY try these on a golf-context page so they can't
+      // mis-fire on a hotel page (where "More info" means something else).
+      // Ordered most-specific first; bare "more info" is the last resort.
+      const GOLF_DEEPER =
+        /^(book a tee time|tee times?|reserve a tee time|golf reservations?|about the course|view the course|the course|play golf|plan your game|more info|more information)$/i;
+      const isGolfContext =
+        /golf|tee[-\s]?time|fairway|links\b|clubhouse|pro\s*shop/i.test(
+          location.pathname + location.search + " " + (document.title || ""),
+        );
       const isVisible = (el: Element | null): boolean => {
         if (!el) return false;
         const rects = (el as HTMLElement).getClientRects();
@@ -2996,7 +3009,10 @@ async function clickBookingEntryDeterministically(
           // button (a real Hôtel du Cap run burned 40s hunting for "BOOK ›").
           .replace(/^[\s›»→⟶▶‹«←◀<>·•|]+|[\s›»→⟶▶‹«←◀<>·•|]+$/g, "")
           .trim();
-      for (const re of [PRIMARY, SECONDARY]) {
+      const tiers = isGolfContext
+        ? [PRIMARY, SECONDARY, GOLF_DEEPER]
+        : [PRIMARY, SECONDARY];
+      for (const re of tiers) {
         for (const el of nodes) {
           const txt = labelOf(el);
           if (!txt || txt.length > 40) continue;

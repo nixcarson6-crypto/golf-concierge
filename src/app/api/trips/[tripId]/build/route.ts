@@ -832,17 +832,59 @@ export async function POST(
     });
     const renders =
       t && tripDisplayLabel({ title: t.title, destination: t.destination });
-    if (
-      chosenDestination &&
-      (!renders || renders === "Generating destination…")
-    ) {
-      await db.trip.update({
-        where: { id: tripId },
-        data: { title: chosenDestination, destination: chosenDestination },
-      });
-      console.log(
-        `[build] title repaired → "${chosenDestination}" (saved title didn't render).`,
-      );
+    if (!renders || renders === "Generating destination…") {
+      // `clean` = a real place name or null, reusing the SAME sentence /
+      // suffix rejection the display layer uses (so a conversational
+      // chosenDestination — the cause of the stuck "Generating destination…"
+      // header — is treated as null, not written back verbatim).
+      const clean = (raw: string | null | undefined): string | null => {
+        const label = tripDisplayLabel({ title: (raw ?? "").trim() });
+        return label === "Generating destination…" ? null : label;
+      };
+      // Fallback: derive the destination from the itinerary itself. Every
+      // item (lodging, golf, dining, transport) carries a `location`, and
+      // the CITY repeats across them — so the most common clean location is
+      // the trip's place even when destination resolution wrote nothing
+      // usable. This is why a fully-built One&Only Palmilla itinerary should
+      // never show "Generating destination…": the items all say Los Cabos.
+      let derived: string | null = null;
+      try {
+        const items = await db.itineraryItem.findMany({
+          where: { itinerary: { tripId } },
+          select: { location: true },
+        });
+        const counts = new Map<string, { display: string; n: number }>();
+        for (const it of items) {
+          const c = clean(it.location);
+          if (!c) continue;
+          const k = c.toLowerCase();
+          counts.set(k, { display: c, n: (counts.get(k)?.n ?? 0) + 1 });
+        }
+        let best: { display: string; n: number } | null = null;
+        for (const v of counts.values()) {
+          if (
+            !best ||
+            v.n > best.n ||
+            (v.n === best.n && v.display.length < best.display.length)
+          )
+            best = v;
+        }
+        derived = best?.display ?? null;
+      } catch {
+        /* best-effort */
+      }
+      const repaired = clean(chosenDestination) ?? derived;
+      if (repaired) {
+        await db.trip.update({
+          where: { id: tripId },
+          data: { title: repaired, destination: repaired },
+        });
+        console.log(
+          `[build] title repaired → "${repaired}" (saved title didn't render${
+            clean(chosenDestination) ? "" : "; derived from itinerary"
+          }).`,
+        );
+      }
     }
   } catch (e) {
     console.warn("[build] title repair skipped:", e);
