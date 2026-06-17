@@ -104,9 +104,10 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
       // Default to a generous budget; if the model still truncates,
       // we retry once at 24k before giving up. Opus 4.7's max is well
       // above this so there's headroom for genuinely complex requests.
-      const runOnce = (maxTokens: number) =>
+      const runOnce = (maxTokens: number, model?: string) =>
         runStructured({
           tier: "orchestrator",
+          model,
           system: ITINERARY_SYSTEM,
           cacheSystem: true,
           schema: itinerarySchema,
@@ -130,29 +131,44 @@ export async function runItineraryAgent(input: ItineraryAgentInput) {
         msg.includes("schema validation failed") || // empty tool_use input
         msg.includes("did not return a tool_use"); // refusal / null response
 
-      // Up to THREE attempts. First at 14k. On any retryable glitch, retry
-      // at 24k (handles truncation AND incidentally gives a glitched model
-      // more headroom). On a second glitch, one final attempt with a brief
-      // pause to ride out any transient overload.
-      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      // Opus is DOWN/overloaded (Anthropic capacity, transient). No amount of
+      // Opus retry helps — fall straight to Sonnet 4.6, which has separate
+      // capacity and is fast, so the trip still BUILDS instead of erroring.
+      const isOverloadOrTimeout = (msg: string): boolean =>
+        /overloaded|rate.?limit|\b429\b|\b529\b|internal server error|\b5\d{2}\b|timed? ?out|timeout|connection error|econnreset|aborted|etimedout/i.test(
+          msg,
+        );
+      // Default to a current Sonnet; overridable if the id ever changes.
+      const FALLBACK_MODEL =
+        process.env.ANTHROPIC_MODEL_FALLBACK || "claude-sonnet-4-6";
+
+      // Opus first (quality). On a truncation/schema glitch → one bigger Opus
+      // retry. On OVERLOAD/TIMEOUT (Opus capacity is down) → fall straight to
+      // Sonnet 4.6 so the trip still builds instead of erroring the customer.
       try {
         return await runOnce(14_000);
       } catch (err1) {
         const m1 = err1 instanceof Error ? err1.message : String(err1);
+        if (isOverloadOrTimeout(m1)) {
+          console.warn(
+            `[itinerary] Opus overloaded/timed out (${m1.slice(0, 120)}…) — falling back to ${FALLBACK_MODEL}`,
+          );
+          return await runOnce(14_000, FALLBACK_MODEL);
+        }
         if (!isRetryableModelGlitch(m1)) throw err1;
         console.warn(
-          `[itinerary] attempt 1 failed (${m1.slice(0, 140)}…) — retrying at 24k`,
+          `[itinerary] attempt 1 glitch (${m1.slice(0, 120)}…) — retrying Opus at 24k`,
         );
         try {
           return await runOnce(24_000);
         } catch (err2) {
           const m2 = err2 instanceof Error ? err2.message : String(err2);
-          if (!isRetryableModelGlitch(m2)) throw err2;
+          // Whatever the second failure is (glitch OR overload), Sonnet is the
+          // safety net — get the customer a real itinerary.
           console.warn(
-            `[itinerary] attempt 2 failed (${m2.slice(0, 140)}…) — sleeping 4s then final retry`,
+            `[itinerary] attempt 2 failed (${m2.slice(0, 120)}…) — falling back to ${FALLBACK_MODEL}`,
           );
-          await sleep(4_000);
-          return await runOnce(24_000);
+          return await runOnce(24_000, FALLBACK_MODEL);
         }
       }
     },

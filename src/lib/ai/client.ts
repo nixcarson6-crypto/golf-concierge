@@ -26,8 +26,8 @@ export function anthropic(): Anthropic {
     // ("try again / simpler request") instead of an endless hang. 75s still
     // comfortably covers a legit itinerary generation (multi-leg trips fan
     // out per leg, so each call is bounded).
-    maxRetries: 2,
-    timeout: 75_000,
+    maxRetries: 1,
+    timeout: 60_000,
   });
   return _client;
 }

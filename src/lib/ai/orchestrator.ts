@@ -32,6 +32,9 @@ export type RunStructuredOptions<T extends z.ZodTypeAny> = {
   /** Optional reasoning/effort budget (forwarded to Anthropic where supported). */
   thinking?: { enabled: boolean; budgetTokens?: number };
   temperature?: number;
+  /** Explicit model id override. Wins over `tier`. Used for graceful
+   *  degradation — e.g. fall back to Sonnet when Opus is overloaded. */
+  model?: string;
   /** When true, mark the system prompt as cacheable. Reduces cost + latency
    * for prompts that are stable across many turns (most of ours). */
   cacheSystem?: boolean;
@@ -50,7 +53,7 @@ export async function runStructured<T extends z.ZodTypeAny>(
   opts: RunStructuredOptions<T>,
 ): Promise<z.infer<T>> {
   const client = anthropic();
-  const model = modelFor(opts.tier ?? "orchestrator");
+  const model = opts.model ?? modelFor(opts.tier ?? "orchestrator");
   const toolName = opts.toolName ?? STRUCTURED_TOOL_DEFAULT;
 
   const jsonSchema = zodToJsonSchema(opts.schema);

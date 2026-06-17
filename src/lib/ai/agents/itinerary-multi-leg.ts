@@ -46,10 +46,13 @@ export type MultiLegResult = {
  */
 const DEFAULT_CONCURRENCY = 4;
 
-/** Hard ceiling per leg. A single stuck Opus call (truncation-retry loop,
- *  overload backoff) can't hang the whole build past this — it just fails
- *  that leg and the others still land. */
-const PER_LEG_TIMEOUT_MS = 150_000;
+/** Hard ceiling per leg. Must fit the FULL degraded path: an overloaded Opus
+ *  call failing fast (SDK 1 retry × 60s ≈ 120s) PLUS the Sonnet 4.6 fallback
+ *  inside runItineraryAgent (~40-60s). At 150s the leg killed the call before
+ *  the fallback could run, so an Opus-overload night failed every leg. 240s
+ *  gives the fallback room to actually complete the trip. Legs run in parallel,
+ *  so this is wall-clock per leg, not summed. */
+const PER_LEG_TIMEOUT_MS = 240_000;
 
 /**
  * Plan every leg in parallel + merge. Throws ONLY if ALL legs fail; any
