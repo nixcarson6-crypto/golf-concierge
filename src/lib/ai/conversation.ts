@@ -568,6 +568,43 @@ async function persistItineraryOnce(tripId: string, ai: ItineraryAI) {
  * title is "Pinehurst", not the whole sentence. Heuristic-based so
  * we don't burn a model call on every quiz submission.
  */
+/**
+ * Disambiguate iconic-but-ambiguous bare city names to the interpretation a
+ * traveler overwhelmingly means. "Venice" → Venice, Italy (not Venice, FL —
+ * which sits next to Sarasota, so the golf-itinerary agent grabbed Sarasota
+ * while flights correctly used VCE). Only fires on the BARE city with no
+ * region/country qualifier, so "Venice, Florida" or "Naples FL" are respected.
+ * Naples is deliberately NOT mapped — Naples, FL is a genuine top golf
+ * destination a user may actually mean.
+ */
+const ICONIC_CITY: Record<string, string> = {
+  venice: "Venice, Italy",
+  florence: "Florence, Italy",
+  rome: "Rome, Italy",
+  milan: "Milan, Italy",
+  paris: "Paris, France",
+  nice: "Nice, France",
+  athens: "Athens, Greece",
+  vienna: "Vienna, Austria",
+  cairo: "Cairo, Egypt",
+  lisbon: "Lisbon, Portugal",
+  dublin: "Dublin, Ireland",
+};
+
+export function disambiguateDestination(dest: string): string {
+  const trimmed = (dest ?? "").trim();
+  if (!trimmed) return trimmed;
+  // Already qualified (comma, or a country/US-state word present) → respect it.
+  if (
+    /,|\b(italy|france|greece|austria|egypt|portugal|ireland|spain|england|scotland|uk|usa|u\.s\.?|united\s+states|florida|texas|georgia|ohio|nevada|california|fl|tx|ga|oh|nv|ca|az|sc|nc)\b/i.test(
+      trimmed,
+    )
+  ) {
+    return trimmed;
+  }
+  return ICONIC_CITY[trimmed.toLowerCase()] ?? trimmed;
+}
+
 export function cleanDestination(raw: string | null | undefined): string | null {
   if (!raw) return null;
   let s = raw.trim();

@@ -17,6 +17,7 @@ import {
   persistItinerary,
   autoTitle,
   cleanDestination,
+  disambiguateDestination,
 } from "@/lib/ai/conversation";
 import { nudge } from "@/lib/events";
 import { searchFlights } from "@/lib/bookings/providers/duffel-search";
@@ -266,6 +267,24 @@ export async function POST(
       JSON.stringify({ error: friendlyBuildError(rawMsg) }),
       { status: 502, headers: { "Content-Type": "application/json" } },
     );
+  }
+
+  // Disambiguate iconic ambiguous cities ("Venice" → Venice, Italy) so the
+  // itinerary agent and flight search agree on the SAME place. Without this,
+  // "Venice" sent flights to VCE (Italy) but hotels/golf to Sarasota (Venice,
+  // FL). Applies to the primary destination AND every leg.
+  chosenDestination = disambiguateDestination(chosenDestination);
+  legs = legs.map((l) => ({
+    ...l,
+    destination: disambiguateDestination(l.destination),
+  }));
+  if (chosenDestination !== rawConstraints.destination?.trim()) {
+    await db.trip
+      .update({
+        where: { id: tripId },
+        data: { destination: chosenDestination, title: chosenDestination },
+      })
+      .catch(() => {});
   }
 
   // Persist TripLeg rows. Wipe any old legs first so the trip's leg
