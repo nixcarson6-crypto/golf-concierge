@@ -441,6 +441,27 @@ async function runBrowserBookingInner(args: {
       console.log(`[book] ${p.name} didn't book ${item.title} (${api.reason}).`);
     }
     console.log(`[book] No API carried ${item.title} — using browser agent.`);
+    // HOTEL AGENT KILL SWITCH (MVP): if the browser agent isn't reliable
+    // enough on luxury hotels, set HOTEL_AGENT_DISABLED=true. Hotels that
+    // LiteAPI/Hotelbeds DO cover still book above (API-first); only the
+    // UNCOVERED ones land here, and instead of a slow agent run we hand the
+    // customer a direct booking link — exactly the "rely on the APIs, link the
+    // rest" fallback. Flip the env off again to re-enable the agent.
+    if (process.env.HOTEL_AGENT_DISABLED === "true") {
+      console.log(
+        `[book] HOTEL_AGENT_DISABLED — linking ${item.title} instead of the agent.`,
+      );
+      await markBookingFailed({
+        booking,
+        itemId: item.id,
+        tripId: args.tripId,
+        failureReason: "form_not_found",
+        message:
+          "No partner API covers this hotel — book it directly with the link below.",
+        fallbackContact: { website: startUrl, phone: places.phone ?? null },
+      });
+      return;
+    }
   }
 
   const cardProvider = buildCardProviderForBooking({

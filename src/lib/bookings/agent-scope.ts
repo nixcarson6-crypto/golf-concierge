@@ -21,6 +21,28 @@
 const ALWAYS_BOOKABLE = new Set(["LODGING", "TEE_TIME"]);
 
 /**
+ * KILL SWITCH (MVP): item types forced to "links only" — the agent never
+ * attempts them; they stay recommendations with their Visit-website / Call
+ * links. Set NEXT_PUBLIC_BOOKING_LINKS_ONLY to a comma list, e.g.
+ *   "TEE_TIME"          → golf becomes links (no API exists for golf anyway)
+ *   "TEE_TIME,LODGING"  → golf + hotels both links
+ *   "ALL"               → everything links
+ * NEXT_PUBLIC_ so the client panel and the server route read the SAME value
+ * (the button hides AND the endpoint skips — no drift). Empty = agent on.
+ * NOTE: for HOTELS, prefer HOTEL_AGENT_DISABLED (run-booking) instead — that
+ * still lets LiteAPI/Hotelbeds book covered hotels and only links the misses.
+ */
+function linksOnlyTypes(): Set<string> {
+  const raw = process.env.NEXT_PUBLIC_BOOKING_LINKS_ONLY ?? "";
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean),
+  );
+}
+
+/**
  * True when the agent should book this item. Hotels + golf always; a
  * transport item only when it's a car rental (not an Uber/chauffeur ride).
  */
@@ -29,6 +51,8 @@ export function isAgentBookable(
   title?: string | null,
   description?: string | null,
 ): boolean {
+  const off = linksOnlyTypes();
+  if (off.has("ALL") || off.has(type)) return false;
   if (ALWAYS_BOOKABLE.has(type)) return true;
   if (type === "TRANSPORT") return isCarRental(title, description);
   return false;
