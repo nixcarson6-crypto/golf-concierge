@@ -198,6 +198,11 @@ export type RunStagehandOptions = {
    *  CTA the moment a rooms/suites list renders — the agent's #1 hotel stall
    *  was sitting on the room grid. */
   selectRoom?: boolean;
+  /** Cars only: when true, the SAME cheapest-priced-card picker + add-on/
+   *  upsell skip used for hotels also runs on a rental flow — picks the
+   *  cheapest vehicle the moment results render and continues past the
+   *  protection/extras page (the #1 car-rental time sink) in one click. */
+  selectVehicle?: boolean;
   /** Price-approval gate (cents): when the venue's real total at the card
    *  step exceeds this, do NOT pay — return a price_approval outcome so the
    *  customer can approve the real price first. null = no gate (customer
@@ -705,6 +710,13 @@ export async function runStagehandBooking(
     let golfSearchSubmitted = false;
     let rateSelected = false;
     let roomPicked = false;
+    // Hotels AND cars use the same cheapest-priced-card picker (room cards /
+    // vehicle cards are the same shape: a priced card + a Select/Book/Reserve
+    // CTA). And hotels, cars, AND golf can all interpose an add-on/upsell page
+    // (hotel enhancements, car protection/extras, golf cart/club rental), so
+    // the one-click upsell skip should fire for all three — not hotels only.
+    const pickCards = !!(opts.selectRoom || opts.selectVehicle);
+    const skipUpsell = !!(opts.selectRoom || opts.selectVehicle || opts.selectTeeSlot);
     // Hotels often need a SECOND priced pick after the room: a rate-plan list
     // ("Standard Daily Rate · Reserve" / "Wellness Escape · Reserve" — Aman,
     // SHR). Same shape as the room list (priced card + Reserve/Book CTA), so we
@@ -892,12 +904,12 @@ export async function runStagehandBooking(
             return `dates ${r}`;
           }
         }
-        // HOTEL: room → rate. The room-picker has its own calendar-step guard
-        // (it bails while a date picker is on screen) AND requires a real
-        // priced room CTA, so it's safe to run every tick — we do NOT gate it
+        // HOTEL room / CAR vehicle → rate. The picker has its own calendar-step
+        // guard (it bails while a date picker is on screen) AND requires a real
+        // priced card CTA, so it's safe to run every tick — we do NOT gate it
         // on datesConfirmed, which wrongly stayed false (disabling the picker
         // for the whole run) whenever the AGENT, not our code, set the dates.
-        if (opts.selectRoom) {
+        if (pickCards) {
           if (!roomPicked) {
             const r = await clickCheapestRoomDeterministically(p);
             if (r) { roomPicked = true; return `room ${r}`; }
@@ -913,10 +925,11 @@ export async function runStagehandBooking(
             if (r) { rateSelected = true; return `rate ${r}`; }
           }
         }
-        // HOTEL ENHANCEMENTS/UPSELL step → continue past it in one click
-        // (Aman/SHR/Marriott interpose a spa/breakfast/transfer add-on page;
-        // a real run wasted 330s grinding it). Self-guards to the upsell step.
-        if (opts.selectRoom) {
+        // ADD-ON / UPSELL step → continue past it in one click. Hotels
+        // (enhancements), cars (protection/extras), golf (cart/club rental) all
+        // interpose one; a real hotel run wasted 330s grinding it. Self-guards
+        // to the upsell step, so it's safe for all three.
+        if (skipUpsell) {
           const up = await clickThroughUpsellDeterministically(p);
           if (up) return `upsell-skip "${up}"`;
         }
@@ -1172,7 +1185,7 @@ export async function runStagehandBooking(
           // and requires a real priced room CTA, so it's safe to run every
           // step — NOT gated on datesConfirmed (which stayed false, and so
           // disabled this, whenever the agent set the dates itself).
-          if (opts.selectRoom && !roomPicked) {
+          if (pickCards && !roomPicked) {
             try {
               const active = stagehand.context.activePage();
               if (active) {
@@ -1195,7 +1208,7 @@ export async function runStagehandBooking(
           // re-use the room picker to click the cheapest. Only fires on a step
           // AFTER the room pick, so it can't re-click the room on the same DOM.
           else if (
-            opts.selectRoom &&
+            pickCards &&
             roomPicked &&
             !rateCardPicked &&
             stepCount > roomPickedAtStep
@@ -1215,19 +1228,19 @@ export async function runStagehandBooking(
               /* best-effort */
             }
           }
-          // ENHANCEMENTS/UPSELL step (hotels): the moment we land on the
-          // add-on page, continue past it in one click so the agent doesn't
-          // grind every spa/breakfast/transfer upsell by hand (a real Aman run
-          // burned 330s / ~25 steps here then timed out 2s from the card step).
-          // Self-guards to the upsell step + never fires on the card step.
-          if (opts.selectRoom) {
+          // ADD-ON / UPSELL step: the moment we land on the add-on page,
+          // continue past it in one click so the agent doesn't grind every
+          // upsell by hand — hotel enhancements (a real Aman run burned 330s
+          // here), car protection/extras (the #1 car time sink), golf cart/club
+          // rental. Self-guards to the upsell step + never fires on the card.
+          if (skipUpsell) {
             try {
               const active = stagehand.context.activePage();
               if (active) {
                 const up = await clickThroughUpsellDeterministically(active);
                 if (up)
                   console.log(
-                    `[stagehand] ⚡ skipped enhancements upsell ("${up}") (${elapsed()})`,
+                    `[stagehand] ⚡ skipped add-on/upsell page ("${up}") (${elapsed()})`,
                   );
               }
             } catch {
@@ -2592,7 +2605,7 @@ async function clickThroughUpsellDeterministically(
       // Are we actually on an enhancements/upsell step? Look for its heading
       // or an active step-indicator — short, unmistakable text only.
       const UPSELL =
-        /^(enhancements?|enhance your stay|enhance your experience|add-?ons?|extras|upgrade your stay|personali[sz]e your stay|make it special|optional extras|enrich your stay)$/i;
+        /^(enhancements?|enhance your stay|enhance your experience|add-?ons?|extras|upgrade your stay|personali[sz]e your stay|make it special|optional extras|enrich your stay|protections?|coverage|protection options?|protections?\s*(&|and)\s*extras|extras?\s*(&|and)\s*(options|protection)|optional (services|extras|protection)|additional (options|services|drivers?)|cover options?|add (extras|protection)|your extras)$/i;
       const onUpsell = Array.from(
         document.querySelectorAll<HTMLElement>(
           "h1,h2,h3,h4,[class*=step],[class*=Step],[aria-current],li,span",
@@ -2606,7 +2619,7 @@ async function clickThroughUpsellDeterministically(
       // Click the forward button. Prefer an explicit skip/no-thanks, else the
       // generic Continue/Next/Proceed — never an "Add"/"Select" upsell button.
       const FORWARD =
-        /^(no thanks?|skip|skip this( step)?|not now|maybe later|continue( to .*)?|next|proceed|review( & continue)?|continue to (guest|details|checkout|payment)|go to checkout|done)$/i;
+        /^(no thanks?|skip|skip this( step)?|skip extras|not now|maybe later|decline|decline all|no extras|continue without (extras|protection)?|continue( to .*)?|next|proceed( to .*)?|review( & continue)?|continue to (guest|details|checkout|payment|driver)|go to (checkout|payment)|done)$/i;
       const nodes = Array.from(
         document.querySelectorAll<HTMLElement>(
           "button,[role=button],a,input[type=submit],input[type=button]",
@@ -2627,7 +2640,10 @@ async function clickThroughUpsellDeterministically(
             .trim();
           if (!txt || txt.length > 30) continue;
           if (!FORWARD.test(txt)) continue;
-          const isSkip = /^(no thanks?|skip|not now|maybe later)/i.test(txt);
+          const isSkip =
+            /^(no thanks?|skip|not now|maybe later|decline|no extras|continue without)/i.test(
+              txt,
+            );
           if (skipFirst !== isSkip) continue;
           const s = window.getComputedStyle(el);
           if (

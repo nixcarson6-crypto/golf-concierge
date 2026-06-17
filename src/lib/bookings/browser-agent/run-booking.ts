@@ -651,6 +651,10 @@ async function runBrowserBookingInner(args: {
               // grid renders (zero LLM) — the agent's #1 hotel stall is sitting
               // on the room list.
               selectRoom: item.type === "LODGING",
+              // Cars: the SAME cheapest-priced-card picker + add-on/extras skip
+              // the hotel flow uses — picks the cheapest vehicle when results
+              // render and blows past the protection/extras page in one click.
+              selectVehicle: item.type === "TRANSPORT",
               teeTimeLabel:
                 item.type === "TEE_TIME" ? task.displayTime ?? null : null,
               onStep: async (label) => {
