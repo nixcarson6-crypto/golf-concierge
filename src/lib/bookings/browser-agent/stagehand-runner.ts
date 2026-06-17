@@ -892,6 +892,9 @@ export async function runStagehandBooking(
             return `dates ${r}`;
           }
           if (r) {
+            // Clicking the next-month arrow toward the target month is real
+            // progress, not a stall — don't count it toward the give-up budget.
+            if (r === "ADVANCING") return `dates advancing-month`;
             // First time the calendar comes back un-settable, dump what's on
             // the page so we can fix the recognizer precisely (vs. guessing).
             if (r === "OPENED" && !calendarDiagnosed) {
@@ -900,7 +903,7 @@ export async function runStagehandBooking(
               console.log(`[stagehand] 🔬 calendar diag :: ${diag}`);
             }
             dateArmAttempts += 1;
-            if (dateArmAttempts >= 3) datesAlreadySet = true; // give up → advance
+            if (dateArmAttempts >= 5) datesAlreadySet = true; // give up → advance
             return `dates ${r}`;
           }
         }
@@ -2282,10 +2285,106 @@ async function clickStayDatesDeterministically(
           return false;
         };
 
+        // ── Strategy 0: ARIA date grid + MONTH NAVIGATION ────────────────
+        // The luxury-hotel pattern (One&Only/SynXis/react-aria): each day is a
+        //   <td role="gridcell" aria-label="11" aria-disabled="false">11<div>USD 1,148</div></td>
+        // inside a month grid labelled "August 2026". TWO things broke the old
+        // matcher: (1) the day's identity is the aria-label "11" (price is
+        // "USD 1,148" — no $/€ symbol, so the text+price matcher missed it),
+        // and (2) the calendar opens on the CURRENT month, so the target month
+        // must be reached by clicking the next-month arrow first. Handles both.
+        const ABBR_M: Record<string, string> = {
+          jan: "January", feb: "February", mar: "March", apr: "April",
+          jun: "June", jul: "July", aug: "August", sep: "September",
+          sept: "September", oct: "October", nov: "November", dec: "December",
+        };
+        const monthKeyFrom = (raw: string): string | null => {
+          const t = (raw || "")
+            .replace(/[‹›<>«»→←]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .toLowerCase();
+          const yr = t.match(/\b(20\d{2})\b/)?.[1];
+          let mon = MONTHS.find((mn) => t.includes(mn.toLowerCase()));
+          if (!mon) {
+            for (const k of Object.keys(ABBR_M)) {
+              if (new RegExp(`\\b${k}`).test(t)) { mon = ABBR_M[k]; break; }
+            }
+          }
+          return mon && yr ? `${mon.toLowerCase()} ${yr}` : null;
+        };
+        const gridCells = Array.from(
+          document.querySelectorAll<HTMLElement>("[role=gridcell]"),
+        ).filter(isVisible);
+        const monthOfCell = (cell: HTMLElement): string | null => {
+          let n: HTMLElement | null = cell;
+          for (let i = 0; i < 9 && n; i++) {
+            const al = n.getAttribute?.("aria-label");
+            if (al) { const k = monthKeyFrom(al); if (k) return k; }
+            if (n.tagName === "TABLE") {
+              const cap = n.querySelector("caption");
+              if (cap) { const k = monthKeyFrom(cap.textContent || ""); if (k) return k; }
+            }
+            n = n.parentElement;
+          }
+          return null;
+        };
+        const clickNextMonth = (): boolean => {
+          const navs = Array.from(
+            document.querySelectorAll<HTMLElement>("button,[role=button],a"),
+          ).filter(isVisible);
+          for (const el of navs) {
+            const lab = (
+              (el.getAttribute("aria-label") || "") + " " +
+              (el.getAttribute("title") || "")
+            ).toLowerCase();
+            if (/\byear\b/.test(lab)) continue; // never the year-skip control
+            if (/next month|next|forward/.test(lab)) { el.click(); return true; }
+          }
+          for (const el of navs) {
+            const t = (el.textContent || "").trim();
+            if (/^[›»→>❯]$/.test(t)) { el.click(); return true; }
+          }
+          return false;
+        };
+        // Returns "clicked" (day selected), "ADVANCING" (moved a month toward
+        // the target), or null (not an aria grid / can't act this pass).
+        const handleAriaGrid = (iso: string): "clicked" | "ADVANCING" | null => {
+          if (gridCells.length < 8) return null;
+          const [yy, mm2, dd2] = iso.split("-").map((n) => parseInt(n, 10));
+          const targetKey = `${MONTHS[mm2 - 1].toLowerCase()} ${yy}`;
+          const wantDay = String(dd2);
+          for (const cell of gridCells) {
+            if (cell.getAttribute("aria-disabled") === "true") continue;
+            if ((cell as HTMLButtonElement).disabled) continue;
+            const al = (cell.getAttribute("aria-label") || "").trim().toLowerCase();
+            if (/unavailable|sold|not\s*available/.test(al)) continue;
+            const day =
+              al.match(/^(\d{1,2})\b/)?.[1] ||
+              (cell.textContent || "").trim().match(/^(\d{1,2})\b/)?.[1];
+            if (day !== wantDay) continue;
+            if (monthOfCell(cell) !== targetKey) continue;
+            cell.click();
+            return "clicked";
+          }
+          // Day not found in a visible month → advance toward the target if the
+          // target month isn't on screen yet.
+          const monthsSeen = new Set(
+            gridCells.map(monthOfCell).filter(Boolean) as string[],
+          );
+          if (monthsSeen.size > 0 && !monthsSeen.has(targetKey)) {
+            if (clickNextMonth()) return "ADVANCING";
+          }
+          return null;
+        };
+
         // ── Checkout-only pass (ci omitted) ──────────────────────────────
         if (ci == null) {
           if (co == null) return null;
           if (typeInto(co, "out")) return `out=${co}`;
+          const g = handleAriaGrid(co);
+          if (g === "ADVANCING") return "ADVANCING";
+          if (g === "clicked") return `out=${co}`;
           const outCell = findCell(co);
           if (outCell) {
             outCell.click();
@@ -2294,13 +2393,22 @@ async function clickStayDatesDeterministically(
           return null;
         }
 
-        // ── Full pass: typing first (most reliable), then cells ───────────
+        // ── Full pass: typing first (most reliable), then ARIA grid, cells ─
         // co == null is the SINGLE-DATE case (golf tee time): set only the one
         // date, no departure. Otherwise it's a stay range (check-in/out).
         if (typeInto(ci, "in")) {
           if (co == null) return `in=${ci}`;
           const typedOut = typeInto(co, "out");
           return `in=${ci}${typedOut ? ` out=${co}` : " out=PENDING"}`;
+        }
+
+        // ARIA date grid (with month navigation) — the luxury-hotel path.
+        const gIn = handleAriaGrid(ci);
+        if (gIn === "ADVANCING") return "ADVANCING";
+        if (gIn === "clicked") {
+          if (co == null) return `in=${ci}`;
+          const gOut = handleAriaGrid(co);
+          return `in=${ci}${gOut === "clicked" ? ` out=${co}` : " out=PENDING"}`;
         }
 
         const inCell = findCell(ci);
@@ -2549,7 +2657,7 @@ async function clickAdvanceButtonDeterministically(
       });
       if (cardField) return null;
       const ADV =
-        /^(search( tee times?| availability| rates?)?|check (rates?|availability)|find( tee)? times?|continue|next|proceed|select rate to continue|continue to (guest|details|checkout|payment)|go to checkout|review|view rates?|update search)$/i;
+        /^(search( tee times?| availability| rates?)?|check (rates?|availability)|find( tee)? times?|find (a )?rooms?|search rooms?|view rooms?|see rooms?|show rooms?|see availability|continue|next|proceed|select rate to continue|continue to (guest|details|checkout|payment)|go to checkout|review|view rates?|update search)$/i;
       const isOk = (el: HTMLElement): boolean => {
         const r = el.getClientRects();
         if (!r || r.length === 0) return false;
