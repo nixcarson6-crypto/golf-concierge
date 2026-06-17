@@ -3341,6 +3341,31 @@ async function deterministicGuestFill(
           else if (d.countryName && /country/.test(m)) pick(el, d.countryName);
           else if (d.state && /state|province|region/.test(m)) pick(el, d.state);
         }
+
+        // CUSTOM dropdowns (NOT native <select>): the One&Only "STATE OR COUNTY
+        // / CHOOSE STATE" field is a searchable combobox — a real run lost
+        // ~1-2 min scrolling it. If an option list is open and visible, click
+        // the option whose text EXACTLY matches our state or country. Exact
+        // full-name match keeps this from mis-clicking anything else.
+        const wantOptions = [d.state, d.countryName]
+          .filter(Boolean)
+          .map((s) => (s as string).toLowerCase());
+        if (wantOptions.length > 0) {
+          const optionEls = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              "[role=option],[role=listbox] li,ul[class*=option i] li,[class*=dropdown i] li,[class*=menu i] li,li[class*=option i]",
+            ),
+          ).filter((el) => visible(el));
+          for (const el of optionEls) {
+            const t = (el.textContent || "").trim().toLowerCase();
+            if (!t || t.length > 40) continue;
+            if (wantOptions.includes(t)) {
+              el.click();
+              filled++;
+              break; // one combobox selection per pass
+            }
+          }
+        }
         return filled;
       },
       data as never,

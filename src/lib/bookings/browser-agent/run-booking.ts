@@ -386,6 +386,25 @@ async function runBrowserBookingInner(args: {
   // types known traveler data in ~100ms instead of the agent transcribing
   // field-by-field at ~10s a step.
   const nationalPhone = traveler.phone.replace(/^\+1/, "").replace(/[^\d]/g, "");
+  // When the saved profile has no state, infer it from the origin airport so
+  // autofill can fill the (often REQUIRED) "State of residence" field directly
+  // instead of the agent slowly inferring + scrolling a 50-state dropdown.
+  const US_AIRPORT_STATE: Record<string, string> = {
+    DFW: "Texas", DAL: "Texas", IAH: "Texas", HOU: "Texas", AUS: "Texas", SAT: "Texas",
+    LAX: "California", SFO: "California", SAN: "California", SJC: "California",
+    JFK: "New York", LGA: "New York", EWR: "New Jersey",
+    ORD: "Illinois", MDW: "Illinois", ATL: "Georgia", MIA: "Florida", MCO: "Florida",
+    TPA: "Florida", FLL: "Florida", BOS: "Massachusetts", SEA: "Washington",
+    DEN: "Colorado", PHX: "Arizona", LAS: "Nevada", DTW: "Michigan",
+    MSP: "Minnesota", PHL: "Pennsylvania", PIT: "Pennsylvania", CLT: "North Carolina",
+    RDU: "North Carolina", BNA: "Tennessee", DCA: "Virginia", IAD: "Virginia",
+    BWI: "Maryland", SLC: "Utah", PDX: "Oregon", STL: "Missouri", MCI: "Missouri",
+  };
+  const inferredState =
+    traveler.addressState ||
+    (traveler.homeAirport
+      ? US_AIRPORT_STATE[traveler.homeAirport.toUpperCase().slice(0, 3)] ?? null
+      : null);
   const autofill = {
     firstName: traveler.givenName,
     lastName: traveler.familyName,
@@ -395,7 +414,7 @@ async function runBrowserBookingInner(args: {
     title: (traveler.gender === "f" ? "Ms." : "Mr.") as "Mr." | "Ms.",
     addressLine1: traveler.addressLine1,
     city: traveler.addressCity,
-    state: traveler.addressState,
+    state: inferredState,
     postal: traveler.addressPostalCode,
     countryName:
       traveler.addressCountry === "US" || !traveler.addressCountry
