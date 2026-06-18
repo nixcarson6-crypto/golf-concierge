@@ -2316,6 +2316,9 @@ async function clickStayDatesDeterministically(
         const gridCells = Array.from(
           document.querySelectorAll<HTMLElement>("[role=gridcell]"),
         ).filter(isVisible);
+        // The month a cell sits under, from an ancestor aria-label/caption
+        // (One&Only's <table aria-label="August 2026">) OR the nearest preceding
+        // month HEADER element in document order (The Breakers' <h2>June 2026</h2>).
         const monthOfCell = (cell: HTMLElement): string | null => {
           let n: HTMLElement | null = cell;
           for (let i = 0; i < 9 && n; i++) {
@@ -2327,23 +2330,85 @@ async function clickStayDatesDeterministically(
             }
             n = n.parentElement;
           }
+          const heads = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              "h1,h2,h3,h4,caption,[class*=month i],[class*=cal-header i],[class*=header i]",
+            ),
+          );
+          let best: string | null = null;
+          for (const h of heads) {
+            const k = monthKeyFrom((h.textContent || "").slice(0, 30));
+            if (k && h.compareDocumentPosition(cell) & 4) best = k; // h precedes cell
+          }
+          return best;
+        };
+        // Resolve a cell's FULL date → ISO, from the strongest signal available:
+        //  1) a date="M/D/YY" / data-date attr (cell or descendant — The Breakers'
+        //     mwl-calendar puts date="6/28/26" on the inner link),
+        //  2) an aria-label containing "Month D, YYYY",
+        //  3) the day number + the cell's month (monthOfCell).
+        const cellISO = (cell: HTMLElement): string | null => {
+          const dEl =
+            (cell.matches?.("[date],[data-date]") ? cell : null) ??
+            cell.querySelector<HTMLElement>("[date],[data-date]");
+          const dAttr =
+            dEl?.getAttribute("date") || dEl?.getAttribute("data-date") || "";
+          let m = dAttr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+          m = dAttr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+          if (m) {
+            let y = parseInt(m[3], 10); if (y < 100) y += 2000;
+            return `${y}-${String(+m[1]).padStart(2, "0")}-${String(+m[2]).padStart(2, "0")}`;
+          }
+          const al = (
+            cell.getAttribute("aria-label") ||
+            cell.querySelector("[aria-label]")?.getAttribute("aria-label") ||
+            ""
+          ).toLowerCase();
+          const lbl = al.match(/\b([a-zà-ÿ]{3,})\s+(\d{1,2}),?\s+(20\d{2})/);
+          if (lbl) {
+            const mi = MONTHS.findIndex((mn) =>
+              mn.toLowerCase().startsWith(lbl[1].slice(0, 3)),
+            );
+            if (mi >= 0)
+              return `${lbl[3]}-${String(mi + 1).padStart(2, "0")}-${String(+lbl[2]).padStart(2, "0")}`;
+          }
+          const dayStr =
+            al.match(/^(\d{1,2})\b/)?.[1] ||
+            (cell.textContent || "").trim().match(/^(\d{1,2})\b/)?.[1];
+          const hk = monthOfCell(cell);
+          if (dayStr && hk) {
+            const [mon, yr] = hk.split(" ");
+            const mi = MONTHS.findIndex((mn) => mn.toLowerCase() === mon);
+            if (mi >= 0)
+              return `${yr}-${String(mi + 1).padStart(2, "0")}-${String(+dayStr).padStart(2, "0")}`;
+          }
           return null;
         };
+        const clickableInCell = (cell: HTMLElement): HTMLElement => {
+          const inner = cell.querySelector<HTMLElement>(
+            "[role=link],[role=button],a,button,[tabindex]",
+          );
+          return inner && isVisible(inner) ? inner : cell;
+        };
         const clickNextMonth = (): boolean => {
-          const navs = Array.from(
-            document.querySelectorAll<HTMLElement>("button,[role=button],a"),
+          const cands = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              "button,[role=button],a,[class*=next i],[class*=forward i],[aria-label*=next i],[title*=next i],[class*=arrow i]",
+            ),
           ).filter(isVisible);
-          for (const el of navs) {
+          for (const el of cands) {
             const lab = (
               (el.getAttribute("aria-label") || "") + " " +
-              (el.getAttribute("title") || "")
+              (el.getAttribute("title") || "") + " " +
+              (el.className || "")
             ).toLowerCase();
-            if (/\byear\b/.test(lab)) continue; // never the year-skip control
-            if (/next month|next|forward/.test(lab)) { el.click(); return true; }
+            if (/\byear\b|prev|previous|\bback\b/.test(lab)) continue;
+            if (/next|forward/.test(lab)) { el.click(); return true; }
           }
-          for (const el of navs) {
+          for (const el of cands) {
             const t = (el.textContent || "").trim();
-            if (/^[›»→>❯]$/.test(t)) { el.click(); return true; }
+            if (/^[›»→>❯➔]$/.test(t)) { el.click(); return true; }
           }
           return false;
         };
@@ -2351,28 +2416,25 @@ async function clickStayDatesDeterministically(
         // the target), or null (not an aria grid / can't act this pass).
         const handleAriaGrid = (iso: string): "clicked" | "ADVANCING" | null => {
           if (gridCells.length < 8) return null;
-          const [yy, mm2, dd2] = iso.split("-").map((n) => parseInt(n, 10));
-          const targetKey = `${MONTHS[mm2 - 1].toLowerCase()} ${yy}`;
-          const wantDay = String(dd2);
-          for (const cell of gridCells) {
-            if (cell.getAttribute("aria-disabled") === "true") continue;
-            if ((cell as HTMLButtonElement).disabled) continue;
-            const al = (cell.getAttribute("aria-label") || "").trim().toLowerCase();
-            if (/unavailable|sold|not\s*available/.test(al)) continue;
-            const day =
-              al.match(/^(\d{1,2})\b/)?.[1] ||
-              (cell.textContent || "").trim().match(/^(\d{1,2})\b/)?.[1];
-            if (day !== wantDay) continue;
-            if (monthOfCell(cell) !== targetKey) continue;
-            cell.click();
+          const resolved = gridCells
+            .map((c) => ({ c, iso: cellISO(c) }))
+            .filter((x): x is { c: HTMLElement; iso: string } => x.iso != null);
+          if (resolved.length === 0) return null; // not a resolvable date grid
+          const unavailable = (c: HTMLElement): boolean =>
+            c.getAttribute("aria-disabled") === "true" ||
+            (c as HTMLButtonElement).disabled ||
+            /unavailable|sold|not\s*available|fully\s*committed|disabled|cal-past/i.test(
+              (c.getAttribute("aria-label") || "") + " " + (c.className || ""),
+            );
+          const hit = resolved.find((x) => x.iso === iso && !unavailable(x.c));
+          if (hit) {
+            clickableInCell(hit.c).click();
             return "clicked";
           }
-          // Day not found in a visible month → advance toward the target if the
-          // target month isn't on screen yet.
-          const monthsSeen = new Set(
-            gridCells.map(monthOfCell).filter(Boolean) as string[],
-          );
-          if (monthsSeen.size > 0 && !monthsSeen.has(targetKey)) {
+          // Target month not on screen → advance toward it.
+          const targetYM = iso.slice(0, 7);
+          const monthsPresent = new Set(resolved.map((x) => x.iso.slice(0, 7)));
+          if (!monthsPresent.has(targetYM)) {
             if (clickNextMonth()) return "ADVANCING";
           }
           return null;
