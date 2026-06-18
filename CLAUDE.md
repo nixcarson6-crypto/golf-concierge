@@ -197,52 +197,87 @@ hasn't been merged in a while.
 
 ## Next-up priorities
 
-### 🔴 RESUME HERE (when Carson is back at his desk)
+### 🔴 RESUME HERE — ACTIVE FIX: make the agent reach the card step in ~4 min on EVERY hotel
 
-**Wire the "Book it for me" button into `ItineraryItemDialog`.** The browser
-agent is proven working end-to-end (tonight's La Fontelina dry-run filled
-the entire reservation form — date, time, party, name, email, country —
-and correctly stopped at the reCAPTCHA, reporting NEEDS_REVIEW via the
-brain's safety gate). Time to make it real in the app. Carson approved
-this as the immediate next build.
+**The goal (Carson's exact words):** "complete Aman in about 4 min, get to the
+card step" — and **the fixes must be GENERAL (apply to every booking form), not
+per-site patches.** We are NOT chasing individual resorts anymore; each fix has
+to cascade to all hotels.
 
-Scope:
-1. `POST /api/trips/[tripId]/items/[itemId]/book-agent` — auth via
-   `requireTripAccess`, idempotency check, creates `Booking { provider:
-   BROWSER_AGENT, status: SEARCHING }` + `AgentRun { agentType:
-   BROWSER_BOOKING }`, emits Inngest `trip/booking.agent_requested`,
-   returns immediately.
-2. `onBookingAgentRequested` Inngest function in `src/lib/jobs/index.ts`
-   — runs the full agent inside `withAgentRun` (live progress), opens
-   Browserbase session, navigates to venue (from Places contact),
-   runs `runAgent`, on payment step mints virtual card via Stripe
-   Issuing + reveals to agent, persists outcome, calls `nudge`.
-3. The button itself in `live-preview.tsx` `ItineraryItemDialog` (~line
-   1870) — copper primary, sits ABOVE the existing Visit-website/Call
-   buttons. Shown when item isn't CONFIRMED. Hidden during agent run
-   (replaced by status: "Booking… [step]").
-4. Workspace route extension to expose `booking { status, confirmationCode,
-   failureReason }` and the linked `AgentRun.progress` per item so the
-   dialog can render live states.
-5. `/api/internal/nudge` bridge (so Inngest can push SSE updates to the
-   browser — see plan file in /root/.claude/plans).
-6. **The "Booked ✓" reassurance end-state** (Carson's explicit ask — the
-   customer must FEEL the agent really booked it). Keep it simple, don't
-   over-engineer. The agent already captures everything; just display it:
-   - **Store the final screenshot** so the UI can show it. Simplest MVP
-     path: save the agent's `finalScreenshot` (base64 PNG) as a data URL
-     on `Booking.screenshotUrl` (or stash the Browserbase session-replay
-     URL) — NO blob-storage infra needed for v1.
-   - **Booked dialog shows three independent proofs:** (a) the captured
-     screenshot of the venue's actual confirmation page (tap to enlarge),
-     (b) the confirmation number + amount charged, (c) a line telling the
-     customer the venue is emailing them directly — plus the existing
-     Visit-website / Call buttons. This is stronger than a bare "here's a
-     link" because most venues need a login to view a guest reservation;
-     the screenshot + number + venue email give zero-click verification.
-   - Do NOT build the pre-submit "approve before booking" gate for v1
-     unless it's trivial — Carson wants reassurance AFTER booking via the
-     proof above, not another confirmation step that adds friction.
+**Where we are:** the deterministic "conductor" + the browser agent drive most
+luxury hotels to the CARD STEP correctly (One&Only ~3:30). But Aman/SynXis-class
+sites still take ~6 min and the two slow phases are:
+
+1. **DATES (~2:40 on Aman Venice / SynXis "revraise" engine).** The ARIA-grid
+   date-setter (`clickStayDatesDeterministically`, Strategy 0 — `[role=gridcell]`
+   + `date`/`aria-label` resolution + month nav) cracks One&Only but on Aman
+   Venice it only logged `ADVANCING` then handed off, so the **AI finished the
+   date clicks slowly**. FIX NEEDED: on SynXis the setter must actually CLICK
+   both arrival + departure cells (not just advance the month) and confirm them,
+   so dates complete deterministically in seconds. Likely the OUT date returns
+   `out=PENDING` and never gets clicked, or the cell `.click()` doesn't register
+   on revraise. Get the diag HTML if needed (`🔬 calendar diag` logs the
+   calendarHTML) and make the gridcell click stick.
+
+2. **GUEST INFO / payment form (~150s on Aman, often times out empty).** The
+   screenshot showed the SynXis guest+card form with EMPTY required fields at
+   timeout — `deterministicGuestFill` did NOT fill it. FIX NEEDED: make autofill
+   reliably fill the SynXis "revraise" guest form (First/Last/Email/Confirm
+   Email/Phone + the `+49` country-code dropdown → set to +1; Prefix; Billing
+   Address) the instant it renders, so the AI doesn't transcribe field-by-field.
+   The `⚡ autofill completed N fields` line should fire with N≥6 on this form.
+
+**Target:** dates deterministic (~10s) + room/rate/enhancements deterministic
+(already working) + guest autofill (~5s) = Aman to the card step in ~3–4 min.
+Cap is currently **6 min** (`BROWSER_AGENT_TIMEOUT_MS` || 360_000) — leave it at
+6 unless these fixes land it under 4 reliably.
+
+**Hard truth to keep stating to Carson:** the agent fills everything UP TO the
+card step; it **cannot click "Pay/Confirm" without Stripe Issuing** (the virtual
+card). Today every booking stops at the card step → NEEDS_REVIEW → concierge,
+because there's no card. **Stripe + Issuing is the real finish line for true
+hands-free booking** — it's a one-time integration, NOT more agent code. Carson
+does NOT want the concierge-by-hand model long-term; he wants the agent to
+complete it, which REQUIRES Stripe.
+
+**Testing notes (so a fresh session reads logs right):**
+- Local dev is single-threaded: the result page's `/workspace` poll + SSE
+  compete with the agent on ONE Node thread, inflating every step ~2×. In
+  production (separate worker) it's much faster. Don't over-index on local times.
+- Carson sometimes hovers/clicks the live Browserbase view mid-run — that fights
+  the agent (same browser). Tell him: don't touch the live view while it runs.
+- `awaitActivePage: no page available` = Browserbase session CRASH (infra, ~85%
+  reliability), not our logic — it auto-retries, doubling time.
+- Test HARD-BUT-BOOKABLE sites (real online checkout). Skip inquiry/members-only
+  (Bandon "Plan My Trip", Breakers golf, Punta Mita pro-shop, Aman GOLF) — those
+  have NO online booking and correctly route to links/concierge.
+
+### ✅ DONE THIS SESSION (agent hardening — all on `claude/google-maps-chat-data-XqLnu`)
+- **Calendar generalized:** ARIA `[role=gridcell]` date grid w/ full-date
+  resolution (date attr / aria-label / day+header) + MONTH NAVIGATION (click
+  next-month to reach the target month). Cracks One&Only, SynXis, mwl-calendar.
+- **Room / rate-plan / enhancements pickers** all deterministic + the rate-plan
+  "second priced list" (Reserve cards) handled; gated by calendar-step guard.
+- **Guest autofill** + **state inferred from PHONE AREA CODE** (903→Texas), not
+  the flight origin.
+- **Anti-spam caps:** advance "Next" and book-CTA "BOOK NOW" stop after a few
+  identical clicks (Bandon/Hammock loops); month-hop capped at 14.
+- **Golf:** picks real EZLinks/ForeUp slots, 2nd-earliest when requested time
+  unavailable, rate picker skips currency options, cart→checkout deterministic;
+  members-only / pro-shop / preview-only courses bail fast to phone+concierge.
+- **No-availability → "Find a nearby course"** (swap is now proximity-mandatory).
+- **6-min cap** → timeout routes to concierge as NEEDS_REVIEW (not a red failure)
+  with an honest "this site is slow, concierge finishing it" message.
+- **Cars removed** entirely (quiz + itinerary + booking).
+- **Receipt card** on confirmed bookings (conf # + exact dates + total).
+- **Resort-golf** framed as "concierge arranges it with your stay" + queue links
+  the hotel booking.
+- **Destination diversity:** course-style button → market type; "hidden gem"
+  avoids famous names; no Bandon/Pinehurst on repeat.
+- **Safety net:** no booking can strand in SEARCHING (watchdog + catch → queue).
+- **Build fail-fast + Opus→Sonnet fallback** when Opus overloads.
+- **Kill switches:** `NEXT_PUBLIC_BOOKING_LINKS_ONLY` (golf=links) and
+  `HOTEL_AGENT_DISABLED` (APIs only, link the rest).
 
 ### P0 — this week (critical path)
 
