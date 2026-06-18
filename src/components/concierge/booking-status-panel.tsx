@@ -880,6 +880,22 @@ export function BookingStatusPanel({
                                 ).toLocaleString()}
                               </button>
                             </>
+                          ) : failureReason === "timeout" ? (
+                            <>
+                              <p className="text-[11px] text-foreground/80 leading-snug">
+                                This one&apos;s taking longer than our 4-minute
+                                auto-book window, so Pyltrix&apos;s concierge is
+                                finishing it by hand. Nothing for you to do —
+                                you&apos;ll get the confirmation by email.
+                              </p>
+                              {screenshotUrl && (
+                                <ScreenshotProof
+                                  url={screenshotUrl}
+                                  title={`In progress — ${item.title}`}
+                                  caption="Tap to see where Pyltrix got to"
+                                />
+                              )}
+                            </>
                           ) : item.type === "TEE_TIME" &&
                             (failureReason === "members_only" ||
                               failureReason === "form_not_found") ? (

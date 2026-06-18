@@ -1539,10 +1539,27 @@ export async function runStagehandBooking(
     // Loud, tagged, one-line root cause — so the dev terminal shows
     // exactly why the agent stopped instead of a silent black screen.
     console.error(`[stagehand] ✗ FAILED (${elapsed()}) — ${msg}`);
+    // A wall-clock TIMEOUT (the 4-min lock-in) isn't a failure — the agent was
+    // actively booking when the clock hit. Hand it to the CONCIERGE
+    // (needs_review), not a red "couldn't book", so the customer waits ≤4 min
+    // and a human finishes whatever's left. Heavy-page + real crashes still
+    // fail (link/phone fallback / retry).
+    if (aborted && !heavyAbort) {
+      return {
+        outcome: {
+          status: "needs_review",
+          failureReason: "timeout",
+          message:
+            "Pyltrix is finalizing this booking — it ran past the 4-minute auto-book window, so our concierge is completing it. You'll get the confirmation by email.",
+        },
+        sessionUrl: null,
+        finalScreenshot: null,
+      };
+    }
     return {
       outcome: {
         status: "failed",
-        failureReason: heavyAbort ? "form_not_found" : aborted ? "timeout" : "ambiguous",
+        failureReason: heavyAbort ? "form_not_found" : "ambiguous",
         message: heavyAbort
           ? "This venue's website is too heavy for automated booking — finish directly via the link or phone below."
           : msg,
