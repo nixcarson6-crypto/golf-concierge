@@ -715,6 +715,7 @@ export async function runStagehandBooking(
     // missed it and the agent hand-cranked the rest. Track "done" so we set
     // each thing exactly once.
     let datesAlreadySet = false;
+    let inDateSet = false; // arrival cell clicked — chase departure checkout-only
     let slotAlreadyPicked = false;
     let golfSearchSubmitted = false;
     let rateSelected = false;
@@ -771,6 +772,10 @@ export async function runStagehandBooking(
     if (opts.checkinISO) {
       try {
         let setDates: string | null = null;
+        // The calendar may live inside an IFRAME (Gleneagles/SynXis) — resolve
+        // the booking frame each pass (it loads a beat after Book-Now) and click
+        // the cells THERE; page-JS can't reach an iframe's calendar.
+        let dctx: unknown = page;
         // Poll: the calendar appears a beat after the Book-Now navigation, and
         // a closed calendar needs one pass to ARM it (returns "OPENED") before
         // the cells exist to click. Keep going while we're still null/OPENED.
@@ -779,8 +784,9 @@ export async function runStagehandBooking(
           i < 7 && (!setDates || setDates === "OPENED");
           i++
         ) {
+          dctx = await bookingFrame(page);
           setDates = await clickStayDatesDeterministically(
-            page,
+            dctx,
             opts.checkinISO ?? null,
             opts.checkoutISO ?? null,
           );
@@ -790,17 +796,18 @@ export async function runStagehandBooking(
         }
         // Arrival landed but the departure cell wasn't selectable yet (many
         // range pickers only enable check-out after check-in is chosen). Run
-        // dedicated checkout-only passes so the agent inherits a COMPLETE range
-        // and never has to touch the calendar at all.
+        // dedicated checkout-only passes (against the booking frame) so the
+        // agent inherits a COMPLETE range and never touches the calendar.
         if (setDates && setDates.includes("out=PENDING")) {
           for (let i = 0; i < 4; i++) {
             await new Promise((r) => setTimeout(r, 1200));
+            dctx = await bookingFrame(page);
             const outRes = await clickStayDatesDeterministically(
-              page,
+              dctx,
               null,
               opts.checkoutISO ?? null,
             );
-            if (outRes) {
+            if (outRes && outRes.startsWith("out=")) {
               setDates = `in=${opts.checkinISO} out=${opts.checkoutISO}`;
               break;
             }
@@ -812,10 +819,18 @@ export async function runStagehandBooking(
         // only fired on "OPENED" before, never on out=PENDING.
         if (setDates && setDates.includes("out=PENDING") && !calendarDiagnosed) {
           calendarDiagnosed = true;
-          const cdiag = await diagnoseCalendar(page).catch(() => "(diag failed)");
+          const cdiag = await diagnoseCalendar(dctx).catch(() => "(diag failed)");
           console.log(`[stagehand] 🔬 calendar diag (out=PENDING) :: ${cdiag}`);
         }
-        if (setDates && setDates !== "OPENED") {
+        // Mark dates DONE only when the range is COMPLETE. On out=PENDING, leave
+        // datesAlreadySet false (record inDateSet) so the frame-aware conductor
+        // finishes the departure instead of advancing with half a range.
+        if (setDates && setDates.startsWith("in=")) inDateSet = true;
+        const rangeComplete =
+          !!setDates &&
+          setDates !== "OPENED" &&
+          !(opts.checkoutISO && setDates.includes("out=PENDING"));
+        if (rangeComplete) {
           datesAlreadySet = true;
           console.log(
             `[stagehand] ✓ stay dates set deterministically (${setDates}) (${elapsed()})`,
@@ -891,14 +906,26 @@ export async function runStagehandBooking(
     // card step with NO model calls at all — fast and consistent, every form.
     let conductorReachedCard = false;
     let dateArmAttempts = 0;
+    let bookingFrameLogged = false;
     try {
       const tick = async (): Promise<string | null> => {
-        const p = stagehand.context.activePage() ?? page;
-        if (!p) return null;
-        await forceSingleTab(p);
-        await dismissConsentDeterministically(p, { safe: true });
+        const pageCtx = stagehand.context.activePage() ?? page;
+        if (!pageCtx) return null;
+        await forceSingleTab(pageCtx);
+        await dismissConsentDeterministically(pageCtx, { safe: true });
+        // The booking engine often loads INSIDE an iframe (Gleneagles/SynXis:
+        // <booking-layout> → iframe). Page-JS is blind to iframe content, so
+        // drive the CONTENT recognizers against the booking frame. Falls back to
+        // the page for non-iframe sites (Aman-style SPA), which are unaffected.
+        const bf = await bookingFrame(pageCtx);
+        if (bf !== pageCtx && !bookingFrameLogged) {
+          bookingFrameLogged = true;
+          console.log(
+            `[stagehand] 📦 booking engine is in an iframe — driving it directly (${elapsed()})`,
+          );
+        }
         // Reached the card step → stop, the payment phase takes over.
-        if (await detectCardFieldPresent(p)) {
+        if (await detectCardFieldPresent(bf)) {
           conductorReachedCard = true;
           return null;
         }
@@ -908,7 +935,7 @@ export async function runStagehandBooking(
         // the conductor re-clicking "Book now" and stalling. Self-guards to a
         // REAL chooser (≥2 booking-type options), so it can't mis-fire.
         if (!bookingTypeChosen) {
-          const choice = await clickBookingTypeChooserDeterministically(p);
+          const choice = await clickBookingTypeChooserDeterministically(bf);
           if (choice) {
             bookingTypeChosen = true;
             return `booking-type "${choice}"`;
@@ -917,53 +944,64 @@ export async function runStagehandBooking(
         // GOLF: search → slot → rate.
         if (opts.selectTeeSlot) {
           if (!slotAlreadyPicked) {
-            const r = await clickTeeTimeSlotDeterministically(p, opts.teeTimeLabel ?? null);
+            const r = await clickTeeTimeSlotDeterministically(bf, opts.teeTimeLabel ?? null);
             if (r) { slotAlreadyPicked = true; return `slot ${r}`; }
           }
           if (!golfSearchSubmitted) {
-            const s = await clickGolfSearchDeterministically(p);
+            const s = await clickGolfSearchDeterministically(bf);
             if (s) { golfSearchSubmitted = true; return `golf-search "${s}"`; }
           }
           if (!rateSelected) {
-            const r = await selectCheapestRateRadioDeterministically(p);
+            const r = await selectCheapestRateRadioDeterministically(bf);
             if (r) { rateSelected = true; return `rate ${r}`; }
           }
         }
-        // DATES FIRST (hotel + golf). On a single pre-filled RANGE input the
-        // setter can't confirm "in=…" and would "OPENED"-arm forever, blocking
-        // the advance click — so after a few arm attempts assume the dates are
-        // already right and move on.
+        // DATES FIRST (hotel + golf). Once arrival is in, run CHECKOUT-ONLY
+        // passes so we don't re-click (and risk deselecting) the arrival cell
+        // while chasing departure. "out=PENDING" is NOT done — keep going.
         if (opts.checkinISO && !datesAlreadySet) {
-          const r = await clickStayDatesDeterministically(p, opts.checkinISO ?? null, opts.checkoutISO ?? null);
-          if (r && r !== "OPENED" && r.startsWith("in=")) {
+          const r =
+            inDateSet && opts.checkoutISO
+              ? await clickStayDatesDeterministically(bf, null, opts.checkoutISO)
+              : await clickStayDatesDeterministically(bf, opts.checkinISO ?? null, opts.checkoutISO ?? null);
+          // Un-settable calendar → dump its DOM once so we can fix it precisely.
+          if (r === "OPENED" && !calendarDiagnosed) {
+            calendarDiagnosed = true;
+            const diag = await diagnoseCalendar(bf);
+            console.log(`[stagehand] 🔬 calendar diag :: ${diag}`);
+          }
+          // Next-month arrow toward the target month is real progress — cap at
+          // ~14 hops so an unreachable date can't spin forever.
+          if (r === "ADVANCING") {
+            monthAdvances += 1;
+            if (monthAdvances >= 14) {
+              datesAlreadySet = true;
+              return `dates give-up (advanced ${monthAdvances} months, no match)`;
+            }
+            return `dates advancing-month`;
+          }
+          // Departure landed (checkout-only pass) → range complete.
+          if (r && r.startsWith("out=")) {
             datesAlreadySet = true;
             datesConfirmed = true;
             return `dates ${r}`;
           }
-          if (r) {
-            // Clicking the next-month arrow toward the target month is real
-            // progress — but CAP it: if we hop ~14 months and still can't find
-            // the date (e.g. a golf date in a hotel calendar, or a date the
-            // venue can't offer), stop advancing forever and hand off. A real
-            // Breakers run advanced 25× / ~70s into a hotel calendar that would
-            // never have the tee-time date.
-            if (r === "ADVANCING") {
-              monthAdvances += 1;
-              if (monthAdvances >= 14) {
-                datesAlreadySet = true; // give up — let the agent decide
-                return `dates give-up (advanced ${monthAdvances} months, no match)`;
-              }
-              return `dates advancing-month`;
+          if (r && r !== "OPENED" && r.startsWith("in=")) {
+            inDateSet = true;
+            // Complete only when departure is set too (single-date golf has none).
+            if (!opts.checkoutISO || !r.includes("out=PENDING")) {
+              datesAlreadySet = true;
+              datesConfirmed = true;
+              return `dates ${r}`;
             }
-            // First time the calendar comes back un-settable, dump what's on
-            // the page so we can fix the recognizer precisely (vs. guessing).
-            if (r === "OPENED" && !calendarDiagnosed) {
-              calendarDiagnosed = true;
-              const diag = await diagnoseCalendar(p);
-              console.log(`[stagehand] 🔬 calendar diag :: ${diag}`);
-            }
+            // out=PENDING → keep chasing departure (checkout-only next tick).
             dateArmAttempts += 1;
-            if (dateArmAttempts >= 5) datesAlreadySet = true; // give up → advance
+            if (dateArmAttempts >= 6) { datesAlreadySet = true; return `dates give-up (out pending)`; }
+            return `dates ${r}`;
+          }
+          if (r) {
+            dateArmAttempts += 1;
+            if (dateArmAttempts >= 6) datesAlreadySet = true; // give up → advance
             return `dates ${r}`;
           }
         }
@@ -974,17 +1012,17 @@ export async function runStagehandBooking(
         // for the whole run) whenever the AGENT, not our code, set the dates.
         if (pickCards) {
           if (!roomPicked) {
-            const r = await clickCheapestRoomDeterministically(p);
+            const r = await clickCheapestRoomDeterministically(bf);
             if (r) { roomPicked = true; return `room ${r}`; }
           } else if (!rateCardPicked) {
             // SECOND priced list (rate plans with Reserve/Book buttons). Runs
             // on the NEXT tick after the room pick (the return above splits
             // them), so it can't re-click the room on the same DOM.
-            const r = await clickCheapestRoomDeterministically(p);
+            const r = await clickCheapestRoomDeterministically(bf);
             if (r) { rateCardPicked = true; return `rate-card ${r}`; }
           }
           if (!rateSelected) {
-            const r = await selectCheapestRateRadioDeterministically(p);
+            const r = await selectCheapestRateRadioDeterministically(bf);
             if (r) { rateSelected = true; return `rate ${r}`; }
           }
         }
@@ -993,35 +1031,34 @@ export async function runStagehandBooking(
         // interpose one; a real hotel run wasted 330s grinding it. Self-guards
         // to the upsell step, so it's safe for all three.
         if (skipUpsell) {
-          const up = await clickThroughUpsellDeterministically(p);
+          const up = await clickThroughUpsellDeterministically(bf);
           if (up) return `upsell-skip "${up}"`;
         }
         // GUEST DETAILS autofill.
         if (opts.autofill) {
           if (!guestFormDiagnosed) {
-            const gdiag = await diagnoseGuestForm(p).catch(() => "");
+            const gdiag = await diagnoseGuestForm(bf).catch(() => "");
             if (gdiag) {
               guestFormDiagnosed = true;
               console.log(`[stagehand] 🔬 guest-form diag :: ${gdiag}`);
             }
           }
-          const n = await deterministicGuestFill(p, opts.autofill);
+          const n = await deterministicGuestFill(bf, opts.autofill);
           if (n > 0) return `autofill ${n} fields`;
         }
-        // Off a marketing page → click the Book CTA. Same anti-spam as the
-        // advance button: clicking "BOOK NOW" twice usually just re-opens the
-        // same widget, so after a couple of identical clicks stop and let the
-        // run move on (a Hammock Beach run clicked "BOOK NOW" 18× for 50s).
-        const cta = await clickBookingEntryDeterministically(p);
+        // Off a marketing page → click the Book CTA (on the OUTER page — it's
+        // what opens the booking widget/iframe). Same anti-spam as advance:
+        // clicking "BOOK NOW" twice just re-opens the widget, so cap it.
+        const cta = await clickBookingEntryDeterministically(pageCtx);
         if (cta) {
           if (cta === bookCtaLabel) bookCtaRepeats += 1;
           else { bookCtaLabel = cta; bookCtaRepeats = 0; }
           if (bookCtaRepeats < 2) return `book-cta "${cta}"`;
         }
-        // Advance to the next step (Search / Continue / Next) — never commits.
-        // Only advance once dates are handled, so we don't skip the date step.
+        // Advance to the next step (Search / Continue / Next) — inside the
+        // booking frame. Never commits. Only advance once dates are handled.
         if (datesAlreadySet || !opts.checkinISO) {
-          const adv = await clickAdvanceButtonDeterministically(p);
+          const adv = await clickAdvanceButtonDeterministically(bf);
           if (adv) {
             if (adv === advanceLabel) advanceRepeats += 1;
             else { advanceLabel = adv; advanceRepeats = 0; }
@@ -2973,6 +3010,72 @@ async function detectCardFieldPresent(page: unknown): Promise<boolean> {
  * 6-minute one. A genuinely novel, settled widget still stalls out fast (the
  * signature is stable), so the agent fallback is unaffected.
  */
+/**
+ * Resolve the frame that actually holds the booking engine. Many luxury hotels
+ * (Gleneagles, and much of SynXis) embed the WHOLE booking flow — calendar,
+ * room list, guest form — inside an IFRAME (a <booking-layout> element → iframe).
+ * Our deterministic recognizers run page-JS, which by the same-origin policy is
+ * BLIND to that iframe's DOM, so the date never clicks (out=PENDING) and the
+ * guest form never fills. Playwright can evaluate INSIDE any frame (even
+ * cross-origin), so we pick the child frame that contains booking content and
+ * run the recognizers there. Returns the PAGE itself when there's no booking
+ * iframe (Aman-style same-domain SPA), so non-iframe sites behave exactly as
+ * before. The returned object exposes .evaluate — all the content recognizers
+ * use — so it's a drop-in for the page.
+ */
+async function bookingFrame(page: unknown): Promise<unknown> {
+  try {
+    const p = page as {
+      frames?: () => unknown[];
+      mainFrame?: () => unknown;
+    };
+    if (typeof p.frames !== "function") return page;
+    const frames = p.frames();
+    if (!Array.isArray(frames) || frames.length <= 1) return page;
+    const main = typeof p.mainFrame === "function" ? p.mainFrame() : null;
+    let best: unknown = null;
+    let bestScore = 0;
+    for (const f of frames) {
+      if (f === main) continue; // skip the outer page
+      const fr = f as {
+        url?: () => string;
+        evaluate?: (fn: () => number) => Promise<number>;
+      };
+      if (typeof fr.evaluate !== "function") continue;
+      const url = (typeof fr.url === "function" ? fr.url() : "") || "";
+      // Skip obvious non-booking frames (ads, consent, captcha, analytics).
+      if (/google|facebook|doubleclick|analytics|gtm|recaptcha|hcaptcha|consent|cookiebot|onetrust|hotjar|youtube|vimeo/i.test(url)) {
+        continue;
+      }
+      let score = /synxis|sabre|book|reserv|availab|\bibe\b|hotel|stay/i.test(url) ? 3 : 0;
+      try {
+        const contentScore = await fr.evaluate(() => {
+          const has = (sel: string) => !!document.querySelector(sel);
+          let s = 0;
+          if (has("[role=gridcell],[class*=calendar i],[class*=daypicker i],td[class*=day i]")) s += 3;
+          if (has("input[type=tel],input[name*=name i],input[autocomplete*=name i]")) s += 3;
+          if (has("[class*=room i],[class*=rate i],[class*=availab i]")) s += 2;
+          const txt = (document.body && document.body.innerText) || "";
+          if (/check.?in|check.?out|\broom\b|\brate\b|guest|arrival|departure/i.test(txt.slice(0, 4000))) s += 1;
+          if (txt.length < 40) s -= 5; // tracking/blank iframe
+          return s;
+        });
+        score += Number(contentScore) || 0;
+      } catch {
+        /* a cross-origin frame mid-navigation can throw — keep the url score */
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = f;
+      }
+    }
+    // Only switch into a frame when it clearly holds booking content.
+    return best && bestScore >= 3 ? best : page;
+  } catch {
+    return page;
+  }
+}
+
 async function pageStillSettling(page: unknown): Promise<boolean> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return false;
