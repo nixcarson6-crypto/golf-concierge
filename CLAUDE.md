@@ -276,6 +276,19 @@ hands-free booking** — it's a one-time integration, NOT more agent code. Carso
 does NOT want the concierge-by-hand model long-term; he wants the agent to
 complete it, which REQUIRES Stripe.
 
+**✅ MVP PAYMENT POLICY (Carson's call, this session): REVIEW BEFORE CHARGING.**
+Even once Stripe Issuing is on, the agent does NOT auto-charge. It fills
+everything to the card step and STOPS for a one-tap customer approval; only on
+approval does the booking re-run and pay. Implemented by reusing the existing
+price_approval path: `run-booking` sets `requirePaymentReview` (ON by default,
+OFF once `approvedPriceCents` is set, OFF for pay-at-course golf) → the runner
+returns `price_approval` at the card step with the real total and mints NO card
+→ the existing "Approve & book" button + `approve-price` route re-run with the
+gate lifted and pay. Pay-at-property hotels + golf never reach a card step, so
+they still complete in one run. Flip to full-auto later with
+`BOOKING_REQUIRE_PAYMENT_REVIEW=false`. (`run-booking.ts`, `stagehand-runner.ts`,
+`env.ts`.)
+
 **Testing notes (so a fresh session reads logs right):**
 - Local dev is single-threaded: the result page's `/workspace` poll + SSE
   compete with the agent on ONE Node thread, inflating every step ~2×. In
