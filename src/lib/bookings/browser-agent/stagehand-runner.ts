@@ -860,9 +860,15 @@ export async function runStagehandBooking(
     // list appears a beat after the date/search. Best-effort.
     if (opts.selectTeeSlot) {
       try {
+        // The tee sheet may live in an IFRAME (Gleneagles golf is the same
+        // <booking-layout> iframe as the hotel side) — resolve the booking
+        // frame and drive it THERE; page-JS can't see an iframe's slot list,
+        // which is why a real run reported form_not_found ("reservations by
+        // phone") on a course that DOES book online. Falls back to the page.
+        let gctx: unknown = await bookingFrame(page);
         // Some tee sheets (quick18/Grayhawk, ForeUp) gate the slot list behind
         // a SEARCH FORM — submit it first so the slots actually render.
-        const searched = await clickGolfSearchDeterministically(page);
+        const searched = await clickGolfSearchDeterministically(gctx);
         if (searched) {
           console.log(
             `[stagehand] ✓ golf search submitted ("${searched}") (${elapsed()})`,
@@ -872,8 +878,9 @@ export async function runStagehandBooking(
         }
         let picked: string | null = null;
         for (let i = 0; i < 6 && !picked; i++) {
+          gctx = await bookingFrame(page);
           picked = await clickTeeTimeSlotDeterministically(
-            page,
+            gctx,
             opts.teeTimeLabel ?? null,
           );
           if (!picked) await new Promise((r) => setTimeout(r, 1500));
