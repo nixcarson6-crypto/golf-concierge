@@ -382,6 +382,18 @@ async function runBrowserBookingInner(args: {
       ? null
       : task.budgetCents;
 
+  // MVP "review before charging" (Carson's call): the agent fills everything to
+  // the card step and STOPS for a one-tap customer approval before any money
+  // moves. ON by default; the customer's approval (approve-price) re-runs the
+  // booking with approvedPriceCents set, which turns this OFF so the re-run
+  // pays. Golf is pay-at-course (no upfront charge to review), and pay-at-
+  // property hotels never reach a card step, so neither is slowed. Flip to
+  // full-auto later with BOOKING_REQUIRE_PAYMENT_REVIEW=false.
+  const requirePaymentReview =
+    optionalEnv("BOOKING_REQUIRE_PAYMENT_REVIEW") !== "false" &&
+    approvedPriceCents == null &&
+    item.type !== "TEE_TIME";
+
   // Instant guest autofill payload — the deterministic per-step fill that
   // types known traveler data in ~100ms instead of the agent transcribing
   // field-by-field at ~10s a step.
@@ -723,6 +735,7 @@ async function runBrowserBookingInner(args: {
               // or the customer hasn't saved a card.
               cardProvider,
               priceGateCents,
+              requirePaymentReview,
               autofill,
               // Set the date deterministically (zero-LLM) for every type that
               // has one on a web form: hotels (check-in + check-out), golf (the

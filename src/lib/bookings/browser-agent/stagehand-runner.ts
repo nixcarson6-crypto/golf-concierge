@@ -208,6 +208,13 @@ export type RunStagehandOptions = {
    *  customer can approve the real price first. null = no gate (customer
    *  already approved, or no estimate exists / $25k+ budget). */
   priceGateCents?: number | null;
+  /** MVP "review before charging": when true, the agent fills everything to the
+   *  card step and STOPS there — no card minted, no money moved — returning a
+   *  price_approval outcome with the real total for one-tap customer approval.
+   *  The approve-price route lifts it (approvedPriceCents) and the re-run pays.
+   *  Set per-booking (off once approved, off for pay-at-course golf). Env
+   *  override BOOKING_REQUIRE_PAYMENT_REVIEW=false to go full-auto later. */
+  requirePaymentReview?: boolean;
   /** Known traveler values for the deterministic guest-form autofill (zero
    *  LLM — runs after every step; fills recognised empty fields instantly). */
   autofill?: {
@@ -1455,6 +1462,33 @@ export async function runStagehandBooking(
         console.log(
           `[stagehand] payment step detected (${elapsed()}) — total=${pay.amountCents != null ? `${pay.amountCents}c ${pay.currency ?? ""}` : "unknown"}`,
         );
+        // MVP REVIEW-BEFORE-CHARGE GATE: pause at the FILLED card step for a
+        // mandatory one-tap customer approval before ANY money moves — no card
+        // is minted here, the customer is never charged. Reuses the
+        // price_approval contract so the existing "Approve & book" button +
+        // approve-price route complete it: on approval the booking re-runs with
+        // the gate lifted and pays. The caller turns this OFF once approved and
+        // for pay-at-course golf, so it never double-pauses or slows golf down.
+        if (opts.requirePaymentReview) {
+          console.log(
+            `[stagehand] review-before-charge — pausing at card step for customer approval (${elapsed()})`,
+          );
+          return {
+            outcome: {
+              status: "needs_review",
+              failureReason: "price_approval",
+              priceCents: pay.amountCents ?? undefined,
+              message:
+                pay.amountCents != null
+                  ? `Everything's filled in and ready to book — total $${Math.round(
+                      pay.amountCents / 100,
+                    ).toLocaleString()}${pay.currency ? ` ${pay.currency}` : ""}. Review and approve to confirm — Pyltrix books it immediately.`
+                  : "Everything's filled in and ready to book at the payment step. Review and approve to confirm — Pyltrix books it immediately.",
+            },
+            sessionUrl,
+            finalScreenshot: null,
+          };
+        }
         // HYBRID PRICE-APPROVAL GATE (Carson's design): the agent always
         // FINISHES the work — but when the venue's real total runs above
         // the customer-reviewed estimate (+headroom), we pause HERE, before

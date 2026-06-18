@@ -106,6 +106,9 @@ const definitions = {
   // Booking engine: "stagehand" (DOM-driven, fast — default) or
   // "computer-use" (legacy vision loop, fallback).
   BOOKING_ENGINE: { required: false },
+  // "false" turns OFF the MVP review-before-charge gate (agent pauses at the
+  // card step for one-tap customer approval before any charge). Default ON.
+  BOOKING_REQUIRE_PAYMENT_REVIEW: { required: false },
   // Skyvern hosted vision agent — only used when BOOKING_ENGINE=skyvern.
   // Additive: Steel/Browserbase + Stagehand stay the default + fallback.
   SKYVERN_API_KEY: { required: false },
