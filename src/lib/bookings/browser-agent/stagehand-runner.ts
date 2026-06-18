@@ -712,6 +712,12 @@ export async function runStagehandBooking(
     let golfSearchSubmitted = false;
     let rateSelected = false;
     let roomPicked = false;
+    // Luxury multi-service properties (Villa d'Este, many SynXis engines) open
+    // a "What would you like to book?" chooser right after "Book now" — hotel /
+    // villa / table / treatment / event — BEFORE the calendar. Pick the
+    // rooms/stay option once so the flow proceeds instead of re-clicking "Book
+    // now" and stalling on the chooser.
+    let bookingTypeChosen = false;
     // Hotels AND cars use the same cheapest-priced-card picker (room cards /
     // vehicle cards are the same shape: a priced card + a Select/Book/Reserve
     // CTA). And hotels, cars, AND golf can all interpose an add-on/upsell page
@@ -876,6 +882,18 @@ export async function runStagehandBooking(
         if (await detectCardFieldPresent(p)) {
           conductorReachedCard = true;
           return null;
+        }
+        // BOOKING-TYPE CHOOSER ("What would you like to book?" → hotel / villa /
+        // table / treatment / event). Appears after "Book now", before the
+        // calendar; pick the rooms/stay option so the flow proceeds instead of
+        // the conductor re-clicking "Book now" and stalling. Self-guards to a
+        // REAL chooser (≥2 booking-type options), so it can't mis-fire.
+        if (!bookingTypeChosen) {
+          const choice = await clickBookingTypeChooserDeterministically(p);
+          if (choice) {
+            bookingTypeChosen = true;
+            return `booking-type "${choice}"`;
+          }
         }
         // GOLF: search → slot → rate.
         if (opts.selectTeeSlot) {
@@ -2809,34 +2827,58 @@ async function detectCardFieldPresent(page: unknown): Promise<boolean> {
 async function pageStillSettling(page: unknown): Promise<boolean> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return false;
-  const signature = async (): Promise<string> => {
+  // \n-delimited so a URL's own "|" can't be mistaken for a field break.
+  const probe = async (): Promise<string> => {
     try {
-      return await cdp.evaluate<string>(() =>
-        [
-          document.readyState,
-          location.href,
-          document.querySelectorAll("*").length,
-          // Spinners/skeletons are the clearest "still loading" tell on SPAs.
+      return await cdp.evaluate<string>(() => {
+        // ONLY count VISIBLE spinners. Many sites keep a hidden loader/skeleton
+        // node permanently in the DOM; counting those made every settled page
+        // look "still loading" forever (a Villa d'Este run waited ~46s on a
+        // stable menu before it ever stalled out).
+        const spinnerVisible = (el: Element): boolean => {
+          const r = (el as HTMLElement).getClientRects();
+          if (!r || r.length === 0) return false;
+          const st = window.getComputedStyle(el as HTMLElement);
+          return (
+            st.visibility !== "hidden" &&
+            st.display !== "none" &&
+            Number(st.opacity || "1") > 0.05
+          );
+        };
+        const spinners = Array.from(
           document.querySelectorAll(
             '[class*=spinner i],[class*=loading i],[class*=skeleton i],[aria-busy=true]',
-          ).length,
-        ].join("|"),
-      );
+          ),
+        ).filter(spinnerVisible).length;
+        return [
+          document.readyState === "complete" ? "1" : "0",
+          location.href,
+          document.querySelectorAll("*").length,
+          spinners,
+        ].join("\n");
+      });
     } catch {
       return "";
     }
   };
-  const before = await signature();
-  if (!before) return false;
+  const a = await probe();
+  if (!a) return false;
   await new Promise((r) => setTimeout(r, 450));
-  const after = await signature();
-  // Document not fully loaded, a spinner present, or the node count / URL
-  // shifted between samples → the page is mid-render, not a real stall.
-  return (
-    before !== after ||
-    !after.startsWith("complete") ||
-    !/\|0$/.test(after) // trailing field is the spinner/skeleton count
-  );
+  const b = await probe();
+  if (!b) return false;
+  const pa = a.split("\n");
+  const pb = b.split("\n");
+  // Genuinely still rendering only if: the doc isn't fully loaded, a VISIBLE
+  // spinner is showing, the URL moved (navigation / SPA route change), or the
+  // node count shifted by a MEANINGFUL amount. The threshold ignores carousels,
+  // clocks, and tooltips that twitch by a node or two on an otherwise static
+  // page — those used to read as "settling" and stall the conductor for nothing.
+  if (pb[0] !== "1" || (Number(pb[3]) || 0) > 0) return true;
+  if (pa[1] !== pb[1]) return true;
+  const nodesA = Number(pa[2]) || 0;
+  const nodesB = Number(pb[2]) || 0;
+  const delta = Math.abs(nodesB - nodesA);
+  return delta > 30 || (nodesA > 0 && delta / nodesA > 0.03);
 }
 
 /**
@@ -3538,6 +3580,30 @@ async function deterministicGuestFill(
           ),
         ).filter((el) => visible(el) && !el.value && !el.disabled && !el.readOnly);
 
+        // GATE: only fill a real guest/checkout form. A homepage, booking-type
+        // chooser, or footer can carry a stray newsletter email or a search box
+        // whose meta matches — filling those is wrong (a Villa d'Este run logged
+        // "autofill 3 fields" on the chooser page) and can trip validation. The
+        // hallmark of a guest form is a NAME field (first/last) or a card field,
+        // or an email AND phone together (newsletters ask one, not both). No
+        // such signal → fill nothing.
+        const allInputs = Array.from(
+          document.querySelectorAll<HTMLInputElement>("input"),
+        );
+        const anyMeta = (re: RegExp): boolean =>
+          allInputs.some((el) => re.test(meta(el)));
+        const anyType = (t: string): boolean =>
+          allInputs.some(
+            (el) => (el.getAttribute("type") || "").toLowerCase() === t,
+          );
+        const hasName = anyMeta(
+          /given-name|first.?name|\bfname\b|family-name|last.?name|surname|\blname\b/,
+        );
+        const hasCard = anyMeta(/cc-?number|card.?number|cardnumber|credit.?card|\bpan\b/);
+        const hasEmail = anyType("email") || anyMeta(/\be-?mail\b/);
+        const hasPhone = anyType("tel") || anyMeta(/phone|mobile|\btel\b/);
+        if (!hasName && !hasCard && !(hasEmail && hasPhone)) return 0;
+
         for (const el of inputs) {
           const m = meta(el);
           // NEVER touch payment fields.
@@ -3681,6 +3747,100 @@ async function detectVerifyWall(page: unknown): Promise<boolean> {
     });
   } catch {
     return false;
+  }
+}
+
+/**
+ * Click the HOTEL-STAY option on a "What would you like to book?" chooser.
+ * Luxury properties with multiple bookable services (Villa d'Este: hotel /
+ * villa / table / treatment / event; many SynXis + resort engines do the same)
+ * interpose a booking-TYPE chooser the instant you click "Book now", BEFORE the
+ * calendar. The generic Book-CTA recognizer just re-clicks "Book now" and the
+ * conductor stalls on the chooser; this picks the rooms/stay option so the flow
+ * proceeds. GENERAL, not a per-site patch: it keys on meaning (a list of
+ * "book a <thing>" options) and scores hotel/room/stay above villa, and
+ * hard-skips dining/spa/event/meeting. Only fires on a REAL chooser (≥2 visible
+ * booking-type options) so it can't mis-fire on an ordinary page that merely
+ * has a stray "Book a table" link. Returns the clicked label, or null.
+ */
+async function clickBookingTypeChooserDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const isVisible = (el: Element | null): boolean => {
+        if (!el) return false;
+        const rects = (el as HTMLElement).getClientRects();
+        if (!rects || rects.length === 0) return false;
+        const st = window.getComputedStyle(el as HTMLElement);
+        return (
+          st.visibility !== "hidden" &&
+          st.display !== "none" &&
+          Number(st.opacity || "1") > 0.05
+        );
+      };
+      const labelOf = (el: HTMLElement): string =>
+        (el.innerText || el.textContent || el.getAttribute("aria-label") || "")
+          .trim()
+          .replace(/\s+/g, " ");
+      // A bookable NOUN (what you can book) and a BOOK verb. An option needs
+      // both to count, so plain nav links ("Rooms", "Spa") aren't options.
+      const BOOK_VERB = /\b(book|reserve|prenota|réserv|reservar|buchen|plan)\b/i;
+      const STAY =
+        /\b(stay|room|rooms|suite|suites|accommodation|overnight|hotel)\b/i;
+      const OTHER =
+        /\b(table|dining|restaurant|breakfast|lunch|dinner|treatment|spa|massage|wellness|event|meeting|wedding|conference|gift|voucher|experience|tour|excursion|class|villa)\b/i;
+      const nodes = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "a, button, [role=button], [role=option], [role=menuitem], li, [class*=option i], [class*=choice i], [class*=tile i], [class*=card i]",
+        ),
+      );
+      const seen = new Set<string>();
+      const options: { el: HTMLElement; txt: string }[] = [];
+      for (const el of nodes) {
+        const txt = labelOf(el);
+        if (!txt || txt.length > 48) continue;
+        const low = txt.toLowerCase();
+        if (seen.has(low)) continue;
+        if (!BOOK_VERB.test(txt) || !(STAY.test(txt) || OTHER.test(txt))) continue;
+        if (!isVisible(el)) continue;
+        seen.add(low);
+        options.push({ el, txt });
+      }
+      // Only act on a real chooser: ≥2 distinct booking-type options.
+      if (options.length < 2) return null;
+      // Score: hotel/room/suite stay wins; dining/spa/event/villa are skipped.
+      const score = (txt: string): number => {
+        if (OTHER.test(txt) && !/\bhotel\b|\broom|\bsuite/i.test(txt)) return -1;
+        let s = 0;
+        if (/\bhotel\b/i.test(txt)) s += 3;
+        if (/\broom|\bsuite/i.test(txt)) s += 3;
+        if (/\bstay|accommodation|overnight\b/i.test(txt)) s += 2;
+        return s;
+      };
+      let best: { el: HTMLElement; txt: string } | null = null;
+      let bestScore = 0;
+      for (const o of options) {
+        const s = score(o.txt);
+        if (s > bestScore) {
+          bestScore = s;
+          best = o;
+        }
+      }
+      if (!best || bestScore <= 0) return null;
+      // The matched node may be a wrapper (a <li>/card) around the real link —
+      // click the inner anchor/button so the navigation actually fires.
+      const target: HTMLElement = best.el.matches("a, button")
+        ? best.el
+        : ((best.el.querySelector("a, button") as HTMLElement | null) ?? best.el);
+      if (target instanceof HTMLAnchorElement) target.target = "_self";
+      target.click();
+      return best.txt;
+    });
+  } catch {
+    return null;
   }
 }
 
