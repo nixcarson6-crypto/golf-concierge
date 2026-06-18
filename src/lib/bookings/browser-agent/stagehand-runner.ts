@@ -832,6 +832,7 @@ export async function runStagehandBooking(
           !(opts.checkoutISO && setDates.includes("out=PENDING"));
         if (rangeComplete) {
           datesAlreadySet = true;
+          datesConfirmed = true;
           console.log(
             `[stagehand] ✓ stay dates set deterministically (${setDates}) (${elapsed()})`,
           );
@@ -1005,12 +1006,15 @@ export async function runStagehandBooking(
             return `dates ${r}`;
           }
         }
-        // HOTEL room / CAR vehicle → rate. The picker has its own calendar-step
-        // guard (it bails while a date picker is on screen) AND requires a real
-        // priced card CTA, so it's safe to run every tick — we do NOT gate it
-        // on datesConfirmed, which wrongly stayed false (disabling the picker
-        // for the whole run) whenever the AGENT, not our code, set the dates.
-        if (pickCards) {
+        // HOTEL room / CAR vehicle → rate. ONLY after the dates are confirmed —
+        // otherwise a stray priced element on the calendar/search step (a £160
+        // add-on or spa line when the rooms are £750+) gets grabbed as the
+        // "room" before search has even run, and the booking is then wedged
+        // (Gleneagles did exactly this). datesConfirmed is now set by BOTH the
+        // fast-path and the conductor whenever OUR code sets the dates, so this
+        // gate no longer disables the picker the way it used to. GENERAL: every
+        // hotel/car must search before there are real rooms to pick.
+        if (pickCards && (datesConfirmed || !opts.checkinISO)) {
           if (!roomPicked) {
             const r = await clickCheapestRoomDeterministically(bf);
             if (r) { roomPicked = true; return `room ${r}`; }
@@ -1047,13 +1051,17 @@ export async function runStagehandBooking(
           if (n > 0) return `autofill ${n} fields`;
         }
         // Off a marketing page → click the Book CTA (on the OUTER page — it's
-        // what opens the booking widget/iframe). Same anti-spam as advance:
-        // clicking "BOOK NOW" twice just re-opens the widget, so cap it.
-        const cta = await clickBookingEntryDeterministically(pageCtx);
-        if (cta) {
-          if (cta === bookCtaLabel) bookCtaRepeats += 1;
-          else { bookCtaLabel = cta; bookCtaRepeats = 0; }
-          if (bookCtaRepeats < 2) return `book-cta "${cta}"`;
+        // what opens the booking widget/iframe). Once we're ALREADY inside the
+        // booking iframe, re-clicking it just re-opens the widget and wedges the
+        // flow (Gleneagles looped on "BOOK YOUR STAY"), so only fire it before
+        // we've entered the engine. GENERAL: the entry CTA is a one-time door.
+        if (bf === pageCtx) {
+          const cta = await clickBookingEntryDeterministically(pageCtx);
+          if (cta) {
+            if (cta === bookCtaLabel) bookCtaRepeats += 1;
+            else { bookCtaLabel = cta; bookCtaRepeats = 0; }
+            if (bookCtaRepeats < 2) return `book-cta "${cta}"`;
+          }
         }
         // Advance to the next step (Search / Continue / Next) — inside the
         // booking frame. Never commits. Only advance once dates are handled.
@@ -1118,6 +1126,17 @@ export async function runStagehandBooking(
       console.log(
         `[stagehand] conductor ${conductorReachedCard ? "reached card step — skipping agent" : "handed off to agent"} (${elapsed()})`,
       );
+      // Handing off STUCK (not at the card step) → dump the booking frame's
+      // current step so a step we couldn't drive reveals its real DOM.
+      if (!conductorReachedCard) {
+        try {
+          const sctx = await bookingFrame(stagehand.context.activePage() ?? page);
+          const sdiag = await diagnoseBookingStep(sctx);
+          if (sdiag) console.log(`[stagehand] 🔬 booking-step diag :: ${sdiag}`);
+        } catch {
+          /* best-effort */
+        }
+      }
     } catch (e) {
       console.warn(`[stagehand] conductor error (continuing to agent): ${e instanceof Error ? e.message : e}`);
     }
@@ -2730,6 +2749,84 @@ async function clickStayDatesDeterministically(
  * widget's markup, and any custom (non-<select>) dropdowns — exactly what's
  * needed to fix the Title/Country pickers and the dial-code selector.
  */
+/**
+ * Dump the booking engine's CURRENT step (one compact JSON line): the visible
+ * clickable controls, priced "cards" (room/rate tiles), headings, and inputs +
+ * the frame URL. Fired when the conductor hands off STUCK, so a step it couldn't
+ * drive reveals its real DOM (what the "room" actually is, what the advance
+ * button is named) — for fixing the recognizer precisely instead of guessing.
+ */
+async function diagnoseBookingStep(page: unknown): Promise<string> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return "";
+  try {
+    return await cdp.evaluate<string>(() => {
+      const vis = (el: Element): boolean => {
+        const r = (el as HTMLElement).getClientRects?.();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return s.visibility !== "hidden" && s.display !== "none";
+      };
+      const clip = (s: string | null | undefined, n: number) =>
+        (s || "").replace(/\s+/g, " ").trim().slice(0, n);
+      const uniq = (a: string[]) => a.filter((t, i) => t && a.indexOf(t) === i);
+      const buttons = uniq(
+        Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "button,a,[role=button],input[type=submit],input[type=button]",
+          ),
+        )
+          .filter(vis)
+          .map((el) =>
+            clip(
+              el.innerText || el.textContent || (el as HTMLInputElement).value || el.getAttribute("aria-label"),
+              32,
+            ),
+          ),
+      ).slice(0, 30);
+      const priced = uniq(
+        Array.from(document.querySelectorAll<HTMLElement>("*"))
+          .filter(
+            (el) =>
+              vis(el) &&
+              el.children.length <= 4 &&
+              /[£$€]\s?\d|\d+(?:[.,]\d{2})?\s?(?:USD|GBP|EUR)/.test(el.textContent || ""),
+          )
+          .map((el) => clip(el.textContent, 48)),
+      ).slice(0, 16);
+      const headings = uniq(
+        Array.from(
+          document.querySelectorAll<HTMLElement>("h1,h2,h3,[class*=step i],[class*=heading i]"),
+        )
+          .filter(vis)
+          .map((el) => clip(el.textContent, 40)),
+      ).slice(0, 10);
+      const inputs = uniq(
+        Array.from(document.querySelectorAll<HTMLElement>("input,select"))
+          .filter(vis)
+          .map((el) =>
+            clip(
+              el.getAttribute("name") ||
+                el.getAttribute("placeholder") ||
+                el.getAttribute("aria-label") ||
+                (el as HTMLInputElement).type,
+              28,
+            ),
+          ),
+      ).slice(0, 20);
+      return JSON.stringify({
+        url: location.href.slice(0, 140),
+        headings,
+        buttons,
+        priced,
+        inputs,
+      }).slice(0, 4500);
+    });
+  } catch {
+    return "";
+  }
+}
+
 async function diagnoseGuestForm(page: unknown): Promise<string> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return "";
