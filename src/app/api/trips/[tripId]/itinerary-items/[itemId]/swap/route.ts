@@ -91,6 +91,8 @@ ${tieredSchemaSpec}
 
 Real venues only — no inventing names. Same category as the current item. For LODGING, mean nightly rate. For TEE_TIME, mean per-player green fee. For DINING, mean per-person dinner check.
 
+PROXIMITY IS MANDATORY: every alternative MUST be in the SAME area as the current pick — a short drive from "${currentLocation}" / within the trip's destination — because it has to fit the customer's EXISTING trip (their hotel and their other rounds are already there). A golf course or hotel in a different city or region is useless even if it's great. Pick the best comparable venue that's genuinely CLOSE. For a sold-out tee time, that means the best nearby course the group can actually drive to from where they're staying.
+
 CRITICAL: every alternative must be PUBLICLY BOOKABLE — a resort course, daily-fee/public course, or a hotel/restaurant open to the public. NEVER suggest private members-only clubs (e.g. Cypress Point, Rock Creek Cattle Company tier) — the customer can't book those, so they're useless as a swap.`;
   const userMsg = `Trip destination: ${tripDestination}
 Item type: ${itemType}

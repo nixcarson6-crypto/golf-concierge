@@ -822,7 +822,9 @@ export function BookingStatusPanel({
                           <p className="text-[11px] text-muted-foreground leading-snug">
                             {isMembersOnly
                               ? `${item.title} is a private members-only club — the public can't book it.`
-                              : `${item.title} is sold out for your dates.`}
+                              : item.type === "TEE_TIME"
+                                ? `${item.title} has no tee times for your date — we'll find the best nearby course you can play instead.`
+                                : `${item.title} is sold out for your dates.`}
                           </p>
                           <button
                             type="button"
@@ -833,12 +835,14 @@ export function BookingStatusPanel({
                             {findingAltId === item.id ? (
                               <>
                                 <Loader2 className="size-3.5 animate-spin" />
-                                Finding a bookable option…
+                                Finding a nearby option…
                               </>
                             ) : (
                               <>
                                 <Sparkles className="size-3.5" />
-                                Find a bookable alternative
+                                {item.type === "TEE_TIME"
+                                  ? "Find a nearby course"
+                                  : "Find a bookable alternative"}
                               </>
                             )}
                           </button>
