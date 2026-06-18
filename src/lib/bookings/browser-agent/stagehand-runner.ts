@@ -729,6 +729,12 @@ export async function runStagehandBooking(
     let calendarDiagnosed = false;
     // Cap on next-month hops, so an unreachable date can't spin forever.
     let monthAdvances = 0;
+    // Anti-spam for the Advance ("Next"/"Continue") click: a real multi-step
+    // form changes the button or the page each click, but a no-op button (a
+    // photo-carousel arrow, a dead "Next") fires forever. Stop after a few
+    // identical clicks — a Bandon run clicked "Next" 25× for 80s.
+    let advanceLabel = "";
+    let advanceRepeats = 0;
     // true ONLY when the date setter confirmed "in=…". Gates the room picker
     // (in the conductor AND the per-step pass) so it can't fire on a calendar.
     let datesConfirmed = false;
@@ -962,7 +968,15 @@ export async function runStagehandBooking(
         // Only advance once dates are handled, so we don't skip the date step.
         if (datesAlreadySet || !opts.checkinISO) {
           const adv = await clickAdvanceButtonDeterministically(p);
-          if (adv) return `advance "${adv}"`;
+          if (adv) {
+            if (adv === advanceLabel) advanceRepeats += 1;
+            else { advanceLabel = adv; advanceRepeats = 0; }
+            // Same advance button firing 3+ times in a row = it isn't
+            // progressing (no-op / carousel). Stop hammering it: fall through
+            // to a stall so the conductor hands off instead of looping 25×.
+            if (advanceRepeats >= 3) return null;
+            return `advance "${adv}"`;
+          }
         }
         return null;
       };
