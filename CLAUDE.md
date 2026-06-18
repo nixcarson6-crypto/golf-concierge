@@ -239,10 +239,27 @@ HIDDEN spinners + any node delta, so a stable Villa d'Este menu read as
 node-count move (>30 nodes / >3%). NOTE: the `awaitActivePage` crash mid-run is
 Browserbase infra (~85% reliability) — it auto-retries, not our bug.
 
+**🔑 BIGGEST FINDING (the diag paid off): the booking engine is often in an
+IFRAME.** A Gleneagles run's calendar diag logged `iframes=1 |
+customTags=booking-layout | calendarHTML=(none)` — Gleneagles (and much of
+SynXis) loads the WHOLE flow (calendar, rooms, guest form) inside an iframe.
+Every recognizer ran page-JS, blind to the iframe → checkout date never clicked
+(out=PENDING), guest form never filled, conductor looped on outer "Search" for
+~100s. FIX LANDED: `bookingFrame()` resolves the child frame holding booking
+content (Playwright evaluates inside any frame, even cross-origin; recognizers
+use only `.evaluate`, so a Frame is a drop-in) and the conductor + date
+fast-path run all CONTENT recognizers against it (consent + outer Book CTA stay
+on the page). Falls back to the page for non-iframe SPAs (Aman) → no regression.
+Logs `📦 booking engine is in an iframe — driving it directly`. NEXT RUN proves
+it: watch for that line + dates/guest filling INSIDE the iframe. The
+guest-form/calendar diags now dump from the FRAME, so if anything's still off
+they capture the real iframe DOM.
+
 **Where we are:** the deterministic "conductor" + the browser agent drive most
-luxury hotels to the CARD STEP correctly (One&Only ~3:30). After the conductor
-fix above, the two RESIDUAL slow phases are both per-ENGINE DOM gaps on Aman/
-SynXis "revraise" — fix them from a fresh run's diag HTML, do NOT guess blind:
+luxury hotels to the CARD STEP correctly (One&Only ~3:30). The two earlier
+RESIDUAL slow phases were both downstream of the iframe blindness above (Aman is
+a same-domain SPA so the same fix doesn't apply to it — Aman still needs its own
+diag), per-ENGINE DOM gaps — fix from a fresh run's diag HTML, do NOT guess blind:
 
 1. **DATES (~2:40 on Aman Venice / SynXis "revraise" engine).** The ARIA-grid
    date-setter (`clickStayDatesDeterministically`, Strategy 0 — `[role=gridcell]`
