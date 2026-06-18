@@ -341,6 +341,7 @@ CORE RULES
 6a. CHECKOUT CONSENT TOGGLES — the last gate before payment. Booking forms gate the Pay button behind MANDATORY consent checkboxes/toggles ("I accept the cancellation policy", "I accept the terms and conditions", "I consent to my data being processed to complete my booking" / "Accetto", "Acconsento"). TICK EVERY MANDATORY one (they're usually grouped under "Mandatory"/"Required") — these are required to book and are always safe to accept; leaving them off is why a checkout shows "you must accept the mandatory terms" and the run stalls. Leave OPTIONAL ones (marketing, analytics, profiling / "I consent to marketing") OFF. NEVER click "Learn more" / "Read more" / policy links, and NEVER open or read a Terms/Privacy page or new tab — a real run opened the privacy disclosure and burned minutes reading GDPR text. Just flip the mandatory toggles and proceed to Pay. If a stray Terms/Privacy tab opened, close it and return to the checkout tab.
 
 DATES (get these right — most failures start here, especially the calendar)
+- GUIDED "PLANNER" / WIZARD flows (no calendar at all): some resorts (Hammock Beach) replace the calendar with a step-by-step wizard — "When do you want to travel?" with SEASON tiles (Summer / Fall / Winter / Spring) and "This week / Next week" buttons, then a property picker, then rooms. There are NO day cells to click. Navigate it like a human: pick the SEASON that contains your travel month (August → Summer, November → Fall, January → Winter, April → Spring); if it then offers a week/date range, pick the one closest to your target dates; then pick the property/resort named in the task and its room. Do NOT sit waiting for a calendar — work the wizard's buttons in order. If after picking season+week it lands on an actual date calendar, use it normally.
 - TRY TYPING FIRST. If there's a check-in / check-out TEXT field, click it and TYPE the date in the format it shows (MM/DD/YYYY, or DD/MM/YYYY on European sites) — typing is ONE action and far more reliable than clicking calendar cells. Only fall to the calendar if there's no typable field.
 - CLICK FIELDS AND DAY CELLS, NEVER ICONS. Inside date widgets, aim every click at the INPUT/field itself, the visible date TEXT, or the day-number cell — never at the little calendar/chevron ICONS (svg decorations). Those icons disappear when the widget re-renders, and clicking them fails repeatedly (a real run burned 5 identical failed clicks on one svg). If a click on any calendar element errors or changes nothing, do NOT repeat it — click the field's text instead, or type the date.
 - CALENDAR WIDGET — the precise sequence (this is where runs get stuck):
@@ -735,6 +736,8 @@ export async function runStagehandBooking(
     // identical clicks — a Bandon run clicked "Next" 25× for 80s.
     let advanceLabel = "";
     let advanceRepeats = 0;
+    let bookCtaLabel = "";
+    let bookCtaRepeats = 0;
     // true ONLY when the date setter confirmed "in=…". Gates the room picker
     // (in the conductor AND the per-step pass) so it can't fire on a calendar.
     let datesConfirmed = false;
@@ -961,9 +964,16 @@ export async function runStagehandBooking(
           const n = await deterministicGuestFill(p, opts.autofill);
           if (n > 0) return `autofill ${n} fields`;
         }
-        // Off a marketing page → click the Book CTA.
+        // Off a marketing page → click the Book CTA. Same anti-spam as the
+        // advance button: clicking "BOOK NOW" twice usually just re-opens the
+        // same widget, so after a couple of identical clicks stop and let the
+        // run move on (a Hammock Beach run clicked "BOOK NOW" 18× for 50s).
         const cta = await clickBookingEntryDeterministically(p);
-        if (cta) return `book-cta "${cta}"`;
+        if (cta) {
+          if (cta === bookCtaLabel) bookCtaRepeats += 1;
+          else { bookCtaLabel = cta; bookCtaRepeats = 0; }
+          if (bookCtaRepeats < 2) return `book-cta "${cta}"`;
+        }
         // Advance to the next step (Search / Continue / Next) — never commits.
         // Only advance once dates are handled, so we don't skip the date step.
         if (datesAlreadySet || !opts.checkinISO) {
