@@ -389,7 +389,7 @@ ACCOUNT / REGISTRATION WALLS
 
 GOLF / TEE-TIME PLAYBOOK
 - NEVER BOOK A HOTEL ROOM FOR A TEE TIME. If the only booking widget you can find on a golf page is the resort's ROOM reservation (nightly rates, Arrival/Departure, Adults/Children/Rooms, a multi-night stay calendar), that is NOT how you book golf — do NOT pick dates or rooms there. A tee time is a single date + players, never a multi-night stay.
-- MEMBERS-ONLY / PHONE-ONLY COURSE → report it, don't grind. Many luxury resort courses are "reserved for resort guests and club members only" and take tee times BY PHONE ("to reserve, call 1-877-…"), with NO online tee sheet at all (The Breakers is exactly this). The moment you see "resort guests and club members only" / "members only" / "call … to reserve" / "call for tee times" and there is no online tee-time form, STOP immediately and report failed / members_only (or form_not_found if it's simply phone-only), quoting the phone number. Do not click the hotel "Check Availability" / book a room — there is nothing to book online here.
+- NO ONLINE TEE SHEET → report it FAST (within ~3-4 steps), don't grind for 20. MOST luxury resort courses do NOT book tee times online — they're members/guest-only and arranged by PHONE or the PRO SHOP. Bail immediately the moment the page shows ANY of: "reserved for resort guests and club members only" / "members only" / "call … to reserve" / "call for tee times" / "confirm … through the Golf Pro Shop" / "arranged through the Golf Club representative" / a Services/Golf-reservations section that only DESCRIBES the policy with no form or widget. Report failed / members_only (or form_not_found if simply phone/pro-shop only), quoting any phone number. Do NOT click the hotel "Check Availability" or book a room — there is nothing to book online. Only KEEP GOING if you find an actual interactive tee-time widget (a date + players search that returns clickable time slots, e.g. EZLinks/ForeUp/Chronogolf/GolfNow). If after a couple of clicks there's no such widget, conclude no online booking and stop — don't keep exploring menus.
 - RESORT / MARKETING GOLF PAGE — DIG, DON'T GIVE UP. When you land on a golf page that's pure marketing (a hero photo + "About the Course / Pro Shop / Golf Lessons" cards + a "Check Availability" bar that's really the HOTEL's room widget — e.g. One&Only "Experiences › Golf"), the tee sheet is almost always ONE or TWO clicks deeper behind a secondary link. Do NOT report form_not_found after one look — LOOK HARD and click the most booking-like link, in this order: "BOOK A TEE TIME" / "TEE TIMES" / "RESERVE" → then "ABOUT THE COURSE" / "VIEW THE COURSE" / "MORE INFO" / "PLAN YOUR GAME" → then the COURSE'S OWN NAME as a link (resorts link out to the golf club's own site / tee sheet, often on a different domain — follow it). Follow ONE hop; if that page has a Book / Tee-time button or a date+players widget, use it. The "Check Availability" date bar on a golf marketing page is usually for HOTEL ROOMS, not golf — don't book a room when the task is a tee time; find the golf-specific booking link instead. Only after you've tried the booking links AND the course-name link and there's genuinely no online tee sheet (phone / concierge / "arranged through the Golf Shop" only) do you report form_not_found, quoting the phone/email.
 - Many courses embed a booking widget (GolfNow, Lightspeed/Chronogolf, ForeUp, TeeQuest). That widget IS the real booking system — use it, even if the URL host changes.
 - Set the DATE and number of PLAYERS (light thinking — you KNOW both from the task), then the slot list is a REFLEX: click the tee time at or nearest the requested time on the SAME step you see the grid — don't compare slots, don't re-read. Clicking the slot opens the form; batch-fill the player/contact details and book. If a card/deposit is required, STOP per rule 6.
@@ -727,6 +727,8 @@ export async function runStagehandBooking(
     let roomPickedAtStep = -1;
     // One-shot guard so the calendar diagnostic dumps at most once per run.
     let calendarDiagnosed = false;
+    // Cap on next-month hops, so an unreachable date can't spin forever.
+    let monthAdvances = 0;
     // true ONLY when the date setter confirmed "in=…". Gates the room picker
     // (in the conductor AND the per-step pass) so it can't fire on a calendar.
     let datesConfirmed = false;
@@ -894,8 +896,19 @@ export async function runStagehandBooking(
           }
           if (r) {
             // Clicking the next-month arrow toward the target month is real
-            // progress, not a stall — don't count it toward the give-up budget.
-            if (r === "ADVANCING") return `dates advancing-month`;
+            // progress — but CAP it: if we hop ~14 months and still can't find
+            // the date (e.g. a golf date in a hotel calendar, or a date the
+            // venue can't offer), stop advancing forever and hand off. A real
+            // Breakers run advanced 25× / ~70s into a hotel calendar that would
+            // never have the tee-time date.
+            if (r === "ADVANCING") {
+              monthAdvances += 1;
+              if (monthAdvances >= 14) {
+                datesAlreadySet = true; // give up — let the agent decide
+                return `dates give-up (advanced ${monthAdvances} months, no match)`;
+              }
+              return `dates advancing-month`;
+            }
             // First time the calendar comes back un-settable, dump what's on
             // the page so we can fix the recognizer precisely (vs. guessing).
             if (r === "OPENED" && !calendarDiagnosed) {
