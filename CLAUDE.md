@@ -204,9 +204,27 @@ card step" — and **the fixes must be GENERAL (apply to every booking form), no
 per-site patches.** We are NOT chasing individual resorts anymore; each fix has
 to cascade to all hotels.
 
+**✅ JUST LANDED (GENERAL — every booking type):** the conductor no longer bails
+to the ~20s/step AI agent while a slow SPA is still rendering. It used to quit
+after only 3 stalls (~4.2s) / 24 ticks (~34s); on Aman's `#/booking/step-1`
+(SynXis revraise) each new step paints several seconds after a Continue click,
+so the recognizers read a still-loading page, matched nothing, and the conductor
+handed off BEFORE the room/guest screens even existed — that early bail is what
+fed the whole flow to the slow agent (and is why the guest form sat EMPTY at the
+378s abort: autofill never reached it deterministically). New `pageStillSettling()`
+probe (readyState + URL + node + spinner count, sampled ~450ms apart) treats "DOM
+still moving" as NOT-a-stall, so the conductor waits out the render and then
+drives room → rate → enhancements → guest at ~1.4s/action AND fires
+`deterministicGuestFill` at the guest step. Patience raised to 7 real stalls / 40
+ticks, bounded four ways (wall-clock abort + anti-hammer guards + stall limit +
+an 8-tick per-page wait cap), so it can't run away and still hands off on a
+genuinely novel, settled widget. This was the single biggest cause of the 6-min
+runs and it cascades to every hotel/golf/car form. (`stagehand-runner.ts`.)
+
 **Where we are:** the deterministic "conductor" + the browser agent drive most
-luxury hotels to the CARD STEP correctly (One&Only ~3:30). But Aman/SynXis-class
-sites still take ~6 min and the two slow phases are:
+luxury hotels to the CARD STEP correctly (One&Only ~3:30). After the conductor
+fix above, the two RESIDUAL slow phases are both per-ENGINE DOM gaps on Aman/
+SynXis "revraise" — fix them from a fresh run's diag HTML, do NOT guess blind:
 
 1. **DATES (~2:40 on Aman Venice / SynXis "revraise" engine).** The ARIA-grid
    date-setter (`clickStayDatesDeterministically`, Strategy 0 — `[role=gridcell]`
