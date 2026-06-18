@@ -990,16 +990,47 @@ export async function runStagehandBooking(
         }
         return null;
       };
+      // Patience sized for SLOW luxury SPAs, not just snappy forms. The loop is
+      // bounded four ways so it can never run away: the wall-clock abort
+      // (controller.signal.aborted), the per-recognizer anti-hammer guards
+      // (repeated no-op clicks return null → stall), STALL_LIMIT, and a cap on
+      // how long we'll wait for a single page to render (MAX_SETTLE_STREAK).
+      // CONDUCTOR_MAX_TICKS=40 only matters for a flow that keeps making real
+      // progress — Aman's CTA → dates → room → rate → enhancements → guest form
+      // → card is ~10-15 productive ticks — so the higher cap simply lets a long
+      // luxury checkout FINISH on the fast deterministic path. The old 24-tick /
+      // 3-stall budget quit after ~34s/~4s, handing slow sites to the 20s-per-
+      // step agent before the room/guest screens had even painted.
       let stalls = 0;
-      for (let i = 0; i < 24 && !controller.signal.aborted; i++) {
+      let settleStreak = 0;
+      let settleLogged = false;
+      const CONDUCTOR_MAX_TICKS = 40;
+      const STALL_LIMIT = 7;
+      const MAX_SETTLE_STREAK = 8; // ~8 ticks of "still loading" → treat as stuck
+      for (let i = 0; i < CONDUCTOR_MAX_TICKS && !controller.signal.aborted; i++) {
         const action = await tick();
         if (conductorReachedCard) break;
         if (action) {
           stalls = 0;
+          settleStreak = 0;
+          settleLogged = false;
           console.log(`[stagehand] ⚙ conductor → ${action} (${elapsed()})`);
           await opts.onStep?.(progressLabel(i + 1));
-        } else if (++stalls >= 3) {
-          break; // novel widget — hand to the AI agent
+        } else if (
+          settleStreak < MAX_SETTLE_STREAK &&
+          (await pageStillSettling(stagehand.context.activePage() ?? page))
+        ) {
+          // The next step is still painting (slow SPA) — don't burn stall budget
+          // waiting for it; the next tick will see the rendered page and match.
+          settleStreak += 1;
+          if (!settleLogged) {
+            console.log(
+              `[stagehand] ⏳ conductor waiting for slow page to render (${elapsed()})`,
+            );
+            settleLogged = true;
+          }
+        } else if (++stalls >= STALL_LIMIT) {
+          break; // genuinely novel, settled widget — hand to the AI agent
         }
         await new Promise((r) => setTimeout(r, 1400));
       }
@@ -2758,6 +2789,54 @@ async function detectCardFieldPresent(page: unknown): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Cheap "is the page still rendering?" probe for the conductor. Samples a DOM
+ * signature (readyState + URL + node count) twice ~450ms apart and reports
+ * whether anything moved. The reason it exists: luxury booking flows are slow
+ * client-rendered SPAs (Aman's `#/booking/step-1`, Villa d'Este, etc.) where
+ * each new step — room list, enhancements, guest form — takes several seconds
+ * to paint after a Continue click. Without this, the conductor's recognizers
+ * read an empty/loading page, match nothing, and the conductor counts a STALL;
+ * three of those in ~4s and it quits to the 20s-per-step AI agent BEFORE the
+ * deterministic path ever sees the room/guest screens. By treating "DOM still
+ * moving" as not-a-stall, the conductor waits for the page to settle and then
+ * drives it at ~1.4s/action — the difference between a ~2-minute booking and a
+ * 6-minute one. A genuinely novel, settled widget still stalls out fast (the
+ * signature is stable), so the agent fallback is unaffected.
+ */
+async function pageStillSettling(page: unknown): Promise<boolean> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return false;
+  const signature = async (): Promise<string> => {
+    try {
+      return await cdp.evaluate<string>(() =>
+        [
+          document.readyState,
+          location.href,
+          document.querySelectorAll("*").length,
+          // Spinners/skeletons are the clearest "still loading" tell on SPAs.
+          document.querySelectorAll(
+            '[class*=spinner i],[class*=loading i],[class*=skeleton i],[aria-busy=true]',
+          ).length,
+        ].join("|"),
+      );
+    } catch {
+      return "";
+    }
+  };
+  const before = await signature();
+  if (!before) return false;
+  await new Promise((r) => setTimeout(r, 450));
+  const after = await signature();
+  // Document not fully loaded, a spinner present, or the node count / URL
+  // shifted between samples → the page is mid-render, not a real stall.
+  return (
+    before !== after ||
+    !after.startsWith("complete") ||
+    !/\|0$/.test(after) // trailing field is the spinner/skeleton count
+  );
 }
 
 /**
