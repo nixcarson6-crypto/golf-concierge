@@ -878,6 +878,20 @@ async function runBrowserBookingInner(args: {
         (outcome as { priceCents?: number | null }).priceCents ??
         (existingMeta.quotedPriceCents as number | undefined) ??
         null;
+      // RESORT GOLF → CONCIERGE-ARRANGE-WITH-STAY. A tee time that has no
+      // online booking (members/guest-only, pro-shop/phone only) isn't a
+      // failure — booking the hotel makes the customer an eligible guest, and
+      // Pyltrix's concierge arranges the tee time with the pro shop on their
+      // behalf. So we frame it as an in-progress concierge task (NEEDS_REVIEW),
+      // not a red "couldn't book". Only for golf, only for the no-online-form
+      // failure codes — every other outcome is untouched.
+      const isResortGolf =
+        item.type === "TEE_TIME" &&
+        verified.status === "FAILED" &&
+        (verified.failureCode === "members_only" ||
+          verified.failureCode === "form_not_found");
+      const venueName =
+        (item.title.split(/[—–-]/)[0] || "").trim() || "the resort";
       const nextMeta: Record<string, unknown> = {
         ...existingMeta,
         vendorConfirmation: verified.evidence ?? null,
@@ -885,6 +899,9 @@ async function runBrowserBookingInner(args: {
         // back to the agent's own reason so price_approval reaches the UI.
         failureReason: verified.failureCode ?? rawReason,
         quotedPriceCents,
+        // Tells the concierge queue + customer UI this is a "we're arranging
+        // it with your stay" task, with the pro-shop contact to call.
+        arrangeWithStay: isResortGolf || undefined,
         fallbackContact: {
           website: places.website ?? startUrl,
           phone: places.phone ?? mined.phone ?? null,
@@ -897,12 +914,14 @@ async function runBrowserBookingInner(args: {
       await db.booking.update({
         where: { id: booking.id },
         data: {
-          status: toBookingStatus(verified),
+          // Resort golf → NEEDS_REVIEW (concierge arranges with the stay), not
+          // FAILED — it still lands in the queue, but reads as in-progress.
+          status: isResortGolf ? "NEEDS_REVIEW" : toBookingStatus(verified),
           confirmationCode: verified.confirmationCode,
           confirmedAt: verified.status === "CONFIRMED" ? new Date() : null,
           screenshotUrl: screenshotDataUrl,
           lastError:
-            verified.status === "FAILED"
+            verified.status === "FAILED" && !isResortGolf
               ? outcome.message?.slice(0, 1000) ?? null
               : null,
           metadata: nextMeta as object,
@@ -920,13 +939,17 @@ async function runBrowserBookingInner(args: {
       await db.itineraryItem.update({
         where: { id: item.id },
         data: {
-          confirmationState: toConfirmationState(verified),
+          confirmationState: isResortGolf
+            ? "HOLDING"
+            : toConfirmationState(verified),
           status:
             verified.status === "CONFIRMED"
               ? `Booked${verified.confirmationCode ? ` · ${verified.confirmationCode}` : ""}`
-              : verified.status === "FAILED"
-                ? "Couldn't book — see fallback"
-                : "Pyltrix concierge reviewing…",
+              : isResortGolf
+                ? `Arranging your tee time with ${venueName} as part of your stay`
+                : verified.status === "FAILED"
+                  ? "Couldn't book — see fallback"
+                  : "Pyltrix concierge reviewing…",
           ...(writeRealPrice
             ? {
                 cost: quotedPriceCents,

@@ -79,6 +79,38 @@ export default async function ConciergeQueuePage() {
     },
   });
 
+  // For golf items that are "arrange with the stay", pull the trip's hotel
+  // booking so the concierge has the guest's confirmation + dates in hand when
+  // they call the pro shop ("I have a confirmed guest, conf #X, staying …").
+  const golfTripIds = Array.from(
+    new Set(
+      bookings
+        .filter((b) => b.itineraryItem.type === "TEE_TIME")
+        .map((b) => b.trip.id),
+    ),
+  );
+  const hotelBookings = golfTripIds.length
+    ? await db.booking.findMany({
+        where: {
+          trip: { id: { in: golfTripIds } },
+          itineraryItem: { type: "LODGING" },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          status: true,
+          confirmationCode: true,
+          trip: { select: { id: true } },
+          itineraryItem: {
+            select: { title: true, startTime: true, endTime: true },
+          },
+        },
+      })
+    : [];
+  const hotelByTrip = new Map<string, (typeof hotelBookings)[number]>();
+  for (const hb of hotelBookings) {
+    if (!hotelByTrip.has(hb.trip.id)) hotelByTrip.set(hb.trip.id, hb);
+  }
+
   return (
     <div className="min-h-dvh bg-concierge-radial">
       <header className="container py-6 flex items-center justify-between">
@@ -181,6 +213,38 @@ export default async function ConciergeQueuePage() {
                     <Fact label="Address" value={addr || "— (not on file)"} copyable={!!addr} />
                   </div>
                 </div>
+
+                {/* Resort golf: the guest's hotel booking = their eligibility.
+                    Call the pro shop with this in hand. */}
+                {b.itineraryItem.type === "TEE_TIME" &&
+                  hotelByTrip.get(b.trip.id) &&
+                  (() => {
+                    const h = hotelByTrip.get(b.trip.id)!;
+                    return (
+                      <div className="rounded-xl bg-emerald-500/5 border border-emerald-600/30 p-3 text-sm">
+                        <p className="text-[10px] uppercase tracking-widest text-emerald-700 mb-1">
+                          Guest of — arrange tee time with this stay
+                        </p>
+                        <Fact label="Hotel" value={h.itineraryItem.title} />
+                        <Fact
+                          label="Stay"
+                          value={fmtWhen(
+                            h.itineraryItem.startTime,
+                            h.itineraryItem.endTime,
+                          )}
+                        />
+                        <Fact
+                          label="Hotel status"
+                          value={
+                            h.status === "CONFIRMED"
+                              ? `Confirmed${h.confirmationCode ? ` · ${h.confirmationCode}` : ""}`
+                              : h.status
+                          }
+                          copyable={!!h.confirmationCode}
+                        />
+                      </div>
+                    );
+                  })()}
 
                 {agentMsg && (
                   <p className="text-xs text-foreground/70 leading-snug">

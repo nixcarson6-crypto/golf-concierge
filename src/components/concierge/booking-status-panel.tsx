@@ -880,6 +880,19 @@ export function BookingStatusPanel({
                                 ).toLocaleString()}
                               </button>
                             </>
+                          ) : item.type === "TEE_TIME" &&
+                            (failureReason === "members_only" ||
+                              failureReason === "form_not_found") ? (
+                            <>
+                              <p className="text-[11px] text-foreground/80 leading-snug">
+                                This course reserves tee times directly for
+                                resort guests — so Pyltrix is arranging yours
+                                with the{" "}
+                                {(item.title.split(/[—–-]/)[0] || "resort").trim()}{" "}
+                                pro shop as part of your stay. Nothing for you to
+                                do — you&apos;ll get the confirmation by email.
+                              </p>
+                            </>
                           ) : failureReason === "enquiry_sent" ? (
                             <>
                               <p className="text-[11px] text-foreground/80 leading-snug">
