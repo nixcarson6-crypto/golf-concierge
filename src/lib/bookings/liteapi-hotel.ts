@@ -13,6 +13,7 @@
  */
 
 import { db } from "@/lib/db";
+import { optionalEnv } from "@/lib/env";
 import {
   liteapiConfigured,
   resolveHotelId,
@@ -77,6 +78,49 @@ function parseLocation(loc: string | null): { city: string; countryCode: string 
   return null;
 }
 
+/** Recover the PRECISE city + ISO country for a hotel via Google Places, so
+ *  LiteAPI's city-name index matches even when the itinerary phrased the
+ *  location as a county/region/country ("Perthshire"/"Scotland" miss where
+ *  "Auchterarder" hits). UK addresses expose the town as `postal_town`; most
+ *  use `locality`. Best-effort: null on any failure → caller falls back. */
+async function geocodeCity(
+  name: string,
+  location: string | null,
+): Promise<{ city: string; countryCode: string } | null> {
+  const apiKey = optionalEnv("GOOGLE_MAPS_SERVER_API_KEY");
+  if (!apiKey) return null;
+  const textQuery = location ? `${name}, ${location}` : name;
+  try {
+    const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": "places.addressComponents",
+      },
+      body: JSON.stringify({ textQuery, maxResultCount: 1, rankPreference: "RELEVANCE" }),
+      next: { revalidate: 604_800 },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      places?: Array<{
+        addressComponents?: Array<{ longText?: string; shortText?: string; types?: string[] }>;
+      }>;
+    };
+    const comps = json.places?.[0]?.addressComponents;
+    if (!comps) return null;
+    const pick = (type: string) => comps.find((c) => c.types?.includes(type));
+    const cityComp =
+      pick("locality") ?? pick("postal_town") ?? pick("administrative_area_level_2");
+    const countryCode = pick("country")?.shortText; // ISO-3166 alpha-2
+    const city = cityComp?.longText;
+    if (!city || !countryCode) return null;
+    return { city, countryCode };
+  } catch {
+    return null;
+  }
+}
+
 /** LiteAPI's index uses ENGLISH city names — "Milan" returns ~100 hotels,
  *  "Milano" returns 2. Map the local names Google addresses use to the
  *  English form LiteAPI knows; we try the alias first, then the original. */
@@ -112,33 +156,50 @@ export async function tryLiteApiHotelBooking(args: {
   if (!liteapiConfigured()) return { booked: false, reason: "LiteAPI not configured" };
   if (!args.checkin || !args.checkout) return { booked: false, reason: "missing dates" };
   if (!args.traveler.email) return { booked: false, reason: "missing traveler email" };
-  const loc = parseLocation(args.location);
+  // Parse the city/country from the itinerary text; if it can't be parsed,
+  // recover the PRECISE city by geocoding the hotel name.
+  let loc = parseLocation(args.location);
+  if (!loc) loc = await geocodeCity(args.hotelName, args.location);
   if (!loc) {
     console.warn(
-      `[liteapi-hotel] couldn't parse city/country from "${args.location}" — agent fallback.`,
+      `[liteapi-hotel] couldn't parse or geocode city/country from "${args.location}" — agent fallback.`,
     );
     return { booked: false, reason: "couldn't parse city/country" };
   }
 
   try {
-    // Try the English alias first (LiteAPI's index), then the local name.
-    const alias = CITY_ALIASES[loc.city.toLowerCase()];
-    const cityCandidates = alias ? [alias, loc.city] : [loc.city];
-    console.log(
-      `[liteapi-hotel] resolving "${args.hotelName}" in ${cityCandidates.join(" / ")}, ${loc.countryCode}…`,
-    );
-    let hotel: Awaited<ReturnType<typeof resolveHotelId>> = null;
-    for (const cityName of cityCandidates) {
-      hotel = await resolveHotelId({
-        name: args.hotelName,
-        cityName,
-        countryCode: loc.countryCode,
-      });
-      if (hotel) break;
+    // Resolve a name → hotelId in a given city: English alias first (LiteAPI's
+    // index), then the local name.
+    const tryResolve = async (l: { city: string; countryCode: string }) => {
+      const alias = CITY_ALIASES[l.city.toLowerCase()];
+      const cityCandidates = alias ? [alias, l.city] : [l.city];
+      console.log(
+        `[liteapi-hotel] resolving "${args.hotelName}" in ${cityCandidates.join(" / ")}, ${l.countryCode}…`,
+      );
+      for (const cityName of cityCandidates) {
+        const h = await resolveHotelId({ name: args.hotelName, cityName, countryCode: l.countryCode });
+        if (h) return h;
+      }
+      return null;
+    };
+    let hotel = await tryResolve(loc);
+    // Missed on the parsed city → geocode the hotel for the precise town and
+    // retry once. This is the whole fix: a vague "Perthshire"/"Scotland" from
+    // the build becomes "Auchterarder", so the API books it instead of the
+    // slow browser agent (which is then reserved for genuine API-misses).
+    if (!hotel) {
+      const geo = await geocodeCity(args.hotelName, args.location);
+      if (geo && geo.city.toLowerCase() !== loc.city.toLowerCase()) {
+        console.log(
+          `[liteapi-hotel] "${loc.city}" missed — retrying with geocoded "${geo.city}", ${geo.countryCode}…`,
+        );
+        hotel = await tryResolve(geo);
+        if (hotel) loc = geo; // use the geocoded country for the rate search too
+      }
     }
     if (!hotel) {
       console.warn(
-        `[liteapi-hotel] no match for "${args.hotelName}" in ${cityCandidates.join(" / ")}, ${loc.countryCode} — agent fallback.`,
+        `[liteapi-hotel] no match for "${args.hotelName}" near ${loc.city}, ${loc.countryCode} — agent fallback.`,
       );
       return { booked: false, reason: "not in LiteAPI" };
     }
