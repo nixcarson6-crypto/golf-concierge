@@ -217,6 +217,35 @@ function statusLabel(kind: RowStatus): string {
   }
 }
 
+// "Here's exactly what we booked" date line for the receipt. Times are stored
+// as the venue's local wall-clock encoded in UTC, so we render in UTC to
+// recover the digits (per the item.timeZone note). Hotels show a date RANGE;
+// flights/tee times show date + time; everything else just the date.
+function fmtBookedWhen(item: WorkspaceItineraryItem): string | null {
+  if (!item.startTime) return null;
+  const day = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  const time = (iso: string) =>
+    new Date(iso).toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "UTC",
+    });
+  if (item.type === "LODGING" && item.endTime) {
+    return `${day(item.startTime)} → ${day(item.endTime)}`;
+  }
+  if (item.type === "FLIGHT" || item.type === "TEE_TIME") {
+    return `${day(item.startTime)} · ${time(item.startTime)}`;
+  }
+  return day(item.startTime);
+}
+
 // Group items into a few high-level buckets so a 40-line wall of rows
 // reads as 5 sections of 5-10 things each. Order is the customer's
 // reading order — what to fly into first, where to sleep, what to
@@ -954,14 +983,64 @@ export function BookingStatusPanel({
                           )}
                         </div>
                       )}
-                      {/* BOOKED — the venue's own confirmation page, captured. */}
-                      {kind === "confirmed" && screenshotUrl && (
-                        <div className="pl-9 pr-2.5 pb-2.5 -mt-0.5">
-                          <ScreenshotProof
-                            url={screenshotUrl}
-                            title={`Venue confirmation — ${item.title}`}
-                            caption="Tap to see the venue's confirmation"
-                          />
+                      {/* BOOKED — the "here's exactly what we booked" receipt:
+                          confirmation #, the exact dates/times, and the price,
+                          so a fast booking reads as trustworthy, not magic.
+                          Plus the venue's own captured confirmation page. */}
+                      {kind === "confirmed" && (
+                        <div className="pl-9 pr-2.5 pb-2.5 -mt-0.5 space-y-2">
+                          <div className="rounded-xl border border-emerald-600/30 bg-emerald-500/5 p-3 space-y-1.5">
+                            <p className="text-[10px] uppercase tracking-widest text-emerald-700">
+                              Confirmed — exactly what we booked
+                            </p>
+                            <div className="space-y-1 text-[11px]">
+                              {code && (
+                                <div className="flex justify-between gap-3">
+                                  <span className="text-muted-foreground">
+                                    Confirmation
+                                  </span>
+                                  <span className="font-semibold tabular-nums select-all text-right">
+                                    {code}
+                                  </span>
+                                </div>
+                              )}
+                              {fmtBookedWhen(item) && (
+                                <div className="flex justify-between gap-3">
+                                  <span className="text-muted-foreground">
+                                    When
+                                  </span>
+                                  <span className="font-medium text-right">
+                                    {fmtBookedWhen(item)}
+                                  </span>
+                                </div>
+                              )}
+                              {amountCents != null && amountCents > 0 && (
+                                <div className="flex justify-between gap-3">
+                                  <span className="text-muted-foreground">
+                                    Total
+                                  </span>
+                                  <span className="font-semibold tabular-nums text-right">
+                                    $
+                                    {Math.round(
+                                      amountCents / 100,
+                                    ).toLocaleString()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-muted-foreground leading-snug pt-0.5">
+                              {code
+                                ? `The venue is emailing your confirmation — you can look up #${code} on their site anytime.`
+                                : "The venue is emailing your confirmation directly."}
+                            </p>
+                          </div>
+                          {screenshotUrl && (
+                            <ScreenshotProof
+                              url={screenshotUrl}
+                              title={`Venue confirmation — ${item.title}`}
+                              caption="Tap to see the venue's confirmation"
+                            />
+                          )}
                         </div>
                       )}
                       {showContacts && (
