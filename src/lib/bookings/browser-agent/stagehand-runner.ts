@@ -741,6 +741,9 @@ export async function runStagehandBooking(
     let roomPickedAtStep = -1;
     // One-shot guard so the calendar diagnostic dumps at most once per run.
     let calendarDiagnosed = false;
+    // One-shot: dump the guest/checkout form's real field structure so a SynXis
+    // engine driver can be built from the actual DOM, not screenshots.
+    let guestFormDiagnosed = false;
     // Cap on next-month hops, so an unreachable date can't spin forever.
     let monthAdvances = 0;
     // Anti-spam for the Advance ("Next"/"Continue") click: a real multi-step
@@ -802,6 +805,15 @@ export async function runStagehandBooking(
               break;
             }
           }
+        }
+        // Checkout cell STILL won't resolve (Aman/Gleneagles SynXis) → dump the
+        // calendar DOM once so the gridcell selector can be built from the real
+        // markup. This is why a Gleneagles run never logged a calendar diag: it
+        // only fired on "OPENED" before, never on out=PENDING.
+        if (setDates && setDates.includes("out=PENDING") && !calendarDiagnosed) {
+          calendarDiagnosed = true;
+          const cdiag = await diagnoseCalendar(page).catch(() => "(diag failed)");
+          console.log(`[stagehand] 🔬 calendar diag (out=PENDING) :: ${cdiag}`);
         }
         if (setDates && setDates !== "OPENED") {
           datesAlreadySet = true;
@@ -986,6 +998,13 @@ export async function runStagehandBooking(
         }
         // GUEST DETAILS autofill.
         if (opts.autofill) {
+          if (!guestFormDiagnosed) {
+            const gdiag = await diagnoseGuestForm(p).catch(() => "");
+            if (gdiag) {
+              guestFormDiagnosed = true;
+              console.log(`[stagehand] 🔬 guest-form diag :: ${gdiag}`);
+            }
+          }
           const n = await deterministicGuestFill(p, opts.autofill);
           if (n > 0) return `autofill ${n} fields`;
         }
@@ -1187,6 +1206,13 @@ export async function runStagehandBooking(
             try {
               const active = stagehand.context.activePage();
               if (active) {
+                if (!guestFormDiagnosed) {
+                  const gdiag = await diagnoseGuestForm(active).catch(() => "");
+                  if (gdiag) {
+                    guestFormDiagnosed = true;
+                    console.log(`[stagehand] 🔬 guest-form diag :: ${gdiag}`);
+                  }
+                }
                 const filled = await deterministicGuestFill(active, opts.autofill);
                 if (filled > 0)
                   console.log(
@@ -2659,6 +2685,95 @@ async function clickStayDatesDeterministically(
  * samples), day-number candidates (+ samples), date-bearing aria-labels (+
  * samples), and the custom-element tags present (SynXis = sb-express, etc.).
  */
+/**
+ * Dump the guest/checkout form's REAL field structure (one compact JSON line)
+ * so a per-engine driver can be built from the actual DOM instead of guessing
+ * from screenshots. Fires once per run, only on a real guest form (a name field
+ * present). Captures each control's identifying attributes + label, the phone
+ * widget's markup, and any custom (non-<select>) dropdowns — exactly what's
+ * needed to fix the Title/Country pickers and the dial-code selector.
+ */
+async function diagnoseGuestForm(page: unknown): Promise<string> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return "";
+  try {
+    return await cdp.evaluate<string>(() => {
+      const vis = (el: Element): boolean => {
+        const r = (el as HTMLElement).getClientRects?.();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return s.visibility !== "hidden" && s.display !== "none";
+      };
+      const metaOf = (el: Element): string =>
+        [
+          el.getAttribute("name"),
+          (el as HTMLElement).id,
+          el.getAttribute("placeholder"),
+          el.getAttribute("aria-label"),
+          (el as HTMLInputElement).labels?.[0]?.textContent,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+      const controls = Array.from(
+        document.querySelectorAll<HTMLElement>("input,select,textarea"),
+      ).filter(vis);
+      // Only dump a real guest/checkout form (a name field present).
+      const hasName = controls.some((el) =>
+        /first.?name|given-name|last.?name|surname|family-name/.test(metaOf(el)),
+      );
+      if (!hasName) return "";
+      const clip = (s: string | null | undefined, n: number) =>
+        (s || "").replace(/\s+/g, " ").trim().slice(0, n);
+      const fields = controls.slice(0, 40).map((el) => ({
+        tag: el.tagName.toLowerCase(),
+        type: el.getAttribute("type") || "",
+        name: clip(el.getAttribute("name"), 40),
+        id: clip(el.id, 40),
+        ph: clip(el.getAttribute("placeholder"), 40),
+        aria: clip(el.getAttribute("aria-label"), 40),
+        label: clip((el as HTMLInputElement).labels?.[0]?.textContent, 40),
+        cls: clip(el.getAttribute("class"), 70),
+        req: el.hasAttribute("required") || el.getAttribute("aria-required") === "true",
+        opts:
+          el.tagName === "SELECT"
+            ? Array.from((el as HTMLSelectElement).options)
+                .slice(0, 6)
+                .map((o) => clip(o.textContent, 18))
+            : undefined,
+      }));
+      const phoneWidget = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "[class*=iti i],[class*=flag i],[class*=country-code i],[class*=countrycode i],[class*=dial i],[class*=phone-prefix i]",
+        ),
+      )
+        .filter(vis)
+        .slice(0, 6)
+        .map((el) => ({
+          tag: el.tagName.toLowerCase(),
+          cls: clip(el.getAttribute("class"), 70),
+          txt: clip(el.textContent, 24),
+        }));
+      const comboboxes = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "[role=combobox],[role=listbox],[aria-haspopup=listbox],[class*=dropdown i],[class*=combobox i]",
+        ),
+      )
+        .filter(vis)
+        .slice(0, 10)
+        .map((el) => ({
+          tag: el.tagName.toLowerCase(),
+          role: el.getAttribute("role") || "",
+          cls: clip(el.getAttribute("class"), 70),
+          txt: clip(el.textContent, 40),
+        }));
+      return JSON.stringify({ fields, phoneWidget, comboboxes }).slice(0, 4500);
+    });
+  } catch {
+    return "";
+  }
+}
+
 async function diagnoseCalendar(page: unknown): Promise<string> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return "(no evaluate)";
