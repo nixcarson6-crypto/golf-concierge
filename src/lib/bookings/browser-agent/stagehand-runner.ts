@@ -1031,7 +1031,7 @@ export async function runStagehandBooking(
       let settleLogged = false;
       const CONDUCTOR_MAX_TICKS = 40;
       const STALL_LIMIT = 7;
-      const MAX_SETTLE_STREAK = 8; // ~8 ticks of "still loading" → treat as stuck
+      const MAX_SETTLE_STREAK = 5; // ~5 ticks of "still loading" → treat as stuck (was 8 — too patient; a Gleneagles run sat ~80s before handing off)
       for (let i = 0; i < CONDUCTOR_MAX_TICKS && !controller.signal.aborted; i++) {
         const action = await tick();
         if (conductorReachedCard) break;
@@ -3648,13 +3648,21 @@ async function deterministicGuestFill(
           else if (/confirm.*(e-?mail)|(e-?mail).*(confirm|verify|repeat)/.test(m)) setVal(el, d.email);
           else if (type === "email" || /\be-?mail\b/.test(m)) setVal(el, d.email);
           else if (type === "tel" || /phone|mobile|\btel\b/.test(m)) {
-            // Forms with a sibling country-code selector want national digits.
-            const hasCountrySel = !!el.closest("div,fieldset")?.querySelector("select, [class*=country], [class*=flag]");
+            // A SEPARATE country/dial-code control next to the field (intl-tel-
+            // input flag, a "+44" Code box — Gleneagles, Aman) wants only the
+            // NATIONAL digits; a US "+1…" dumped in alongside reads as invalid
+            // ("+44 +19038206837"). Climb a few ancestors looking for a flag/
+            // dial/iti control SPECIFICALLY — not the address "Country" select.
+            let scope: Element = el;
+            for (let i = 0; i < 4 && scope.parentElement; i++) scope = scope.parentElement;
+            const hasCountrySel = !!scope.querySelector(
+              "[class*=flag i],[class*=iti i],[class*=dial i],[class*=country-code i],[class*=countrycode i],[class*=phone-prefix i],select[name*=code i]",
+            );
             setVal(el, hasCountrySel ? d.phoneNational : d.phone);
           } else if (d.addressLine1 && /address-line1|address.?(line)?.?1\b|street|\baddr/.test(m) && !/2|line.?2/.test(m)) setVal(el, d.addressLine1);
           else if (d.city && /\bcity\b|\btown\b|locality/.test(m)) setVal(el, d.city);
           else if (d.state && /state|province|region|county\b/.test(m) ) setVal(el, d.state);
-          else if (d.postal && /\bzip\b|postal|postcode/.test(m)) setVal(el, d.postal);
+          else if (d.postal && /\bzip\b|postal|post.?code/.test(m)) setVal(el, d.postal);
           else if (/prefix|salutation|honorific|^title$|\btitle\b/.test(m) && /title|prefix|salutation/.test(m)) setVal(el, d.title);
         }
 
@@ -3686,6 +3694,35 @@ async function deterministicGuestFill(
           if (/title|prefix|salutation|honorific/.test(m)) pick(el, d.title.replace(".", "")) || pick(el, d.title);
           else if (d.countryName && /country/.test(m)) pick(el, d.countryName);
           else if (d.state && /state|province|region/.test(m)) pick(el, d.state);
+        }
+
+        // PHONE DIAL-CODE → US (+1). intl-tel-input (the dominant phone widget)
+        // and lookalikes default the code to the SITE's locale (+44 on
+        // Gleneagles, +49 on Aman) — which invalidates a US number even with the
+        // national digits. Targets intl-tel-input's exact markup, so it cleanly
+        // no-ops on other libraries: open the flag dropdown, pick United States.
+        try {
+          const itiFlag = document.querySelector<HTMLElement>(
+            ".iti__selected-flag, .iti__selected-country, [class*=iti i] [class*=flag i]",
+          );
+          const itiList = document.querySelector(
+            ".iti__country-list, .iti__dropdown-content, [class*=iti i] [class*=country-list i]",
+          );
+          if (itiFlag && itiList && visible(itiFlag)) {
+            const cur = (itiFlag.getAttribute("title") || itiFlag.textContent || "").toLowerCase();
+            if (!/united states|\(\+1\)|\bus\b/.test(cur)) {
+              itiFlag.click(); // open the country list
+              const us = itiList.querySelector<HTMLElement>(
+                "li[data-country-code='us'], [data-country-code='us'], li[data-dial-code='1']",
+              );
+              if (us) {
+                us.click();
+                filled++;
+              }
+            }
+          }
+        } catch {
+          /* best-effort — never break the rest of the fill */
         }
 
         // CUSTOM dropdowns (NOT native <select>): the One&Only "STATE OR COUNTY
