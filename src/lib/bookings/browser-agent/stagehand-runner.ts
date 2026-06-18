@@ -1220,6 +1220,26 @@ export async function runStagehandBooking(
               /* best-effort */
             }
           }
+          // GOLF CART → CHECKOUT (per step): after the slot is in the cart, golf
+          // sites need an "Add to cart" / "Checkout" / "Proceed" click to reach
+          // the guest form — a real Grande Dunes run ground 36 AI steps on this.
+          // Drive it deterministically. clickAdvanceButtonDeterministically
+          // NEVER clicks a commit verb (Book/Pay/Confirm) and bails at the card
+          // step, so it can't submit the booking — only move toward checkout.
+          if (opts.selectTeeSlot && slotAlreadyPicked) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active) {
+                const adv = await clickAdvanceButtonDeterministically(active);
+                if (adv)
+                  console.log(
+                    `[stagehand] ⚡ golf checkout advance ("${adv}") (${elapsed()})`,
+                  );
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
           // ROOM STEP (hotels): the moment a rooms/suites grid renders, click
           // the cheapest room's CTA so the agent never SITS on the list (Aman
           // sat 400s on it). The picker self-guards against the calendar step
@@ -2774,7 +2794,7 @@ async function clickAdvanceButtonDeterministically(
       });
       if (cardField) return null;
       const ADV =
-        /^(search( tee times?| availability| rates?)?|check (rates?|availability)|find( tee)? times?|find (a )?rooms?|search rooms?|view rooms?|see rooms?|show rooms?|see availability|continue|next|proceed|select rate to continue|continue to (guest|details|checkout|payment)|go to checkout|review|view rates?|update search)$/i;
+        /^(search( tee times?| availability| rates?)?|check (rates?|availability)|find( tee)? times?|find (a )?rooms?|search rooms?|view rooms?|see rooms?|show rooms?|see availability|continue|next|proceed|proceed to checkout|select rate to continue|continue to (guest|details|checkout|payment)|go to (cart|checkout)|view cart|checkout|review|view rates?|update search)$/i;
       const isOk = (el: HTMLElement): boolean => {
         const r = el.getClientRects();
         if (!r || r.length === 0) return false;
