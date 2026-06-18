@@ -221,6 +221,24 @@ an 8-tick per-page wait cap), so it can't run away and still hands off on a
 genuinely novel, settled widget. This was the single biggest cause of the 6-min
 runs and it cascades to every hotel/golf/car form. (`stagehand-runner.ts`.)
 
+**✅ ALSO LANDED (GENERAL — from a Villa d'Este run):** three more conductor
+hardening fixes, all keyed on meaning so they cascade to every form:
+(1) **Booking-type chooser.** Villa d'Este (and many SynXis/multi-service
+engines) open a "What would you like to book?" step after "Book now" — hotel /
+villa / table / treatment / event — before the calendar. The conductor didn't
+recognize it, kept re-clicking "Book now", and stalled. New
+`clickBookingTypeChooserDeterministically` picks the rooms/stay option (scores
+hotel/room/suite over villa, hard-skips dining/spa/event), only firing on a real
+chooser (≥2 visible booking-type options). (2) **Autofill gate.**
+`deterministicGuestFill` fired on the chooser page ("autofill 3 fields") because
+a homepage/menu/footer can carry a stray newsletter email or search box; it now
+fills nothing unless a guest-form signal is present (name field, card field, or
+email AND phone). (3) **Settle-probe hardening.** `pageStillSettling` counted
+HIDDEN spinners + any node delta, so a stable Villa d'Este menu read as
+"rendering" for ~46s; it now counts only VISIBLE spinners and a meaningful
+node-count move (>30 nodes / >3%). NOTE: the `awaitActivePage` crash mid-run is
+Browserbase infra (~85% reliability) — it auto-retries, not our bug.
+
 **Where we are:** the deterministic "conductor" + the browser agent drive most
 luxury hotels to the CARD STEP correctly (One&Only ~3:30). After the conductor
 fix above, the two RESIDUAL slow phases are both per-ENGINE DOM gaps on Aman/
