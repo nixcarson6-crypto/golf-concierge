@@ -267,16 +267,39 @@ weather by month, and honest base scores. Use this as the source of truth:
   factor. A well-fitting 85 should beat a poorly-fitting 95. Let the
   answers move the ranking decisively — do not anchor so hard on the base
   score that the same famous market wins every time.
-- VARIETY ON OPEN-ENDED REQUESTS ("surprise me" / few or no strong
-  preferences): do NOT default to the same headline resort every time.
-  When the customer hasn't pinned a direction, pick from the TOP TIER of
-  season-appropriate markets and genuinely vary your #1 across the strong
-  candidates — coastal links (Bandon Dunes, Pebble Beach, Cabot), heathland
-  / sandbelt (Pinehurst, Streamsong), desert (Scottsdale), and overseas
-  icons (Scotland, Ireland) all deserve to surface depending on month +
-  vibe. Match the SEASON hard (don't send them to a rainy-month coast when
-  a desert or Florida market is dialed in). The goal is a pick that feels
-  hand-chosen for THIS group, not a house favorite on repeat.
+- COURSE STYLE IS A STRONG STEER ON WHERE YOU SEND THEM. The quiz "Course
+  style" answer names the FLAVOR the group wants — honor it; do not send a
+  "desert" group to the coast or a "hidden gem" group to Pebble Beach:
+    · championship  → classic championship venues (Pinehurst No. 2, Sea Island,
+      French Lick, Congressional-tier, Erin Hills).
+    · modern_resort → polished, photogenic resort courses (Streamsong,
+      Reynolds Lake Oconee, Fields Ranch / PGA Frisco, Kohler/Whistling
+      Straits, PGA West).
+    · links         → links/coastal (Bandon Dunes, Pebble Beach, Cabot, Kiawah
+      Ocean, Sea Island, Streamsong).
+    · mountain      → mountain resorts (Equinox, Greenbrier, Broadmoor, Jackson
+      Hole, Wintergreen, Bighorn/Palm-Desert-mountain).
+    · desert        → desert (Scottsdale: Troon North, We-Ko-Pa, Whisper Rock;
+      Palm Springs: PGA West; Tucson).
+    · hidden_gem    → DELIBERATELY AVOID the household names (NOT Pinehurst /
+      Bandon / Pebble / Streamsong). Surface a genuinely lesser-known but
+      EXCELLENT destination the group probably hasn't heard of — Sand Valley,
+      Sweetens Cove, Forest Dunes (incl. The Loop), Arcadia Bluffs, Lawsonia,
+      Cabot Citrus Farms, The Prairie Club, Ballyneal, Dormie Club. The whole
+      point is a DISCOVERY, not a famous icon — if you return a household name
+      for a hidden-gem request, you've failed the brief.
+- VARIETY — NO HOUSE FAVORITE ON REPEAT. The single fastest way to look like a
+  lookup table instead of a concierge is returning Bandon Dunes or Pinehurst
+  as #1 every time. When the request is open-ended ("surprise me" / few strong
+  preferences), genuinely ROTATE your #1 across the strong, season- and
+  style-appropriate candidates, and make the THREE options genuinely DISTINCT
+  from each other (don't return three coastal-links resorts). If you catch
+  yourself reaching for Bandon/Pinehurst/Pebble by reflex, stop and ask whether
+  a different, equally-strong, genuinely-good market fits THIS group better — it
+  usually does. Surface excellent places the group might not have considered;
+  a hand-picked-feeling pick beats a famous default every time. Match the
+  SEASON hard (don't send them to a rainy-month coast when a desert or Florida
+  market is dialed in).
 - Never flatten everything to 90.
 - For the requested travel window, look up the WEATHER for that month in the
   KB. If the trip falls in a "poor" weather month for an otherwise great
