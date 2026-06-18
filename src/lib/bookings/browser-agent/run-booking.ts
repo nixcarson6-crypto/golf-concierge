@@ -622,7 +622,7 @@ async function runBrowserBookingInner(args: {
                 country: traveler.addressCountry ?? "US",
               },
               timeoutMs:
-                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) || 240_000,
+                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) || 360_000,
               onStep: async (label) => {
                 await bridgeNudge(label);
               },
@@ -703,14 +703,14 @@ async function runBrowserBookingInner(args: {
               // longer than expected (route → search → slot → rate → players →
               // guest/login → confirm) — a real Troon run reached checkout step
               // 3 and got cut off at the old 4-min cap mid-flow. Cars stay 4.
-              // HARD 4-MINUTE LOCK-IN. We do NOT chase every resort's quirks to
-              // make it finish — instead the customer NEVER waits more than ~4
-              // min: the agent books what it can in that window, and anything
-              // slower is aborted and handed to the concierge queue (the safety
-              // net flips it to NEEDS_REVIEW). One bound, every site, no per-
-              // venue tuning. Override per-deploy with BROWSER_AGENT_TIMEOUT_MS.
+              // 6-MINUTE CEILING. Carson's call: let the agent actually FINISH
+              // the booking — 5-6 min is acceptable, only 8+ is too long. So
+              // give complex luxury forms room to complete (instead of bailing
+              // to concierge at 4 min). Past 6 min it hands off. The UI tells
+              // the customer WHY a longer one is taking a bit. Override per-
+              // deploy with BROWSER_AGENT_TIMEOUT_MS.
               timeoutMs:
-                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) || 240_000,
+                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) || 360_000,
               maxSteps,
               // Run the browser in the region nearest the venue so each of
               // the ~25 actions has a short round-trip (an Italian hotel

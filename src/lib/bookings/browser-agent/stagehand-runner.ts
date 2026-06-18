@@ -1574,7 +1574,7 @@ export async function runStagehandBooking(
           status: "needs_review",
           failureReason: "timeout",
           message:
-            "Pyltrix is finalizing this booking — it ran past the 4-minute auto-book window, so our concierge is completing it. You'll get the confirmation by email.",
+            "Pyltrix is finalizing this booking — this venue's site is an unusually slow one, so our concierge is completing it. You'll get the confirmation by email.",
         },
         sessionUrl: null,
         finalScreenshot: null,

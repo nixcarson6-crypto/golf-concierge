@@ -853,7 +853,11 @@ export function BookingStatusPanel({
                       {kind === "booking" && !isThisBooking && (
                         <div className="pl-9 pr-2.5 pb-2 -mt-0.5 space-y-1.5">
                           <p className="text-[11px] text-muted-foreground leading-snug">
-                            This one takes a little while.
+                            Luxury booking sites have detailed forms — Pyltrix is
+                            filling in your dates, room, and details and taking it
+                            all the way to confirmation. This can take a few
+                            minutes; you can keep using the app and we&apos;ll
+                            email your confirmation.
                           </p>
                           {liveViewUrl && (
                             <a
@@ -916,10 +920,10 @@ export function BookingStatusPanel({
                           ) : failureReason === "timeout" ? (
                             <>
                               <p className="text-[11px] text-foreground/80 leading-snug">
-                                This one&apos;s taking longer than our 4-minute
-                                auto-book window, so Pyltrix&apos;s concierge is
-                                finishing it by hand. Nothing for you to do —
-                                you&apos;ll get the confirmation by email.
+                                This venue&apos;s booking site is an unusually
+                                slow one, so Pyltrix&apos;s concierge is finishing
+                                it for you. Nothing for you to do — you&apos;ll
+                                get the confirmation by email shortly.
                               </p>
                               {screenshotUrl && (
                                 <ScreenshotProof
