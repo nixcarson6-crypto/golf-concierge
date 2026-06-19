@@ -900,13 +900,17 @@ export async function runStagehandBooking(
           await new Promise((r) => setTimeout(r, 2000));
         }
         let picked: string | null = null;
-        for (let i = 0; i < 6 && !picked; i++) {
+        // Short poll: on engines where slots render right after a search (ForeUp)
+        // this grabs the slot in ~1-2s. On engines that gate the list behind a
+        // Players step (ChronoGolf), no slot exists yet — fail FAST (don't stare
+        // ~9s here); the conductor sets Players then picks the slot itself.
+        for (let i = 0; i < 2 && !picked; i++) {
           gctx = await bookingFrame(page);
           picked = await clickTeeTimeSlotDeterministically(
             gctx,
             opts.teeTimeLabel ?? null,
           );
-          if (!picked) await new Promise((r) => setTimeout(r, 1500));
+          if (!picked) await new Promise((r) => setTimeout(r, 1000));
         }
         if (picked) {
           slotAlreadyPicked = true;
@@ -1135,38 +1139,38 @@ export async function runStagehandBooking(
         }
         return null;
       };
-      // Patience sized for SLOW luxury SPAs, not just snappy forms. The loop is
-      // bounded four ways so it can never run away: the wall-clock abort
-      // (controller.signal.aborted), the per-recognizer anti-hammer guards
-      // (repeated no-op clicks return null → stall), STALL_LIMIT, and a cap on
-      // how long we'll wait for a single page to render (MAX_SETTLE_STREAK).
-      // CONDUCTOR_MAX_TICKS=40 only matters for a flow that keeps making real
-      // progress — Aman's CTA → dates → room → rate → enhancements → guest form
-      // → card is ~10-15 productive ticks — so the higher cap simply lets a long
-      // luxury checkout FINISH on the fast deterministic path. The old 24-tick /
-      // 3-stall budget quit after ~34s/~4s, handing slow sites to the 20s-per-
-      // step agent before the room/guest screens had even painted.
+      // AGENT-FIRST. The conductor is NOT the primary driver anymore — it does
+      // the quick, obvious clicks (consent, Book CTA, dates, an obvious room/
+      // slot, autofill) and then HANDS OFF to the LLM agent the moment it stops
+      // making real progress. The agent is reliable on any form and moves step
+      // by step (visible progress), whereas a stalled conductor just sits on a
+      // frozen screen — the single worst thing in the product. So the patience
+      // here is deliberately SHORT: a few stalls or a couple of slow-render
+      // waits and we go to the agent, rather than flailing for ~99s first. The
+      // loop is bounded four ways: the wall-clock abort (controller.signal),
+      // the anti-hammer guards (repeated no-op clicks → stall), STALL_LIMIT,
+      // and a hard per-phase wall-clock (CONDUCTOR_BUDGET_MS) that fires EVEN IF
+      // the conductor is still making small moves, so it can never run long.
       let stalls = 0;
       let settleStreak = 0;
       let settleLogged = false;
       const CONDUCTOR_MAX_TICKS = 40;
-      const STALL_LIMIT = 7;
-      const MAX_SETTLE_STREAK = 5; // ~5 ticks of "still loading" → treat as stuck (was 8 — too patient; a Gleneagles run sat ~80s before handing off)
-      // Wall-clock safety net. GOLF is a SHORT flow (date → players → time →
-      // signup); it must never flail toward the agent for minutes the way a
-      // ChronoGolf run did (~99s of settle-waits on an always-churning Angular
-      // widget before handoff — you paid the wait AND the slow agent). Cap golf
-      // tight so the worst case is "agent finishes with the tight platform
-      // hint", not "wasted minute + agent". Hotels keep a long budget — their
-      // SPAs legitimately paint slowly across a 10-step checkout.
+      const STALL_LIMIT = 3; // ~4s of no progress → hand to the agent (was 7)
+      const MAX_SETTLE_STREAK = 2; // wait ~3s for a slow render, no more (was 5)
+      // Hard wall-clock on the WHOLE conductor phase, regardless of progress —
+      // this is the real guarantee against "it just sat there." The conductor
+      // gets a short window to do the easy clicks; whatever isn't done by then,
+      // the agent finishes with visible step-by-step progress. Golf is a short
+      // flow (date → players → time) so it gets less; hotels a bit more for the
+      // multi-step checkout. Neither is long enough to feel like a frozen wait.
       const conductorStartMs = Date.now();
-      const CONDUCTOR_BUDGET_MS = opts.selectTeeSlot ? 55_000 : 200_000;
+      const CONDUCTOR_BUDGET_MS = opts.selectTeeSlot ? 40_000 : 75_000;
       for (let i = 0; i < CONDUCTOR_MAX_TICKS && !controller.signal.aborted; i++) {
         const action = await tick();
         if (conductorReachedCard) break;
         if (!conductorReachedCard && Date.now() - conductorStartMs > CONDUCTOR_BUDGET_MS) {
           console.log(
-            `[stagehand] conductor budget reached (${elapsed()}) — handing off`,
+            `[stagehand] conductor budget reached (${elapsed()}) — handing to agent`,
           );
           break;
         }
