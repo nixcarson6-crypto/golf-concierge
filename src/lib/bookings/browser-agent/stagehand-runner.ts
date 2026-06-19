@@ -195,6 +195,10 @@ export type RunStagehandOptions = {
   /** The requested tee time, any human format ("6:00 PM", "18:00") — used to
    *  pick the nearest slot. null → pick the earliest available. */
   teeTimeLabel?: string | null;
+  /** Golf party size (number of players). ChronoGolf / ForeUp gate the
+   *  tee-time list behind a "Players" step, so the deterministic Players
+   *  picker needs the count to select it. null → leave the form default. */
+  players?: number | null;
   /** Hotels only: when true, a zero-LLM pass clicks the cheapest ROOM card's
    *  CTA the moment a rooms/suites list renders — the agent's #1 hotel stall
    *  was sitting on the room grid. */
@@ -724,6 +728,7 @@ export async function runStagehandBooking(
     let slotAlreadyPicked = false;
     let golfSearchSubmitted = false;
     let rateSelected = false;
+    let playersSet = false;
     let roomPicked = false;
     // Luxury multi-service properties (Villa d'Este, many SynXis engines) open
     // a "What would you like to book?" chooser right after "Book now" — hotel /
@@ -979,15 +984,29 @@ export async function runStagehandBooking(
             return `guest-tab "${tab}"`;
           }
         }
-        // GOLF: search → slot → rate.
+        // GOLF: players → search → slot → rate.
         if (opts.selectTeeSlot) {
-          if (!slotAlreadyPicked) {
-            const r = await clickTeeTimeSlotDeterministically(bf, opts.teeTimeLabel ?? null);
-            if (r) { slotAlreadyPicked = true; return `slot ${r}`; }
+          // PLAYERS step first — ChronoGolf/ForeUp render NO tee times until the
+          // party size is chosen, which is exactly where a real run stalled (the
+          // conductor had a date + slot picker but nothing to set Players).
+          // Gated on the date being confirmed so it can't expand before a day is
+          // picked; the picker itself is position-scoped so it never grabs a
+          // calendar number. "players-open" (accordion expand) isn't terminal —
+          // keep going so the next tick selects the count.
+          if (!playersSet && (datesConfirmed || !opts.checkinISO)) {
+            const p = await setPlayersCountDeterministically(bf, opts.players ?? null);
+            if (p) {
+              if (p !== "players-open") playersSet = true;
+              return `players ${p}`;
+            }
           }
           if (!golfSearchSubmitted) {
             const s = await clickGolfSearchDeterministically(bf);
             if (s) { golfSearchSubmitted = true; return `golf-search "${s}"`; }
+          }
+          if (!slotAlreadyPicked) {
+            const r = await clickTeeTimeSlotDeterministically(bf, opts.teeTimeLabel ?? null);
+            if (r) { slotAlreadyPicked = true; return `slot ${r}`; }
           }
           if (!rateSelected) {
             const r = await selectCheapestRateRadioDeterministically(bf);
@@ -1133,9 +1152,24 @@ export async function runStagehandBooking(
       const CONDUCTOR_MAX_TICKS = 40;
       const STALL_LIMIT = 7;
       const MAX_SETTLE_STREAK = 5; // ~5 ticks of "still loading" → treat as stuck (was 8 — too patient; a Gleneagles run sat ~80s before handing off)
+      // Wall-clock safety net. GOLF is a SHORT flow (date → players → time →
+      // signup); it must never flail toward the agent for minutes the way a
+      // ChronoGolf run did (~99s of settle-waits on an always-churning Angular
+      // widget before handoff — you paid the wait AND the slow agent). Cap golf
+      // tight so the worst case is "agent finishes with the tight platform
+      // hint", not "wasted minute + agent". Hotels keep a long budget — their
+      // SPAs legitimately paint slowly across a 10-step checkout.
+      const conductorStartMs = Date.now();
+      const CONDUCTOR_BUDGET_MS = opts.selectTeeSlot ? 55_000 : 200_000;
       for (let i = 0; i < CONDUCTOR_MAX_TICKS && !controller.signal.aborted; i++) {
         const action = await tick();
         if (conductorReachedCard) break;
+        if (!conductorReachedCard && Date.now() - conductorStartMs > CONDUCTOR_BUDGET_MS) {
+          console.log(
+            `[stagehand] conductor budget reached (${elapsed()}) — handing off`,
+          );
+          break;
+        }
         if (action) {
           stalls = 0;
           settleStreak = 0;
@@ -2753,12 +2787,32 @@ async function clickStayDatesDeterministically(
             .map((c) => ({ c, iso: cellISO(c) }))
             .filter((x): x is { c: HTMLElement; iso: string } => x.iso != null);
           if (resolved.length === 0) return null; // not a resolvable date grid
-          const unavailable = (c: HTMLElement): boolean =>
-            c.getAttribute("aria-disabled") === "true" ||
-            (c as HTMLButtonElement).disabled ||
-            /unavailable|sold|not\s*available|fully\s*committed|disabled|cal-past/i.test(
-              (c.getAttribute("aria-label") || "") + " " + (c.className || ""),
-            );
+          const unavailable = (c: HTMLElement): boolean => {
+            if (
+              c.getAttribute("aria-disabled") === "true" ||
+              (c as HTMLButtonElement).disabled
+            )
+              return true;
+            const sig =
+              (c.getAttribute("aria-label") || "") + " " + (c.className || "");
+            if (
+              /unavailable|sold|not\s*available|fully\s*committed|disabled|cal-past|outside|other-?month|adjacent|prev-?month|next-?month|muted|faded|is-?empty/i.test(
+                sig,
+              )
+            )
+              return true;
+            // Out-of-month TRAILING days (the greyed 28/29/30 of the prev month
+            // and 01-08 of the next, shown to pad the grid) carry the SAME bare
+            // number as a real in-month day. On a single-month widget every cell
+            // is labelled with that one visible month, so those trailing numbers
+            // collide with the target (a "Jul 1" target also matched the greyed
+            // "Aug 1"). They're visually de-emphasised — treat a clearly faded
+            // cell as unavailable so the booking always lands on the real
+            // in-month day. (>0.45 keeps normal cells; trailing days are ~0.3.)
+            const st = window.getComputedStyle(c);
+            if (Number(st.opacity || "1") < 0.45) return true;
+            return false;
+          };
           const hit = resolved.find((x) => x.iso === iso && !unavailable(x.c));
           if (hit) {
             clickableInCell(hit.c).click();
@@ -3542,6 +3596,135 @@ async function clickGolfSearchDeterministically(
       }
       return null;
     });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Set the "Players" / party-size step on a golf tee-sheet widget (ChronoGolf,
+ * ForeUp, etc.). These engines do NOT show any tee times until the player
+ * count is chosen, so a real run sat on the date step forever — the conductor
+ * had a date picker and a tee-slot picker but nothing to set Players.
+ *
+ * The hard part: player options are bare number buttons ("1 2 3 4"), identical
+ * to calendar day cells. We disambiguate by POSITION — only count clickable
+ * numbers that sit AFTER a "Players" section header and BEFORE the "Tee time"
+ * header in document order, which is exactly where the player options live and
+ * nowhere the calendar is. Also handles a <select> and the collapsed-accordion
+ * case (click the "Players" header to expand, pick the number next tick).
+ *
+ * Returns a label when it acted ("players=2" / "players-open"), or null when
+ * there's no recognisable Players step (so the conductor moves on / hands off).
+ */
+async function setPlayersCountDeterministically(
+  page: unknown,
+  want: number | null,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function" || !want || want < 1) return null;
+  try {
+    return await cdp.evaluate<string | null>(
+      (arg: unknown) => {
+        const target = (arg as { want: number }).want;
+        const isVisible = (el: Element | null): boolean => {
+          if (!el) return false;
+          const r = (el as HTMLElement).getClientRects();
+          if (!r || r.length === 0) return false;
+          const st = window.getComputedStyle(el as HTMLElement);
+          return (
+            st.visibility !== "hidden" &&
+            st.display !== "none" &&
+            Number(st.opacity || "1") > 0.05
+          );
+        };
+        const txt = (el: Element): string =>
+          ((el as HTMLElement).innerText || el.textContent || "").trim();
+        // Locate the "Players" step header and the next section ("Tee time")
+        // so we can bound the search to the player options between them. Use a
+        // SHORT-text header so we match the accordion label, not a paragraph.
+        const headerish = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "h1,h2,h3,h4,h5,label,legend,button,a,div,span,li,[role=heading]",
+          ),
+        ).filter((el) => isVisible(el) && txt(el).length <= 40);
+        const playersHdr = headerish.find((el) =>
+          /^\s*(players?|golfers?|number of (players|golfers)|how many)\b/i.test(txt(el)),
+        );
+        if (!playersHdr) return null; // not a players step
+        const teeHdr = headerish.find(
+          (el) =>
+            /tee\s*time|select.*time|choose.*time/i.test(txt(el)) &&
+            playersHdr.compareDocumentPosition(el) & 4, // tee header follows players
+        );
+        const afterPlayers = (el: Element): boolean =>
+          (playersHdr.compareDocumentPosition(el) & 4) !== 0; // players precedes el
+        const beforeTee = (el: Element): boolean =>
+          !teeHdr || (el.compareDocumentPosition(teeHdr) & 4) !== 0; // el precedes tee
+        // A <select> for player count — set it directly if present in range.
+        const selects = Array.from(
+          document.querySelectorAll<HTMLSelectElement>("select"),
+        ).filter((s) => isVisible(s) && afterPlayers(s) && beforeTee(s));
+        for (const sel of selects) {
+          const opt = Array.from(sel.options).find((o) => {
+            const n = parseInt((o.textContent || o.value || "").replace(/\D+/g, ""), 10);
+            return n === target;
+          });
+          if (opt) {
+            sel.value = opt.value;
+            sel.dispatchEvent(new Event("input", { bubbles: true }));
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+            return `players=${target}`;
+          }
+        }
+        // Clickable number options strictly BETWEEN the two headers. Matches a
+        // bare "2" or "2 players" / "2 golfers"; rejects anything longer so we
+        // never grab a price or a paragraph.
+        const opts = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "button,a,li,[role=button],[role=option],[role=radio],div,span",
+          ),
+        ).filter((el) => {
+          if (!isVisible(el) || !afterPlayers(el) || !beforeTee(el)) return false;
+          const t = txt(el);
+          return /^([1-8])(\s*(players?|golfers?|people|pax))?$/i.test(t);
+        });
+        const numOf = (el: Element): number =>
+          parseInt(txt(el).match(/[1-8]/)?.[0] ?? "0", 10);
+        // Prefer the deepest matching element (the actual control, not a wrapper
+        // that also contains it) for an exact party-size match.
+        const exact = opts
+          .filter((el) => numOf(el) === target)
+          .sort((a, b) => b.querySelectorAll("*").length - a.querySelectorAll("*").length)
+          .pop();
+        if (exact) {
+          exact.click();
+          return `players=${target}`;
+        }
+        // Party size not offered (e.g. course max < target) → take the largest
+        // available ≤ target, else the smallest offered, so the flow proceeds.
+        if (opts.length > 0) {
+          const sorted = opts.map(numOf).filter((n) => n >= 1).sort((a, b) => a - b);
+          const pick = [...sorted].reverse().find((n) => n <= target) ?? sorted[0];
+          const el = opts.find((e) => numOf(e) === pick);
+          if (el) {
+            el.click();
+            return `players=${pick}`;
+          }
+        }
+        // Header found but no options visible yet → the accordion is collapsed.
+        // Click the header to expand it; the next tick picks the number.
+        const clickable =
+          playersHdr.closest<HTMLElement>("button,a,[role=button],[tabindex]") ??
+          playersHdr;
+        if (isVisible(clickable)) {
+          clickable.click();
+          return "players-open";
+        }
+        return null;
+      },
+      { want },
+    );
   } catch {
     return null;
   }

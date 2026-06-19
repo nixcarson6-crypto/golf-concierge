@@ -774,6 +774,10 @@ async function runBrowserBookingInner(args: {
               selectVehicle: item.type === "TRANSPORT",
               teeTimeLabel:
                 item.type === "TEE_TIME" ? task.displayTime ?? null : null,
+              // Golf party size — ChronoGolf/ForeUp won't surface tee times
+              // until "Players" is set, so the deterministic Players picker
+              // needs the count. Source of truth is the trip's groupSize.
+              players: item.type === "TEE_TIME" ? task.traveler.partySize : null,
               onStep: async (label) => {
                 await bridgeNudge(label);
               },
