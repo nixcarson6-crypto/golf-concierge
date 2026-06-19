@@ -2561,9 +2561,20 @@ async function clickStayDatesDeterministically(
           }
           return mon && yr ? `${mon.toLowerCase()} ${yr}` : null;
         };
+        // Day cells: [role=gridcell] (One&Only / SynXis) AND plain day-number
+        // buttons/cells. ChronoGolf/Lightspeed renders "11" as a <button> with
+        // no role=gridcell — a real run advanced months FOREVER because these
+        // weren't in the grid. Keep any role=gridcell; otherwise require the
+        // element's OWN text to be just a 1-2 digit day.
         const gridCells = Array.from(
-          document.querySelectorAll<HTMLElement>("[role=gridcell]"),
-        ).filter(isVisible);
+          document.querySelectorAll<HTMLElement>(
+            "[role=gridcell], button, a, [role=button], td, li",
+          ),
+        ).filter((el) => {
+          if (!isVisible(el)) return false;
+          if (el.matches?.("[role=gridcell]")) return true;
+          return /^\d{1,2}$/.test((el.textContent || "").replace(/\s+/g, ""));
+        });
         // The month a cell sits under, from an ancestor aria-label/caption
         // (One&Only's <table aria-label="August 2026">) OR the nearest preceding
         // month HEADER element in document order (The Breakers' <h2>June 2026</h2>).
@@ -2587,6 +2598,29 @@ async function clickStayDatesDeterministically(
           for (const h of heads) {
             const k = monthKeyFrom((h.textContent || "").slice(0, 30));
             if (k && h.compareDocumentPosition(cell) & 4) best = k; // h precedes cell
+          }
+          // SINGLE-MONTH widgets (ChronoGolf) show the month as a bare label
+          // ("August 2026") that isn't an h-tag, so the preceding-header scan
+          // misses it. If EXACTLY ONE such label is visible, every day cell
+          // belongs to it. Guarded to one label so a dual-month calendar (Aman/
+          // SynXis) is never mis-assigned.
+          if (!best) {
+            const labels = Array.from(
+              new Set(
+                Array.from(
+                  document.querySelectorAll<HTMLElement>(
+                    "button,span,div,h1,h2,h3,h4,[class*=title i],[class*=month i]",
+                  ),
+                )
+                  .filter(isVisible)
+                  .map((el) => (el.textContent || "").trim())
+                  .filter((t) => /^[a-zà-ÿ]{3,}\s+20\d{2}$/i.test(t)),
+              ),
+            );
+            if (labels.length === 1) {
+              const k = monthKeyFrom(labels[0]);
+              if (k) best = k;
+            }
           }
           return best;
         };
