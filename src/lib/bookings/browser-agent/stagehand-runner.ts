@@ -4347,6 +4347,20 @@ async function deterministicGuestFill(
           countryName?: string | null;
         };
         let filled = 0;
+        // Guard the State value against bad profile data. A street ("107 Lantana
+        // Ln") mis-saved in the profile's state field must NEVER be typed into a
+        // State/Province box (a real run did exactly that). Accept only a
+        // plausible state name — no digits, no street suffix, sane length.
+        const stateClean =
+          d.state &&
+          !/\d/.test(d.state) &&
+          !/\b(ln|lane|st|street|rd|road|ave|avenue|blvd|dr|drive|ct|court|way|cir|circle|pl|place|hwy|pkwy|apt|suite|ste|unit)\b/i.test(
+            d.state,
+          ) &&
+          d.state.trim().length >= 2 &&
+          d.state.trim().length <= 25
+            ? d.state.trim()
+            : null;
         const visible = (el: Element): boolean => {
           const r = (el as HTMLElement).getClientRects();
           if (!r || r.length === 0) return false;
@@ -4366,8 +4380,17 @@ async function deterministicGuestFill(
             .join(" ")
             .toLowerCase();
         const setVal = (el: HTMLInputElement, val: string) => {
+          // Already exactly right → leave it (don't re-type, don't double).
+          if ((el.value || "").trim().toLowerCase() === val.trim().toLowerCase()) {
+            return;
+          }
           const proto = Object.getPrototypeOf(el);
           const desc = Object.getOwnPropertyDescriptor(proto, "value");
+          // CLEAR first. An autocomplete/combobox that APPENDS on input is what
+          // produced "United StatesUnited States" — clearing forces a clean
+          // replace instead of concatenating onto whatever's already there.
+          desc?.set?.call(el, "");
+          el.dispatchEvent(new Event("input", { bubbles: true }));
           desc?.set?.call(el, val);
           el.dispatchEvent(new Event("input", { bubbles: true }));
           el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -4425,10 +4448,11 @@ async function deterministicGuestFill(
               "[class*=flag i],[class*=iti i],[class*=dial i],[class*=country-code i],[class*=countrycode i],[class*=phone-prefix i],select[name*=code i]",
             );
             setVal(el, hasCountrySel ? d.phoneNational : d.phone);
-          } else if (d.addressLine1 && /address-line1|address.?(line)?.?1\b|street|\baddr/.test(m) && !/2|line.?2/.test(m)) setVal(el, d.addressLine1);
+          } else if (d.addressLine1 && /address-line1|address.?(line)?.?1\b|street|\baddr/.test(m) && !/address.?2|addr.?2|line.?2|address.?line.?2/.test(m)) setVal(el, d.addressLine1);
           else if (d.city && /\bcity\b|\btown\b|locality/.test(m)) setVal(el, d.city);
-          else if (d.state && /state|province|region|county\b/.test(m) ) setVal(el, d.state);
+          else if (stateClean && /state|province|region|county\b/.test(m) ) setVal(el, stateClean);
           else if (d.postal && /\bzip\b|postal|post.?code/.test(m)) setVal(el, d.postal);
+          else if (d.countryName && /^country|\bcountry\b|country-name/.test(m)) setVal(el, d.countryName);
           else if (/prefix|salutation|honorific|^title$|\btitle\b/.test(m) && /title|prefix|salutation/.test(m)) setVal(el, d.title);
         }
 
@@ -4476,7 +4500,7 @@ async function deterministicGuestFill(
           if (!unset) continue;
           if (/title|prefix|salutation|honorific/.test(m)) pick(el, d.title.replace(".", "")) || pick(el, d.title);
           else if (d.countryName && /country/.test(m)) pick(el, d.countryName);
-          else if (d.state && /state|province|region/.test(m)) pick(el, d.state);
+          else if (stateClean && /state|province|region/.test(m)) pick(el, stateClean);
         }
 
         // PHONE DIAL-CODE → US (+1). intl-tel-input (the dominant phone widget)
@@ -4513,7 +4537,7 @@ async function deterministicGuestFill(
         // ~1-2 min scrolling it. If an option list is open and visible, click
         // the option whose text EXACTLY matches our state or country. Exact
         // full-name match keeps this from mis-clicking anything else.
-        const wantOptions = [d.state, d.countryName]
+        const wantOptions = [stateClean, d.countryName]
           .filter(Boolean)
           .map((s) => (s as string).toLowerCase());
         if (wantOptions.length > 0) {

@@ -236,18 +236,26 @@ export function buildGoal(
     `- Phone: ${t.phone} — if the phone field has a COUNTRY-CODE dropdown, FIRST set the country to match this number's prefix (+1 → United States), THEN type only the national digits. Never leave a wrong default country (a real run submitted a US number under +90 Turkey).`,
   );
   if (t.addressLine1) {
+    // Guard against bad profile data: a street mis-saved in the state field must
+    // not be handed to the agent as "the state". Accept only a plausible state.
+    const stateLooksValid =
+      !!t.addressState &&
+      !/\d/.test(t.addressState) &&
+      !/\b(ln|lane|st|street|rd|road|ave|avenue|blvd|dr|drive|ct|court|way|cir|circle|pl|place)\b/i.test(
+        t.addressState,
+      );
     lines.push(
       `- Home address — map EACH field to its OWN value, never mix them up:`,
     );
     lines.push(`    · Address / Street / Address 1 → "${t.addressLine1}" (the street ONLY)`);
     if (t.addressCity) lines.push(`    · City / Town → "${t.addressCity}"`);
     lines.push(
-      `    · State / Province / Region → ${t.addressState ? `"${t.addressState}"` : "the U.S. state where the traveller lives (see Residence below)"} — the STATE ONLY. NEVER put the street address ("${t.addressLine1}") in the State field. If State is a dropdown or autocomplete, type the state name, wait for the list, and CLICK the matching option to commit it — don't leave it as raw typed text.`,
+      `    · State / Province / Region → ${stateLooksValid ? `"${t.addressState}"` : "the U.S. state where the traveller lives (see Residence below — e.g. a DFW/DAL traveller is Texas)"} — the STATE ONLY. NEVER put the street address ("${t.addressLine1}") in the State field. If State is a dropdown or autocomplete, type the state name, wait for the list, and CLICK the matching option to commit it — don't leave it as raw typed text.`,
     );
     if (t.addressPostalCode) lines.push(`    · Zip / Postal Code → "${t.addressPostalCode}"`);
     lines.push(`    · Country → "${t.addressCountry ?? "United States"}" (pick from the list if it's a dropdown)`);
     lines.push(
-      `  Skip any "find your address" autocomplete and type into the manual fields directly. Double-check the State field shows a STATE, not the street, before continuing.`,
+      `  IMPORTANT for Country/State autocomplete fields: if the field is ALREADY filled correctly, LEAVE IT. If you do type, the field must end up with the value ONCE — if it already has text, clear it first (select-all + delete) before typing, or you'll get a doubled value like "United StatesUnited States". Skip any "find your address" autocomplete and type the manual fields directly. Double-check State shows a STATE (not the street) before continuing.`,
     );
   } else {
     lines.push(
