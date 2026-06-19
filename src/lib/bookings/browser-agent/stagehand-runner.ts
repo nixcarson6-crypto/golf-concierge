@@ -380,12 +380,15 @@ ACCOUNT / REGISTRATION WALLS
 - PREFER GUEST CHECKOUT. Only create an account when the venue genuinely
   REQUIRES it to book (e.g. a "visitor registration" / "Inscription visiteur"
   wall with no guest option).
-- When registration IS mandatory: use the traveller's email + the EXACT
-  "Account password" given in the task (never invent your own), tick any
-  required terms checkbox, submit the registration, then CONTINUE the booking
-  flow to completion — registering is NOT the end, it's a step. Don't stop and
-  report needs_review just because you registered; push on to the tee-time /
-  room selection and the real confirmation.
+- When registration IS mandatory (a "Create an account" / "visitor registration"
+  form with a Password + Repeat-password — ChronoGolf does this even for
+  visitors): the system AUTO-FILLS the name/email/phone AND a strong password in
+  BOTH password fields. Just tick any required terms checkbox and click Sign up /
+  Register / Continue to create the account on the customer's behalf, then
+  CONTINUE the booking to completion — registering is a STEP, not the end. Never
+  stop at the signup screen, and never click "log in" (we have no existing
+  account). If a password field is somehow still empty, type a strong 12+ char
+  password (letters + a number + a symbol) into BOTH fields yourself and proceed.
 - A login wall for an account you DON'T have credentials for (no register
   option, only "sign in"), or SMS/phone verification, → failed / login_required.
 - "LOG IN OR SIGN UP" with an EMAIL field + "Continue" (Access/golfwithaccess
@@ -728,6 +731,9 @@ export async function runStagehandBooking(
     // rooms/stay option once so the flow proceeds instead of re-clicking "Book
     // now" and stalling on the chooser.
     let bookingTypeChosen = false;
+    // ChronoGolf-style "Visitors | Members" tab — the customer is a public
+    // visitor; make sure we're on the guest tab, not Members (member login).
+    let visitorTabChosen = false;
     // Hotels AND cars use the same cheapest-priced-card picker (room cards /
     // vehicle cards are the same shape: a priced card + a Select/Book/Reserve
     // CTA). And hotels, cars, AND golf can all interpose an add-on/upsell page
@@ -949,6 +955,18 @@ export async function runStagehandBooking(
           if (choice) {
             bookingTypeChosen = true;
             return `booking-type "${choice}"`;
+          }
+        }
+        // VISITOR/GUEST tab (ChronoGolf "Visitors | Members") — the customer is
+        // a public visitor; click the guest tab so we never land on Members
+        // (member login). One-shot once we're confirmed on it.
+        if (!visitorTabChosen) {
+          const tab = await clickGuestTabDeterministically(bf);
+          if (tab === "already-visitors") {
+            visitorTabChosen = true;
+          } else if (tab) {
+            visitorTabChosen = true;
+            return `guest-tab "${tab}"`;
           }
         }
         // GOLF: search → slot → rate.
@@ -4046,6 +4064,23 @@ async function deterministicGuestFill(
           else if (/prefix|salutation|honorific|^title$|\btitle\b/.test(m) && /title|prefix|salutation/.test(m)) setVal(el, d.title);
         }
 
+        // ACCOUNT-CREATION passwords. Some golf platforms (ChronoGolf visitors,
+        // TeeSnap) FORCE creating an account to book — a "Create an account" form
+        // with Password + Repeat-password. The customer authorized the booking,
+        // so we create the account on their behalf rather than stall: generate
+        // ONE strong password (meets the common "12+ chars" rule) and put it in
+        // BOTH password fields. A per-booking credential — the venue's
+        // confirmation email lets the customer reset it. Only on a real signup
+        // (>=2 password fields = password + confirm), never a 1-field login (we
+        // have no existing account, so a login would just fail).
+        const pwFields = Array.from(
+          document.querySelectorAll<HTMLInputElement>("input[type=password]"),
+        ).filter((el) => visible(el) && !el.value && !el.disabled && !el.readOnly);
+        if (pwFields.length >= 2) {
+          const pw = `Pyltrix-${Math.random().toString(36).slice(2, 10)}9!Aa`;
+          for (const el of pwFields) setVal(el, pw);
+        }
+
         // Selects: title / state / country.
         const selects = Array.from(document.querySelectorAll<HTMLSelectElement>("select")).filter(
           (el) => visible(el) && !el.disabled,
@@ -4214,6 +4249,52 @@ async function detectVerifyWall(page: unknown): Promise<boolean> {
  * booking-type options) so it can't mis-fire on an ordinary page that merely
  * has a stray "Book a table" link. Returns the clicked label, or null.
  */
+/**
+ * Click the VISITOR / GUEST / PUBLIC tab on a booking widget that splits
+ * visitors vs members (ChronoGolf: "Visitors" | "Members"). The customer is a
+ * public visitor and must NOT be left on the Members tab, which forces a member
+ * login they don't have. Only fires when BOTH a guest-ish and a member-ish tab
+ * are present (a real chooser). Returns the clicked label, "already-visitors"
+ * when the guest tab is already active, or null when there's no such chooser.
+ */
+async function clickGuestTabDeterministically(page: unknown): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const isVisible = (el: Element): boolean => {
+        const r = (el as HTMLElement).getClientRects();
+        if (!r || r.length === 0) return false;
+        const st = window.getComputedStyle(el as HTMLElement);
+        return (
+          st.visibility !== "hidden" &&
+          st.display !== "none" &&
+          Number(st.opacity || "1") > 0.05
+        );
+      };
+      const txt = (el: HTMLElement) =>
+        (el.innerText || el.textContent || el.getAttribute("aria-label") || "").trim();
+      const tabs = Array.from(
+        document.querySelectorAll<HTMLElement>("[role=tab], button, a, li, [class*=tab i]"),
+      ).filter(isVisible);
+      const GUEST = /^(visitors?|guests?|public|non[-\s]?members?)$/i;
+      const MEMBER = /^(members?|log\s?in|login|sign\s?in|member login)$/i;
+      const guestTab = tabs.find((el) => GUEST.test(txt(el)));
+      const memberTab = tabs.find((el) => MEMBER.test(txt(el)));
+      if (!guestTab || !memberTab) return null; // not a visitor/member chooser
+      const active = (el: HTMLElement) =>
+        el.getAttribute("aria-selected") === "true" ||
+        el.getAttribute("aria-current") === "true" ||
+        /\b(active|selected|current)\b/i.test(el.className);
+      if (active(guestTab)) return "already-visitors";
+      guestTab.click();
+      return txt(guestTab);
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function clickBookingTypeChooserDeterministically(
   page: unknown,
 ): Promise<string | null> {
