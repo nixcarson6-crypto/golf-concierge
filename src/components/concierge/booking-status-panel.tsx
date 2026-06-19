@@ -687,12 +687,23 @@ export function BookingStatusPanel({
                   // they book in one tap. Walk-ins among them need nothing.
                   const isSuggestion = SUGGESTION_TYPES.has(item.type);
                   const suggestionNeedsContact = isSuggestion && !isWalkIn;
-                  // Phone/email-only venue (e.g. a small Portofino trattoria
-                  // that takes reservations only by phone or email). The
-                  // agent reported form_not_found — re-running it is futile,
-                  // so we surface the venue's phone + a pre-drafted email.
+                  // Agent-bookable items (golf especially) are ALWAYS
+                  // re-attemptable. A form_not_found is often a transient miss
+                  // (the booking widget was inside an iframe, the tee sheet
+                  // loaded slow) — NOT proof there's no online booking — so we
+                  // never lock golf/hotels/cars to "phone only"; they keep "Tap
+                  // to book" with the website shown as a fallback. Only a
+                  // NON-agent suggestion (a phone-only trattoria) is truly
+                  // phone-only. Carson's call: always let golf retry.
+                  const agentBookable = isAgentBookable(
+                    item.type,
+                    item.title,
+                    item.description,
+                  );
                   const isPhoneOnly =
-                    kind === "failed" && failureReason === "form_not_found";
+                    kind === "failed" &&
+                    failureReason === "form_not_found" &&
+                    !agentBookable;
                   // Sold out for the trip's dates. The venue exists and is
                   // bookable — there's just no inventory — so the concierge
                   // move is to offer a comparable alternative, not a dead end.
@@ -706,7 +717,7 @@ export function BookingStatusPanel({
                   const needsAlternative = isSoldOut || isMembersOnly;
                   // Hotels, golf, and car rentals are agent-bookable.
                   const canBook =
-                    isAgentBookable(item.type, item.title, item.description) &&
+                    agentBookable &&
                     !isWalkIn &&
                     !isPhoneOnly &&
                     (kind === "pending" || kind === "failed");

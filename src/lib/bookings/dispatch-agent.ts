@@ -26,7 +26,7 @@ export type AgentBookableItem = {
   description: string | null;
   cost: number | null;
   metadata: unknown;
-  booking: { id: string; status: string } | null;
+  booking: { id: string; status: string; metadata?: unknown } | null;
 };
 
 export type PrepareResult =
@@ -55,9 +55,21 @@ export async function prepareAgentBooking(args: {
   if (item.booking) {
     const s = item.booking.status;
     if (s === "CONFIRMED") return { ok: false, skip: "confirmed" };
-    if (s === "SEARCHING" || s === "PENDING" || s === "HELD" || s === "NEEDS_REVIEW") {
+    // Genuinely IN FLIGHT → don't double-queue.
+    if (s === "SEARCHING" || s === "PENDING" || s === "HELD") {
       return { ok: true, bookingId: item.booking.id, idempotent: true };
     }
+    // A booking PAUSED for price approval is completed by the approve-price
+    // route (the "Approve & book" button), not a re-fire — leave it as-is.
+    const failureReason = (item.booking.metadata as { failureReason?: string } | null)
+      ?.failureReason;
+    if (s === "NEEDS_REVIEW" && failureReason === "price_approval") {
+      return { ok: true, bookingId: item.booking.id, idempotent: true };
+    }
+    // ANY other finished state — NEEDS_REVIEW from form_not_found / timeout, or
+    // a FAILED attempt — RE-FIRES on tap. The customer asked to book it again,
+    // so we always try: a golf course wrongly tagged "reservations by phone"
+    // must re-attempt, never stay stuck. Falls through to reset + re-run below.
   }
 
   const booking = item.booking
