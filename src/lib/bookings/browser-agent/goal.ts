@@ -44,6 +44,16 @@ Most booking forms have many optional fields (marketing checkboxes, "special req
 ## When in doubt about a field, try the obvious thing
 Form fields are labelled. "Date" wants the date you were given. "Time" wants the time. "People" / "N. of People" wants the party size. Don't second-guess; click, type/select, move on.
 
+## Date pickers / calendars — GET TO THE RIGHT MONTH FIRST, then click the day
+This is the #1 place agents waste time, so do it in this exact order and DO NOT improvise:
+1. A calendar shows ONE month at a time, with a heading like "August 2026" and a previous (‹ / ❮ / "Previous Month") and next (› / ❯ / "Next Month") arrow.
+2. READ the month + year currently shown in the heading. Compare it to the month + year of the date you need (the Check-IN, then later the Check-OUT).
+3. If they are NOT the same month AND year, CLICK THE NEXT (›) OR PREVIOUS (‹) ARROW, ONE click at a time, and re-read the heading after EACH click. Repeat until the heading shows the exact target month and year. Example: heading says "June 2026", you need August 2026 → click the next (›) arrow, heading becomes "July 2026", click next again, heading becomes "August 2026" — NOW stop navigating.
+4. ONLY when the heading shows the correct month + year, click the DAY NUMBER you need. Clicking a day number while the wrong month is showing books the WRONG date (or does nothing) — never click a day until the month matches.
+5. For a hotel stay, do this TWICE: first navigate to the check-IN month and click the arrival day, then (if check-out is a different month) navigate to the check-OUT month and click the departure day. Confirm the field now shows BOTH dates.
+6. Greyed-out / faded / disabled day numbers are past or unavailable dates — they will not respond. That is normal; pick the correct enabled day, and if your exact day is disabled, use the policy for an unavailable slot.
+NEVER sit clicking the same arrow with no plan, and never give up on the calendar — navigating months is just "click the arrow, read the heading, repeat". It always works.
+
 ## Your one job
 Make ONE reservation at the SPECIFIED venue, for the SPECIFIED date/time/party, within the SPECIFIED budget — then call report_outcome. Nothing else.
 
@@ -179,8 +189,14 @@ export function buildGoal(
     lines.push(
       `**Nights:** ${task.nights} — set BOTH the arrival AND departure dates so the stay is ${task.nights} night${task.nights === 1 ? "" : "s"}, NOT one night.`,
     );
+    lines.push(
+      `**Calendar:** the picker may open on the CURRENT month (e.g. June). Navigate to the target month FIRST — click the calendar's next (›) arrow until the heading reads the check-IN month/year, then click the arrival day; repeat for the check-OUT month. See "Date pickers" in your instructions. Do not click a day while the wrong month is showing.`,
+    );
   } else if (task.displayDate) {
     lines.push(`**Date:** ${task.displayDate} (${task.isoDate})`);
+    lines.push(
+      `**Calendar:** the picker may open on the current month. Click the next (›) arrow until the heading shows ${task.displayDate}'s month/year, THEN click the day. Never click a day while the wrong month is showing. See "Date pickers" in your instructions.`,
+    );
   } else {
     lines.push(`**Date:** not specified — use the venue's soonest sensible date for this request, or report needs_review if a date is mandatory and unclear.`);
   }

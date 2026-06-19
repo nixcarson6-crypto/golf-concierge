@@ -799,10 +799,13 @@ export async function runStagehandBooking(
         // (below) marked dates "complete" on a bare month-hop — so any date a
         // month+ out (most trips, and every ChronoGolf golf date) was never
         // clicked deterministically, dumping a half-set calendar to the slow
-        // agent. Bounded to 16 passes (≤16 months of runway, never spins).
+        // agent. Bounded to 10 passes: a normal target is ≤6 months out and
+        // lands in a few passes; if it hasn't landed by 10 the calendar isn't
+        // cracking deterministically (dual-iframe Pikaday) — stop polling (~10s)
+        // and let the agent's month-first logic take it, rather than staring ~35s.
         for (
           let i = 0;
-          i < 16 &&
+          i < 10 &&
           (!setDates || setDates === "OPENED" || setDates === "ADVANCING");
           i++
         ) {
@@ -1036,7 +1039,13 @@ export async function runStagehandBooking(
           // ~14 hops so an unreachable date can't spin forever.
           if (r === "ADVANCING") {
             monthAdvances += 1;
-            if (monthAdvances >= 14) {
+            // Bail to the agent after 7 hops with no match. On a normal calendar
+            // the target is ≤6 months out and lands quickly; if we've clicked
+            // "next" 7× and STILL haven't matched, the month-nav isn't converging
+            // (dual-calendar / multi-iframe Pikaday like The Pearl) — the agent's
+            // explicit month-first logic handles those better, so hand off rather
+            // than flail (was 14, which sat ~30s on a calendar we can't crack).
+            if (monthAdvances >= 7) {
               datesAlreadySet = true;
               return `dates give-up (advanced ${monthAdvances} months, no match)`;
             }
