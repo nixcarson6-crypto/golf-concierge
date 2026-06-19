@@ -205,15 +205,39 @@ export async function tryLiteApiHotelBooking(args: {
     }
     console.log(`[liteapi-hotel] matched → ${hotel.name} (${hotel.id}); fetching rates…`);
 
-    const rates = await searchHotelRates({
-      checkin: args.checkin,
-      checkout: args.checkout,
-      adults: Math.max(1, args.adults),
-      hotelIds: [hotel.id],
-      countryCode: loc.countryCode,
-    });
+    // Rate search, with an EXPLICIT distinction between an API/network ERROR
+    // and a genuine EMPTY result (0 rooms for these dates) — so a log reader
+    // never has to guess WHY LiteAPI passed a hotel to the browser agent.
+    let rates: Awaited<ReturnType<typeof searchHotelRates>>;
+    try {
+      rates = await searchHotelRates({
+        checkin: args.checkin,
+        checkout: args.checkout,
+        adults: Math.max(1, args.adults),
+        hotelIds: [hotel.id],
+        countryCode: loc.countryCode,
+      });
+    } catch (e) {
+      console.warn(
+        `[liteapi-hotel] ✗ ${hotel.name} (${hotel.id}): rate search ERRORED — "${(e as Error).message.slice(0, 140)}". This is an API/network error, NOT a sold-out, so it MIGHT be worth a retry → browser agent fallback for now.`,
+      );
+      return { booked: false, reason: "rate search error" };
+    }
+    const totalOffers = rates.reduce((n, r) => n + (r.offers?.length ?? 0), 0);
     const hotelRates = rates.find((r) => r.offers.length > 0);
-    if (!hotelRates) return { booked: false, reason: "no rate for dates" };
+    if (!hotelRates) {
+      console.warn(
+        `[liteapi-hotel] ✗ ${hotel.name} (${hotel.id}): LiteAPI returned ${rates.length} rate record(s) / ${totalOffers} bookable offer(s) for ${args.checkin}→${args.checkout}, ${args.adults} adult(s) — ${
+          totalOffers === 0
+            ? "GENUINELY EMPTY (no rooms loaded/available for these dates — sandbox or sold-out, NOT a bug)"
+            : "rooms returned but none bookable (restricted / sold out)"
+        } → browser agent fallback.`,
+      );
+      return { booked: false, reason: "no rate for dates" };
+    }
+    console.log(
+      `[liteapi-hotel] ✓ ${hotel.name}: ${totalOffers} bookable offer(s) for these dates — prebooking the cheapest…`,
+    );
 
     // Try up to 5 rates, cheapest first. Individual rates can 400 at prebook
     // ("no prebook availability" — stale or non-prebookable); the next room
