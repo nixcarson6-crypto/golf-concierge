@@ -1098,11 +1098,21 @@ async function resolveVenueContact(args: {
   if (!item?.title) return { website: null, phone: null };
 
   // Clean the venue name for the Places search. Itinerary titles carry
-  // a meal/activity prefix ("Dinner — Sunset Monalisa", "Lunch at X",
-  // "Round at Valhalla") that pollutes the search — strip it so we look
-  // up the actual venue name.
+  // a meal/activity PREFIX ("Dinner — Sunset Monalisa", "Lunch at X",
+  // "Round at Valhalla", "Encore at The King's") AND golf items carry a
+  // round/day SUFFIX ("The King's Course — Round 1", "PGA Centenary — encore
+  // round"). BOTH pollute the search — a real run looked up "The King's
+  // Course — Round 1", found no website, and the agent had nothing to book
+  // (it landed on a Google search). Strip both so we look up the actual venue.
   const venueName = item.title
-    .replace(/^(dinner|lunch|breakfast|brunch|drinks|cocktails|round|tee\s*time|spa|massage)\s*(—|–|-|:|at)\s*/i, "")
+    .replace(
+      /^(dinner|lunch|breakfast|brunch|drinks|cocktails|round|tee\s*time|spa|massage|encore|farewell(\s*round)?|round\s*\d+)\s*(—|–|-|:|at)\s*/i,
+      "",
+    )
+    .replace(
+      /\s*(—|–|-|:)\s*(round\s*\d+|encore(\s*round)?|farewell(\s*round)?|day\s*\d+|morning|afternoon)\s*$/i,
+      "",
+    )
     .replace(/\s*\([^)]*\)\s*/g, " ")
     .trim() || item.title;
 
