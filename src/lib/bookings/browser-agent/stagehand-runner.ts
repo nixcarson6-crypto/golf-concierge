@@ -26,6 +26,7 @@
 import { z } from "zod";
 import { Stagehand } from "@browserbasehq/stagehand";
 import { env, optionalEnv } from "@/lib/env";
+import { detectGolfPlatform, golfPlatformAgentHint } from "../golf-platforms";
 import { AGENT_VIEWPORT } from "./runtime";
 import type { RawBookingOutcome } from "./outcome";
 import type { CardProvider } from "./agent";
@@ -1162,12 +1163,34 @@ export async function runStagehandBooking(
     //                    are the BULK of the calls and don't need
     //                    reasoning, so Haiku runs them ~3x faster/cheaper
     //                    while Sonnet stays in charge of the plan.
+    // PLATFORM SPECIALIZATION (golf): detect the tee-sheet engine from the
+    // active page + booking-frame URLs and append a tight, researched flow hint
+    // (right tab / rate / login behavior) to the agent's system prompt, so it
+    // acts decisively instead of exploring. Logged for triage.
+    let systemForAgent = system;
+    if (opts.selectTeeSlot) {
+      try {
+        const ap = stagehand.context.activePage() ?? page;
+        const bf2 = await bookingFrame(ap);
+        const urlOf = (o: unknown) =>
+          typeof (o as { url?: () => string })?.url === "function"
+            ? (o as { url: () => string }).url()
+            : "";
+        const platform = detectGolfPlatform(`${urlOf(ap)} ${urlOf(bf2)}`);
+        if (platform) {
+          console.log(`[stagehand] 🏷 golf platform: ${platform} (${elapsed()})`);
+          systemForAgent = `${system}\n\n${golfPlatformAgentHint(platform)}`;
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
     const agent = stagehand.agent({
       mode: "dom",
       model: STAGEHAND_MODEL,
       executionModel:
         optionalEnv("STAGEHAND_EXECUTION_MODEL") ?? "anthropic/claude-haiku-4-5",
-      systemPrompt: system,
+      systemPrompt: systemForAgent,
     });
 
     const maxSteps = opts.maxSteps ?? MAX_STEPS;

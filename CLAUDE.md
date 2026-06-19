@@ -331,6 +331,21 @@ they still complete in one run. Flip to full-auto later with
 - **Golf:** picks real EZLinks/ForeUp slots, 2nd-earliest when requested time
   unavailable, rate picker skips currency options, cart→checkout deterministic;
   members-only / pro-shop / preview-only courses bail fast to phone+concierge.
+- **✅ GOLF PLATFORM SPECIALIZATION (`golf-platforms.ts`, NEW):** ~all bookable
+  golf runs through a handful of tee-sheet engines, so we detect the platform by
+  URL/host and hand the agent a tight, researched flow hint (it acts instead of
+  exploring). Logged as `🏷 golf platform: X`. Detection + per-platform behavior
+  (researched June 2026): **ChronoGolf/Lightspeed** (chronogolf.com /club/<id>/
+  widget — VISITORS tab, no login; calendar day-`<button>`s fixed in the
+  date-setter); **ForeUp** (foreupsoftware.com/booking/<id> — Public path,
+  PAY-AT-COURSE = no-card success); **TeeSnap** (*.teesnap.net — LOGIN REQUIRED
+  to finalize → needs_review/login_required); **GolfNow/TeeOff** (aggregator,
+  GUEST checkout); **Troon Access** (golfwithaccess.com — pick PUBLIC rate);
+  **Club Prophet** (*.cps.golf); **Quick18/Sagacity**, **GolfBack**, **Tee-On**,
+  **EZLinks/TeeQuest**, **ForeTees** (foretees.com = private/members → bail). The
+  hint is appended to the agent's systemPrompt only when a platform is detected;
+  the conductor's deterministic recognizers are tuned per-engine from each one's
+  `🔬 booking-step diag` (ChronoGolf calendar done; others as their diags land).
 - **No-availability → "Find a nearby course"** (swap is now proximity-mandatory).
 - **6-min cap** → timeout routes to concierge as NEEDS_REVIEW (not a red failure)
   with an honest "this site is slow, concierge finishing it" message.
