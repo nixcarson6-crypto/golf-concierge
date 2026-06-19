@@ -1157,14 +1157,19 @@ export async function runStagehandBooking(
       const CONDUCTOR_MAX_TICKS = 40;
       const STALL_LIMIT = 3; // ~4s of no progress → hand to the agent (was 7)
       const MAX_SETTLE_STREAK = 2; // wait ~3s for a slow render, no more (was 5)
-      // Hard wall-clock on the WHOLE conductor phase, regardless of progress —
-      // this is the real guarantee against "it just sat there." The conductor
-      // gets a short window to do the easy clicks; whatever isn't done by then,
-      // the agent finishes with visible step-by-step progress. Golf is a short
-      // flow (date → players → time) so it gets less; hotels a bit more for the
-      // multi-step checkout. Neither is long enough to feel like a frozen wait.
+      // Hard wall-clock on the WHOLE conductor phase. This bounds only a
+      // conductor that's STILL MAKING MOVES — the no-stare guarantee is the
+      // SHORT stall/settle budget above (≈7s of no progress → agent), which
+      // fires regardless of this number. So a longer budget can NEVER cause a
+      // frozen wait; it only lets a conductor that's actively clicking FINISH on
+      // the fast deterministic path instead of handing the back half to the
+      // ~12s-per-step agent. HOTELS are the conductor's strong suit (date/room/
+      // rate/enhancements/guest are all tuned), so give the productive hotel
+      // conductor room to complete the whole checkout itself = ~2 min instead of
+      // ~3-4. GOLF stays tight: its deterministic coverage is thin, so when it
+      // can't finish we want the agent (with the platform hint) sooner.
       const conductorStartMs = Date.now();
-      const CONDUCTOR_BUDGET_MS = opts.selectTeeSlot ? 40_000 : 75_000;
+      const CONDUCTOR_BUDGET_MS = opts.selectTeeSlot ? 40_000 : 110_000;
       for (let i = 0; i < CONDUCTOR_MAX_TICKS && !controller.signal.aborted; i++) {
         const action = await tick();
         if (conductorReachedCard) break;
