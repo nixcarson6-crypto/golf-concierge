@@ -2423,6 +2423,98 @@ async function clickStayDatesDeterministically(
           );
         };
 
+        // ── Strategy 0: PIKADAY (one of the most common hotel pickers — The
+        // Pearl and countless others). CRUCIAL: Pikaday changes month / selects
+        // a day on a real MOUSEDOWN of .pika-next / .pika-prev / .pika-button —
+        // a plain .click() fires only a 'click' event, which Pikaday ignores.
+        // That's why the generic setter "advanced" forever while the calendar
+        // never moved off the current month (no-op arrow clicks → ping-pong
+        // OPENED/ADVANCING → 2-minute agent fallback). Drive it with proper
+        // mouse events. Pikaday redraws SYNCHRONOUSLY on mousedown, so the whole
+        // walk-to-month + pick-day completes in this one pass, in milliseconds.
+        if (document.querySelector("[data-pika-day]")) {
+          const fire = (el: Element) => {
+            for (const type of ["mousedown", "mouseup", "click"]) {
+              el.dispatchEvent(
+                new MouseEvent(type, { bubbles: true, cancelable: true, view: window }),
+              );
+            }
+          };
+          const dayCells = () =>
+            Array.from(
+              document.querySelectorAll<HTMLElement>("button.pika-button[data-pika-day]"),
+            ).filter(isVisible);
+          // The month currently DRAWN, as year*12 + 0-indexed-month, taken as the
+          // dominant month among visible cells (a single-month grid shows one
+          // month plus a few faded adjacent days).
+          const drawnKey = (): number | null => {
+            const counts: Record<number, number> = {};
+            for (const c of dayCells()) {
+              const y = parseInt(c.getAttribute("data-pika-year") || "", 10);
+              const m = parseInt(c.getAttribute("data-pika-month") || "", 10);
+              if (Number.isFinite(y) && Number.isFinite(m)) {
+                const k = y * 12 + m;
+                counts[k] = (counts[k] || 0) + 1;
+              }
+            }
+            let best: number | null = null;
+            let bestN = 0;
+            for (const k in counts) {
+              if (counts[k] > bestN) { bestN = counts[k]; best = parseInt(k, 10); }
+            }
+            return best;
+          };
+          // Walk to the target month then mousedown the exact day. Returns
+          // "picked" | "no-day" (month reached, day disabled/missing) |
+          // "async" (a nav click didn't redraw this pass → let the outer poll
+          // retry) | null (can't act).
+          const walk = (iso: string): "picked" | "no-day" | "async" | null => {
+            const [ty, tm, td] = iso.split("-").map((n) => parseInt(n, 10));
+            const wantKey = ty * 12 + (tm - 1);
+            for (let i = 0; i < 18; i++) {
+              const cur = drawnKey();
+              if (cur == null) return null;
+              if (cur === wantKey) {
+                const cell = dayCells().find(
+                  (c) =>
+                    parseInt(c.getAttribute("data-pika-year") || "", 10) === ty &&
+                    parseInt(c.getAttribute("data-pika-month") || "", 10) === tm - 1 &&
+                    parseInt(c.getAttribute("data-pika-day") || "", 10) === td &&
+                    !/is-disabled/.test(c.parentElement?.className || ""),
+                );
+                if (!cell) return "no-day";
+                fire(cell);
+                return "picked";
+              }
+              const nav = document.querySelector<HTMLElement>(
+                wantKey > cur ? ".pika-next" : ".pika-prev",
+              );
+              if (!nav || !isVisible(nav)) return null;
+              fire(nav);
+              // Pikaday redraws synchronously; if the month didn't move, it's an
+              // async fork — bail and let the outer poll re-enter post-redraw.
+              if (drawnKey() === cur) return "async";
+            }
+            return null;
+          };
+          if (ci == null && co != null) {
+            const r = walk(co);
+            if (r === "picked") return `out=${co}`;
+            if (r === "async") return "ADVANCING";
+            return null;
+          }
+          if (ci != null) {
+            const r1 = walk(ci);
+            if (r1 === "async") return "ADVANCING";
+            if (r1 === "picked") {
+              if (co == null) return `in=${ci}`;
+              const r2 = walk(co);
+              return `in=${ci}${r2 === "picked" ? ` out=${co}` : " out=PENDING"}`;
+            }
+            return null;
+          }
+        }
+
         // ── Strategy 2: metadata match ───────────────────────────────────
         const metaCells = Array.from(
           document.querySelectorAll<HTMLElement>(
