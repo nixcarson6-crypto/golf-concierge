@@ -387,9 +387,16 @@ Per-category (applies to BOTH cases — only the ceiling differs):
   needs a membership or a member sponsor to play is out, including the many
   upscale "<Name> Club" / "<Name> National" layouts that LOOK public but
   aren't. When you're not sure a course is publicly playable, DO NOT pick
-  it — choose a clearly public course nearby instead. Suggesting a course
-  the customer can't get onto is a HARD FAILURE: it wastes the whole
-  booking and there's nothing to reserve.
+  it. Suggesting a course the customer can't get onto is a HARD FAILURE.
+  BUT bookable does NOT mean settling for mediocre: the access gate is a
+  FILTER, then pick the ABSOLUTE BEST course inside it. The world's best
+  golf is FULL of public / resort-guest gems — Pebble Beach, Pinehurst No.
+  2, Bandon Dunes, Streamsong, Whistling Straits, TPC Sawgrass, Bethpage
+  Black, Kiawah Ocean, Spyglass, Sea Island Seaside, Royal County Down,
+  Old Course St Andrews. Pick THAT caliber (Top-100 / championship /
+  signature-design / tournament-host) among the courses they can book.
+  Only drop to a humbler course when there is genuinely NO great bookable
+  one near the lodging. Best-AND-bookable, never one or the other.
 - DINING/ACTIVITIES: the BEST options in the brief — the Michelin /
   chef's-table / iconic picks, not the cheap casual spots. (Cost stays
   null for these per the pricing rules, but the RECOMMENDATION quality
@@ -453,13 +460,17 @@ Coverage:
   star rating — reviews measure "nice experience", not "best golf", so a
   casual course can out-review a masterpiece. Among courses genuinely close
   to the lodging, pick the best by pedigree; use the rating to break ties or
-  surface a hidden gem. BUT FIRST, ACCESS GATE (overrides pedigree): only
-  pick a course the customer can actually GET ON — public / daily-fee, OR
+  surface a hidden gem. ACCESS GATE FIRST (a filter, not a downgrade): only
+  consider courses the customer can actually GET ON — public / daily-fee, OR
   the on-site course of the EXACT resort/inn they're staying at, OR one they
   said they have access to. SKIP private / members-only clubs (e.g.
   Watersound Club's Camp Creek & Shark's Tooth for a guest NOT staying at
-  Camp Creek/Watersound Inn) no matter how high the pedigree — a course they
-  can't book is worse than a humbler public one they can. If unsure it's
+  Camp Creek/Watersound Inn) no matter how high the pedigree. THEN, among the
+  courses they CAN book, pick the ABSOLUTE BEST — the highest-pedigree
+  Top-100 / championship / signature option, not a safe mediocre one (the
+  best golf is full of public/resort gems: Pebble, Pinehurst No. 2, Bandon,
+  Streamsong, Kiawah Ocean, Sea Island Seaside…). Drop to a humbler course
+  ONLY when no great bookable one is near the lodging. If unsure a course is
   publicly playable, pick the best PUBLIC option instead.
 - Lodging block (USE a real hotel from the brief, anchor cost to the
   nightly rate × nights × rooms).
