@@ -786,10 +786,19 @@ export async function runStagehandBooking(
         let dctx: unknown = page;
         // Poll: the calendar appears a beat after the Book-Now navigation, and
         // a closed calendar needs one pass to ARM it (returns "OPENED") before
-        // the cells exist to click. Keep going while we're still null/OPENED.
+        // the cells exist to click. Keep going while we're still null/OPENED —
+        // AND while it's still "ADVANCING": ADVANCING means the setter clicked
+        // next-month to reach the target month but has NOT clicked the day yet,
+        // so each ADVANCING pass moves one month and the loop must come back to
+        // click the actual day. The old loop quit on the first ADVANCING and
+        // (below) marked dates "complete" on a bare month-hop — so any date a
+        // month+ out (most trips, and every ChronoGolf golf date) was never
+        // clicked deterministically, dumping a half-set calendar to the slow
+        // agent. Bounded to 16 passes (≤16 months of runway, never spins).
         for (
           let i = 0;
-          i < 7 && (!setDates || setDates === "OPENED");
+          i < 16 &&
+          (!setDates || setDates === "OPENED" || setDates === "ADVANCING");
           i++
         ) {
           dctx = await bookingFrame(page);
@@ -798,8 +807,8 @@ export async function runStagehandBooking(
             opts.checkinISO ?? null,
             opts.checkoutISO ?? null,
           );
-          if (!setDates || setDates === "OPENED") {
-            await new Promise((r) => setTimeout(r, 1200));
+          if (!setDates || setDates === "OPENED" || setDates === "ADVANCING") {
+            await new Promise((r) => setTimeout(r, 900));
           }
         }
         // Arrival landed but the departure cell wasn't selectable yet (many
@@ -837,6 +846,7 @@ export async function runStagehandBooking(
         const rangeComplete =
           !!setDates &&
           setDates !== "OPENED" &&
+          setDates !== "ADVANCING" &&
           !(opts.checkoutISO && setDates.includes("out=PENDING"));
         if (rangeComplete) {
           datesAlreadySet = true;
