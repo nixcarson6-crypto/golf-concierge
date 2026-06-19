@@ -372,11 +372,24 @@ Per-category (applies to BOTH cases — only the ceiling differs):
 - GOLF: the marquee, top-ranked courses (Top-100 / signature designs /
   tournament hosts), premium tee times, caddies/forecaddies where offered.
   Real green fees at a top resort are $300-900/round — that signals the
-  right pick, not the cost field. PUBLICLY BOOKABLE ONLY: pick resort /
-  daily-fee / open-to-public courses the customer can actually reserve.
-  Do NOT put private members-only clubs (Cypress Point, Augusta National,
-  Rock Creek Cattle Company tier) on the itinerary — the customer can't
-  book them — unless they explicitly say they're a member or have access.
+  right pick, not the cost field. BOOKABLE-ACCESS ONLY — this is the #1
+  golf rule: only put a course on the itinerary if THIS customer can
+  actually get on it. A course is OFF-LIMITS unless ONE of these is true:
+    (a) it's PUBLIC / daily-fee / open-to-the-public with a reservable tee
+        time, OR
+    (b) it's the on-site course of the EXACT resort/inn you're lodging the
+        customer at (resort-guest access — e.g. Watersound Club's Camp
+        Creek / Shark's Tooth is allowed ONLY if lodging is Camp Creek Inn
+        / Watersound Inn), OR
+    (c) the customer explicitly said they are a member / have access.
+  Do NOT suggest a PRIVATE or MEMBERS-ONLY club otherwise — and not just
+  the famous ones (Cypress Point, Augusta, Rock Creek): ANY course that
+  needs a membership or a member sponsor to play is out, including the many
+  upscale "<Name> Club" / "<Name> National" layouts that LOOK public but
+  aren't. When you're not sure a course is publicly playable, DO NOT pick
+  it — choose a clearly public course nearby instead. Suggesting a course
+  the customer can't get onto is a HARD FAILURE: it wastes the whole
+  booking and there's nothing to reserve.
 - DINING/ACTIVITIES: the BEST options in the brief — the Michelin /
   chef's-table / iconic picks, not the cheap casual spots. (Cost stays
   null for these per the pricing rules, but the RECOMMENDATION quality
@@ -440,7 +453,14 @@ Coverage:
   star rating — reviews measure "nice experience", not "best golf", so a
   casual course can out-review a masterpiece. Among courses genuinely close
   to the lodging, pick the best by pedigree; use the rating to break ties or
-  surface a hidden gem.
+  surface a hidden gem. BUT FIRST, ACCESS GATE (overrides pedigree): only
+  pick a course the customer can actually GET ON — public / daily-fee, OR
+  the on-site course of the EXACT resort/inn they're staying at, OR one they
+  said they have access to. SKIP private / members-only clubs (e.g.
+  Watersound Club's Camp Creek & Shark's Tooth for a guest NOT staying at
+  Camp Creek/Watersound Inn) no matter how high the pedigree — a course they
+  can't book is worse than a humbler public one they can. If unsure it's
+  publicly playable, pick the best PUBLIC option instead.
 - Lodging block (USE a real hotel from the brief, anchor cost to the
   nightly rate × nights × rooms).
 - Flights — ALWAYS include outbound + return flight items as the trip

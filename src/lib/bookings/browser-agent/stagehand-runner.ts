@@ -1335,6 +1335,32 @@ export async function runStagehandBooking(
         actions: [],
       } as unknown as ExecResult;
     } else {
+    // PRIVATE-CLUB FALLBACK (golf): the conductor drilled into the golf section
+    // and found no bookable path. Before spending minutes on the agent, check
+    // for a clearly PRIVATE / members-only club with NO public booking — if so,
+    // bail NOW with a customer-facing message instead of sitting there (a real
+    // run sat 2.5 min on a members showcase). Conservative: only fires on a
+    // strong private signal AND zero golf-booking widgets, so a bookable course
+    // is never wrongly bailed.
+    if (opts.selectTeeSlot) {
+      const privMsg = await detectPrivateGolfClub(
+        await bookingFrame(stagehand.context.activePage() ?? page),
+      ).catch(() => null);
+      if (privMsg) {
+        console.log(
+          `[stagehand] 🔒 private members-only golf — bailing fast, not booking (${elapsed()})`,
+        );
+        return {
+          outcome: {
+            status: "needs_review",
+            failureReason: "members_only",
+            message: privMsg,
+          },
+          sessionUrl,
+          finalScreenshot: null,
+        };
+      }
+    }
     console.log(
       `[stagehand] agent.execute starting (maxSteps=${maxSteps}, toolTimeout=${TOOL_TIMEOUT_MS}ms)…`,
     );
@@ -4571,6 +4597,85 @@ async function deterministicGuestFill(
  * "Request could not be satisfied" / "Access Denied" / "Attention Required".
  * Cheap single read; returns a short signal string when blocked, else null.
  */
+/**
+ * Detect a clearly PRIVATE / members-only golf club with NO public booking
+ * path, so a golf run bails fast (with a customer-facing message) instead of
+ * sitting on a members showcase for minutes (a real run sat 2.5 min on
+ * Watersound Club). CONSERVATIVE — only fires when BOTH hold:
+ *   1) a STRONG private signal (Member-Login + Membership nav, or explicit
+ *      "members only / private club / not open to the public" text), AND
+ *   2) ZERO golf-booking widgets anywhere (no calendar, no date input, no
+ *      tee-time/availability CTA, no known tee-sheet host).
+ * So a public or semi-private course with ANY real booking path is never
+ * bailed. Returns a customer message, or null.
+ */
+async function detectPrivateGolfClub(page: unknown): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const host = location.host.toLowerCase();
+      // A known tee-sheet engine = definitely bookable → never private-bail.
+      if (
+        /chronogolf|foreupsoftware|teesnap|cps\.golf|golfnow|teeoff|golfwithaccess|quick18|sagacity|golfback|teeon|teequest|ezlinks/.test(
+          host,
+        )
+      ) {
+        return null;
+      }
+      const bodyText = (document.body?.innerText || "").toLowerCase();
+      const navText = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "nav a, header a, [role=navigation] a, [class*=nav i] a",
+        ),
+      ).map((a) => (a.textContent || "").trim().toLowerCase());
+      const hasMemberLogin = navText.some((t) =>
+        /member\s*login|members?\s*area|members?\s*portal/.test(t),
+      );
+      const hasMembership =
+        navText.some((t) => /^membership$|join the club|become a member/.test(t)) ||
+        /\bmembership\b/.test(bodyText.slice(0, 5000));
+      const privatePhrase =
+        /members?\s*only|members?\s+and\s+(their\s+)?(invited\s+)?guests|private\s+(members'?\s+)?club|not\s+open\s+to\s+the\s+public|registered\s+(resort\s+)?guests?\s+only|must\s+be\s+a\s+member|for\s+members\s+and\s+their/.test(
+          bodyText,
+        );
+      const strongPrivate = (hasMemberLogin && hasMembership) || privatePhrase;
+      if (!strongPrivate) return null;
+      // ANY golf-booking path present → NOT a dead end; let the agent try.
+      if (
+        document.querySelector(
+          "[data-pika-day],[role=gridcell],.pika-button,[class*=teetime i],[class*=tee-time i]",
+        )
+      ) {
+        return null;
+      }
+      const inputs = Array.from(document.querySelectorAll("input"));
+      if (
+        inputs.some((i) =>
+          /date/i.test(
+            (i.getAttribute("type") || "") +
+              (i.getAttribute("name") || "") +
+              (i.getAttribute("placeholder") || ""),
+          ),
+        )
+      ) {
+        return null;
+      }
+      const ctas = Array.from(
+        document.querySelectorAll<HTMLElement>("a, button, [role=button]"),
+      ).map((e) => (e.textContent || "").trim().toLowerCase());
+      const TEE =
+        /book a tee time|tee times?|reserve a tee time|check availability|book your tee time|golf reservations?|book a round/;
+      if (ctas.some((t) => t.length < 40 && TEE.test(t))) return null;
+      // Strong private + no booking path anywhere → genuinely unbookable.
+      const phone = (bodyText.match(/\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/) || [])[0] || null;
+      return `This course is a private members-only club, so we can't book a public tee time here${phone ? ` (pro shop: ${phone})` : ""} — our concierge can arrange access or suggest a nearby course you can play.`;
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function detectBotBlock(page: unknown): Promise<string | null> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return null;
