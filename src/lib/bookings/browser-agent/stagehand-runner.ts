@@ -1354,6 +1354,34 @@ export async function runStagehandBooking(
         actions: [],
       } as unknown as ExecResult;
     } else {
+    // SOLD OUT for the requested check-in (hotel or golf date): the calendar
+    // shows the target date as "Sold out"/unavailable, so the agent can NEVER
+    // set it — surface no_availability (→ "find an alternative") instead of
+    // spinning "finalizing your reservation" forever (Streamsong was sold out
+    // Aug 10 and Pyltrix just spun). Only when our date-setter couldn't confirm
+    // the date AND the target cell is genuinely marked sold-out.
+    if (opts.checkinISO && !datesConfirmed) {
+      const soldOut = await detectRequestedDatesSoldOut(
+        await bookingFrame(stagehand.context.activePage() ?? page),
+        opts.checkinISO,
+      ).catch(() => false);
+      if (soldOut) {
+        console.log(
+          `[stagehand] 🚫 requested check-in (${opts.checkinISO}) is SOLD OUT — reporting no_availability (${elapsed()})`,
+        );
+        return {
+          outcome: {
+            status: "failed",
+            failureReason: "no_availability",
+            message: opts.selectTeeSlot
+              ? "This course is sold out for your date — our concierge can grab a nearby course or a different day."
+              : "This property is sold out for your dates — our concierge can find you a comparable place for the trip, or you can pick different dates.",
+          },
+          sessionUrl,
+          finalScreenshot: null,
+        };
+      }
+    }
     // PRIVATE-CLUB FALLBACK (golf): the conductor drilled into the golf section
     // and found no bookable path. Before spending minutes on the agent, check
     // for a clearly PRIVATE / members-only club with NO public booking — if so,
@@ -4720,6 +4748,81 @@ async function detectResortConfirmationGate(page: unknown): Promise<string | nul
     });
   } catch {
     return null;
+  }
+}
+
+/**
+ * Detect that the REQUESTED check-in date is sold out / unavailable on the
+ * booking calendar (Streamsong shows "Sold out" on Aug 10), so we surface
+ * no_availability instead of spinning. CONSERVATIVE: requires the calendar to
+ * be showing the target month+year AND the exact target-day cell to be marked
+ * sold-out/unavailable — so it never mis-fires on some OTHER date being full.
+ */
+async function detectRequestedDatesSoldOut(
+  page: unknown,
+  checkinISO: string,
+): Promise<boolean> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function" || !checkinISO) return false;
+  try {
+    return await cdp.evaluate<boolean>(
+      (arg: unknown) => {
+        const iso = (arg as { iso: string }).iso;
+        const [ty, tm, td] = iso.split("-").map((n) => parseInt(n, 10));
+        const MONTHS = [
+          "january", "february", "march", "april", "may", "june", "july",
+          "august", "september", "october", "november", "december",
+        ];
+        const targetMonth = MONTHS[tm - 1];
+        const isVisible = (el: Element): boolean => {
+          const r = (el as HTMLElement).getClientRects();
+          if (!r || r.length === 0) return false;
+          const s = window.getComputedStyle(el as HTMLElement);
+          return s.visibility !== "hidden" && s.display !== "none";
+        };
+        // The calendar must be SHOWING the target month+year, so a sold-out
+        // target-day cell is really the requested date (not another month).
+        const monthShown = Array.from(
+          document.querySelectorAll<HTMLElement>("*"),
+        ).some((el) => {
+          const t = (el.textContent || "").trim().toLowerCase();
+          return (
+            t.length < 25 &&
+            t.includes(targetMonth) &&
+            t.includes(String(ty)) &&
+            isVisible(el)
+          );
+        });
+        if (!monthShown) return false;
+        const cells = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "td,button,div,a,li,[role=gridcell]",
+          ),
+        );
+        for (const c of cells) {
+          if (!isVisible(c)) continue;
+          const txt = (c.textContent || "").trim();
+          if (txt.length > 40) continue;
+          const m = txt.match(/^(\d{1,2})\b/);
+          if (!m || parseInt(m[1], 10) !== td) continue;
+          // Pikaday trailing day? skip cells whose data-pika-month ≠ target.
+          const pk = c.querySelector?.("[data-pika-day]") ?? c;
+          const pm = (pk as HTMLElement).getAttribute?.("data-pika-month");
+          if (pm != null && parseInt(pm, 10) !== tm - 1) continue;
+          const soldOut =
+            /sold\s*out|unavailable|not\s*available|no\s*availability|fully\s*booked/i.test(
+              txt,
+            ) ||
+            /sold|unavailable|disabled|not-?available/i.test(c.className || "") ||
+            c.getAttribute("aria-disabled") === "true";
+          if (soldOut) return true;
+        }
+        return false;
+      },
+      { iso: checkinISO },
+    );
+  } catch {
+    return false;
   }
 }
 
