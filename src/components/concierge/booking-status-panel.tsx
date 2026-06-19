@@ -714,7 +714,22 @@ export function BookingStatusPanel({
                   // tell the customer plainly and offer a bookable alternative.
                   const isMembersOnly =
                     kind === "failed" && failureReason === "members_only";
-                  const needsAlternative = isSoldOut || isMembersOnly;
+                  // GOLF: a nearby course is ALWAYS a valid recovery, so offer
+                  // "Find a nearby course" on ANY genuine golf miss — sold out,
+                  // private, no form found, or a needs_review the concierge
+                  // would otherwise chase (e.g. the suggested course wasn't on
+                  // its booking platform). EXCEPT a near-complete card step
+                  // (quotedPriceCents set, or price_approval) — that one's
+                  // almost booked, so we keep it and the customer just pays.
+                  const isGolf = item.type === "TEE_TIME";
+                  const golfNeedsAlt =
+                    isGolf &&
+                    !isWalkIn &&
+                    quotedPriceCents == null &&
+                    failureReason !== "price_approval" &&
+                    (kind === "failed" || kind === "review");
+                  const needsAlternative =
+                    isSoldOut || isMembersOnly || golfNeedsAlt;
                   // Hotels, golf, and car rentals are agent-bookable.
                   const canBook =
                     agentBookable &&

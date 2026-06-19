@@ -734,6 +734,12 @@ export async function runStagehandBooking(
     let golfSearchSubmitted = false;
     let rateSelected = false;
     let playersSet = false;
+    // Anti-hammer for the per-step golf checkout-advance: GolfNow's "Search"
+    // re-runs the search instead of advancing, so without a cap it clicked
+    // ~15 times across a run. Stop after a few identical clicks.
+    let golfAdvanceLabel = "";
+    let golfAdvanceCount = 0;
+    let golfAdvanceStuck = false;
     let roomPicked = false;
     // Luxury multi-service properties (Villa d'Este, many SynXis engines) open
     // a "What would you like to book?" chooser right after "Book now" — hotel /
@@ -1371,7 +1377,9 @@ export async function runStagehandBooking(
         );
         return {
           outcome: {
-            status: "needs_review",
+            // FAILED (not needs_review) so the result page's "Find a nearby
+            // course" recovery fires (it keys on failed + members_only).
+            status: "failed",
             failureReason: "members_only",
             message: privMsg,
           },
@@ -1566,15 +1574,27 @@ export async function runStagehandBooking(
           // Drive it deterministically. clickAdvanceButtonDeterministically
           // NEVER clicks a commit verb (Book/Pay/Confirm) and bails at the card
           // step, so it can't submit the booking — only move toward checkout.
-          if (opts.selectTeeSlot && slotAlreadyPicked) {
+          if (opts.selectTeeSlot && slotAlreadyPicked && !golfAdvanceStuck) {
             try {
               const active = stagehand.context.activePage();
               if (active) {
                 const adv = await clickAdvanceButtonDeterministically(active);
-                if (adv)
+                if (adv) {
+                  if (adv === golfAdvanceLabel) golfAdvanceCount += 1;
+                  else { golfAdvanceLabel = adv; golfAdvanceCount = 1; }
                   console.log(
                     `[stagehand] ⚡ golf checkout advance ("${adv}") (${elapsed()})`,
                   );
+                  // Same button 3× in a row isn't advancing (GolfNow "Search"
+                  // re-runs the search) — stop the per-step advance so it can't
+                  // loop ~15 times; let the agent take it from here.
+                  if (golfAdvanceCount >= 3) {
+                    golfAdvanceStuck = true;
+                    console.log(
+                      `[stagehand] ⚙ golf checkout advance stuck on "${adv}" — stopping per-step advance (${elapsed()})`,
+                    );
+                  }
+                }
               }
             } catch {
               /* best-effort */
