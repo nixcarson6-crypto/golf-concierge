@@ -293,17 +293,28 @@ hands-free booking** — it's a one-time integration, NOT more agent code. Carso
 does NOT want the concierge-by-hand model long-term; he wants the agent to
 complete it, which REQUIRES Stripe.
 
-**✅ MVP PAYMENT POLICY (Carson's call, this session): REVIEW BEFORE CHARGING.**
-Even once Stripe Issuing is on, the agent does NOT auto-charge. It fills
-everything to the card step and STOPS for a one-tap customer approval; only on
-approval does the booking re-run and pay. Implemented by reusing the existing
-price_approval path: `run-booking` sets `requirePaymentReview` (ON by default,
-OFF once `approvedPriceCents` is set, OFF for pay-at-course golf) → the runner
-returns `price_approval` at the card step with the real total and mints NO card
-→ the existing "Approve & book" button + `approve-price` route re-run with the
-gate lifted and pay. Pay-at-property hotels + golf never reach a card step, so
-they still complete in one run. Flip to full-auto later with
-`BOOKING_REQUIRE_PAYMENT_REVIEW=false`. (`run-booking.ts`, `stagehand-runner.ts`,
+**✅ MVP PAYMENT POLICY — UPDATED (Carson's call): APPROVE UP FRONT, BOOK
+STRAIGHT THROUGH (no mid-flow stop, no form re-run).** Carson reversed the
+earlier "stop at every card step" policy because stopping = RE-RUNNING the whole
+form (the venue's checkout session is dead by the time a human approves — see
+`approve-price/route.ts`, it's a clean re-run not a resume). He does NOT want the
+agent to fill the form twice. New flow:
+- The customer approves UP FRONT — the price ESTIMATE on the trip page + "Book it
+  for me" IS the authorization. That's the single review point.
+- The agent then runs ONCE, all the way through: fills the form → enters the
+  Stripe-Issuing virtual card → completes → captures the real confirmation. No
+  stop, no redo.
+- The ONLY mid-flow stop is BILL SHOCK: if the venue's real total at checkout
+  comes in materially above the approved estimate, it pauses (the existing
+  `priceGateCents` gate → `price_approval`). That rare case re-runs; normal
+  bookings never do.
+Concretely: once Stripe Issuing is wired, default `requirePaymentReview` OFF
+(`BOOKING_REQUIRE_PAYMENT_REVIEW=false`) and feed the approved estimate (+ a
+buffer) into `priceGateCents` so only true overages stop. Pay-at-property hotels
++ pay-at-course golf never reach a card step, so they already complete in one run
+regardless. **Blocked on Stripe Issuing** — until the virtual card exists there's
+nothing to enter, so every pay-now venue still stops at the card step → concierge
+no matter the flag. (`run-booking.ts`, `stagehand-runner.ts`, `approve-price`,
 `env.ts`.)
 
 **Testing notes (so a fresh session reads logs right):**
