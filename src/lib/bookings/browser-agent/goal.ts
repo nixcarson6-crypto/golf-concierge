@@ -227,7 +227,17 @@ export function buildGoal(
   );
   if (t.addressLine1) {
     lines.push(
-      `- Home address (for any address/billing fields): ${t.addressLine1}, ${t.addressCity ?? ""}${t.addressState ? ", " + t.addressState : ""} ${t.addressPostalCode ?? ""}, ${t.addressCountry ?? "US"} — fill street/city/state/zip/country fields with EXACTLY these. Skip any "find your address" autocomplete and type into the manual fields directly.`,
+      `- Home address — map EACH field to its OWN value, never mix them up:`,
+    );
+    lines.push(`    · Address / Street / Address 1 → "${t.addressLine1}" (the street ONLY)`);
+    if (t.addressCity) lines.push(`    · City / Town → "${t.addressCity}"`);
+    lines.push(
+      `    · State / Province / Region → ${t.addressState ? `"${t.addressState}"` : "the U.S. state where the traveller lives (see Residence below)"} — the STATE ONLY. NEVER put the street address ("${t.addressLine1}") in the State field. If State is a dropdown or autocomplete, type the state name, wait for the list, and CLICK the matching option to commit it — don't leave it as raw typed text.`,
+    );
+    if (t.addressPostalCode) lines.push(`    · Zip / Postal Code → "${t.addressPostalCode}"`);
+    lines.push(`    · Country → "${t.addressCountry ?? "United States"}" (pick from the list if it's a dropdown)`);
+    lines.push(
+      `  Skip any "find your address" autocomplete and type into the manual fields directly. Double-check the State field shows a STATE, not the street, before continuing.`,
     );
   } else {
     lines.push(

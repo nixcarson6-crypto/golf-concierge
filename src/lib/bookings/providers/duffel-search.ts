@@ -40,6 +40,14 @@ export type FlightSearchInput = {
    *    flight. Used when the customer explicitly taps the "Cheaper" chip.
    */
   rankMode?: "quality" | "price";
+  /**
+   * The customer's preferred airline as a 2-letter IATA code (AA, DL, UA, B6,
+   * WN…). When set and that carrier HAS offers on the route, those lead the
+   * results (the headline flight is theirs). When the carrier has none (no
+   * availability, or it doesn't sell via Duffel — e.g. Southwest/WN), the
+   * normal ranking is kept so the customer still sees bookable options.
+   */
+  preferredAirline?: string | null;
 };
 
 export type FlightOfferSummary = {
@@ -82,6 +90,45 @@ export type FlightSearchResult = {
   ok: false;
   error: string;
 };
+
+/** Common airline NAMES → 2-letter IATA, so the quiz free-text ("Southwest",
+ *  "Delta") maps to the code searchFlights ranks by. The single-select options
+ *  already store IATA codes; this covers what customers TYPE. */
+const AIRLINE_NAME_TO_IATA: Record<string, string> = {
+  southwest: "WN", delta: "DL", united: "UA", american: "AA",
+  "american airlines": "AA", jetblue: "B6", alaska: "AS",
+  "alaska airlines": "AS", spirit: "NK", frontier: "F9", hawaiian: "HA",
+  allegiant: "G4", "british airways": "BA", lufthansa: "LH", emirates: "EK",
+  "air france": "AF", klm: "KL", qatar: "QR", "qatar airways": "QR",
+  "singapore airlines": "SQ", ana: "NH", "japan airlines": "JL", jal: "JL",
+  "virgin atlantic": "VS", "cathay pacific": "CX", "turkish airlines": "TK",
+};
+
+/**
+ * Resolve the quiz's airline preference to a 2-letter IATA code, from EITHER
+ * the single-select value (already an IATA code like "B6") OR the free-text
+ * the customer typed ("Southwest"). Returns null for "best rate / don't care"
+ * or anything we can't map. Note: a few carriers (notably Southwest/WN) don't
+ * sell through Duffel at all, so even a resolved code may surface no offers —
+ * searchFlights handles that by keeping the normal ranking.
+ */
+export function resolveAirlineIata(
+  pref: string | null | undefined,
+  custom: string | null | undefined,
+): string | null {
+  const p = (pref ?? "").trim();
+  if (p && !/^(best_rate|custom)$/i.test(p) && /^[A-Za-z0-9]{2}$/.test(p)) {
+    return p.toUpperCase();
+  }
+  const c = (custom ?? "").trim().toLowerCase();
+  if (!c) return null;
+  if (/^[a-z0-9]{2}$/.test(c)) return c.toUpperCase();
+  if (AIRLINE_NAME_TO_IATA[c]) return AIRLINE_NAME_TO_IATA[c];
+  for (const [name, code] of Object.entries(AIRLINE_NAME_TO_IATA)) {
+    if (c.includes(name)) return code;
+  }
+  return null;
+}
 
 export async function searchFlights(
   input: FlightSearchInput,
@@ -182,7 +229,27 @@ export async function searchFlights(
     return { offer: o, score };
   });
   scored.sort((a, b) => a.score - b.score);
-  const offers = scored.slice(0, cap).map((x) => x.offer);
+
+  // Airline preference. When the customer picked a carrier, lead with ITS
+  // flights (so the headline option — offers[0] — is the airline they asked
+  // for) and keep the rest as alternatives below. Only reorders when that
+  // carrier actually has offers on this route; if it has none (no availability,
+  // or it isn't sold via Duffel like Southwest/WN), we keep the normal ranking
+  // so the customer still sees bookable flights instead of an empty list.
+  const pref = input.preferredAirline?.toUpperCase().trim();
+  const rankedScored =
+    pref && pref.length >= 2
+      ? (() => {
+          const mine = scored.filter(
+            (x) => x.offer.airlineIataCode.toUpperCase() === pref,
+          );
+          const others = scored.filter(
+            (x) => x.offer.airlineIataCode.toUpperCase() !== pref,
+          );
+          return mine.length > 0 ? [...mine, ...others] : scored;
+        })()
+      : scored;
+  const offers = rankedScored.slice(0, cap).map((x) => x.offer);
 
   // Cabin fallback. Small / regional / domestic routes frequently have NO
   // business- or first-class inventory at all (Dallas → ECP "Northwest Florida

@@ -20,7 +20,7 @@ import {
   disambiguateDestination,
 } from "@/lib/ai/conversation";
 import { nudge } from "@/lib/events";
-import { searchFlights } from "@/lib/bookings/providers/duffel-search";
+import { searchFlights, resolveAirlineIata } from "@/lib/bookings/providers/duffel-search";
 import {
   parseLegs,
   assignDatesToLegs,
@@ -386,6 +386,18 @@ export async function POST(
     }
   }
   const airlinePref = answers.airlinePreference as string | undefined;
+  // The customer's preferred CARRIER (e.g. they picked JetBlue, or typed
+  // "Southwest"). Resolved to an IATA code and passed to the flight search so
+  // their airline LEADS the results — previously this answer only set the cabin
+  // and the carrier choice was silently ignored (Southwest pick → British
+  // Airways shown). null = "best rate / don't care" or an unmappable entry.
+  const preferredAirline = resolveAirlineIata(
+    airlinePref,
+    answers.airlinePreferenceCustom as string | undefined,
+  );
+  if (preferredAirline) {
+    console.log(`[build] preferred airline: ${preferredAirline}`);
+  }
   const cabinAnswer =
     airlinePref === "best_rate"
       ? "economy"
@@ -440,6 +452,7 @@ export async function POST(
         slices,
         passengers: groupSize,
         cabin,
+        preferredAirline,
         maxOffers: 5,
       });
       if (!result.ok) {
@@ -671,6 +684,7 @@ export async function POST(
               })),
               passengers: groupSize,
               cabin,
+              preferredAirline,
               maxOffers: 5,
             });
       if (preSearchUsable || flightItems.length === 0) {
