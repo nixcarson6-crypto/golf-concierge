@@ -697,7 +697,12 @@ export async function runStagehandBooking(
     // button, so make it free. Best-effort: no match ⇒ the agent navigates
     // as before.
     try {
-      const entry = await clickBookingEntryDeterministically(page);
+      // GOLF: never let the FIRST click grab a resort's room "Book Now" — on a
+      // golf task off a golf page we only take an explicit golf CTA here; the
+      // conductor's golf-section navigator drills into the tee sheet next.
+      const entry = await clickBookingEntryDeterministically(page, {
+        golf: !!opts.selectTeeSlot,
+      });
       if (entry) {
         console.log(
           `[stagehand] ✓ booking CTA clicked deterministically ("${entry}") (${elapsed()})`,
@@ -1164,7 +1169,9 @@ export async function runStagehandBooking(
         // flow (Gleneagles looped on "BOOK YOUR STAY"), so only fire it before
         // we've entered the engine. GENERAL: the entry CTA is a one-time door.
         if (bf === pageCtx) {
-          const cta = await clickBookingEntryDeterministically(pageCtx);
+          const cta = await clickBookingEntryDeterministically(pageCtx, {
+            golf: !!opts.selectTeeSlot,
+          });
           if (cta) {
             if (cta === bookCtaLabel) bookCtaRepeats += 1;
             else { bookCtaLabel = cta; bookCtaRepeats = 0; }
@@ -4739,11 +4746,13 @@ async function clickBookingTypeChooserDeterministically(
 
 async function clickBookingEntryDeterministically(
   page: unknown,
+  entryOpts?: { golf?: boolean },
 ): Promise<string | null> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return null;
   try {
-    return await cdp.evaluate<string | null>(() => {
+    return await cdp.evaluate<string | null>((arg: unknown) => {
+      const { golf } = arg as { golf: boolean };
       // Already inside a booking engine? Don't touch anything.
       if (
         /reserv|book|rate|checkout|availability|search-results|ratelist/i.test(
@@ -4805,9 +4814,25 @@ async function clickBookingEntryDeterministically(
           // button (a real Hôtel du Cap run burned 40s hunting for "BOOK ›").
           .replace(/^[\s›»→⟶▶‹«←◀<>·•|]+|[\s›»→⟶▶‹«←◀<>·•|]+$/g, "")
           .trim();
-      const tiers = isGolfContext
-        ? [PRIMARY, SECONDARY, GOLF_DEEPER]
-        : [PRIMARY, SECONDARY];
+      // GOLF-specific entry CTAs — unambiguous tee-time bookings, safe on any
+      // golf task. A resort's ROOM "Book Now" is deliberately NOT in here.
+      const GOLF_CTA =
+        /^(book a tee time|book tee times?|tee times?|reserve a tee time|reserve tee times?|book golf|book a round|book your round|golf booking|golf reservations?|book your tee time|tee time booking)$/i;
+      // Choose which CTAs we're willing to click:
+      //  - GOLF task on a RESORT / non-golf page: a generic "Book Now"/"Reserve"
+      //    books a ROOM, not golf — clicking it wastes the run (Carson's exact
+      //    complaint). Take ONLY an explicit golf CTA here; the golf-section
+      //    navigator handles drilling into the tee sheet. GENERAL — every site.
+      //  - On a GOLF-context page (a course's OWN site), "Book Now" IS the
+      //    tee-time booking, so allow the generic CTAs too (some courses put
+      //    "Book Now" right on the golf page — click it).
+      //  - HOTEL task: unchanged.
+      const tiers: RegExp[] =
+        golf && !isGolfContext
+          ? [GOLF_CTA]
+          : isGolfContext
+            ? [GOLF_CTA, PRIMARY, SECONDARY, GOLF_DEEPER]
+            : [PRIMARY, SECONDARY];
       for (const re of tiers) {
         for (const el of nodes) {
           const txt = labelOf(el);
@@ -4823,7 +4848,7 @@ async function clickBookingEntryDeterministically(
         }
       }
       return null;
-    });
+    }, { golf: !!entryOpts?.golf });
   } catch {
     return null;
   }
