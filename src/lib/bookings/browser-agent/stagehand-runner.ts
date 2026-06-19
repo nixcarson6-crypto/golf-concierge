@@ -969,6 +969,13 @@ export async function runStagehandBooking(
         if (!pageCtx) return null;
         await forceSingleTab(pageCtx);
         await dismissConsentDeterministically(pageCtx, { safe: true });
+        // Close any blocking info/promo modal (Sea Island "Rate Availability"
+        // popup, newsletter, welcome overlay) so it can't intercept clicks.
+        // Heavily guarded — never closes a real booking step. GENERAL, every site.
+        {
+          const m = await dismissBlockingModalDeterministically(pageCtx);
+          if (m) return `closed modal "${m}"`;
+        }
         // The booking engine often loads INSIDE an iframe (Gleneagles/SynXis:
         // <booking-layout> → iframe). Page-JS is blind to iframe content, so
         // drive the CONTENT recognizers against the booking frame. Falls back to
@@ -979,6 +986,12 @@ export async function runStagehandBooking(
           console.log(
             `[stagehand] 📦 booking engine is in an iframe — driving it directly (${elapsed()})`,
           );
+        }
+        // Close a blocking modal INSIDE the booking frame too (Sea Island's
+        // "Rate Availability" popup lives in the iframe). Same strong guards.
+        if (bf !== pageCtx) {
+          const fm = await dismissBlockingModalDeterministically(bf);
+          if (fm) return `closed modal "${fm}"`;
         }
         // Reached the card step → stop, the payment phase takes over.
         if (await detectCardFieldPresent(bf)) {
@@ -1456,6 +1469,23 @@ export async function runStagehandBooking(
                 console.log(
                   `[stagehand] ⚡ dismissed sticky popup ("${cleared}") (${elapsed()})`,
                 );
+              // Close any blocking info/promo modal mid-run (the agent used to
+              // sit ~2 min on Sea Island's "Rate Availability" popup) — on the
+              // page AND inside the booking iframe. Guarded so it never closes a
+              // real booking step. GENERAL — every site.
+              const modal = await dismissBlockingModalDeterministically(active);
+              if (modal)
+                console.log(
+                  `[stagehand] ⚡ closed blocking modal ("${modal}") (${elapsed()})`,
+                );
+              const af = await bookingFrame(active).catch(() => active);
+              if (af && af !== active) {
+                const fmodal = await dismissBlockingModalDeterministically(af);
+                if (fmodal)
+                  console.log(
+                    `[stagehand] ⚡ closed blocking modal in iframe ("${fmodal}") (${elapsed()})`,
+                  );
+              }
               // Keep everything in one tab (the override resets on navigation).
               if (active) await forceSingleTab(active);
             }
@@ -5128,6 +5158,102 @@ async function clickGolfSectionDeterministically(
             if (el instanceof HTMLAnchorElement) el.target = "_self";
             el.click();
             return txt;
+          }
+        }
+      }
+      return null;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Close a BLOCKING info/promo MODAL that sits over the page and intercepts
+ * clicks — the general version of the cookie dismisser. Real hotels throw all
+ * kinds of these (Sea Island's "Rate Availability" popup, newsletter signups,
+ * "welcome" overlays); the agent used to sit on them for minutes without
+ * clicking the X. Runs every tick on every site, so the fix cascades.
+ *
+ * STRONGLY guarded so it can NEVER close a real booking step:
+ *   - only a visible fixed/absolute OVERLAY of meaningful size,
+ *   - that has a clear close affordance (X / Close / Got it / Dismiss),
+ *   - and contains NO form inputs and NO booking-action button
+ *     (Book/Reserve/Continue/Select/Search…) — i.e. it's purely informational.
+ * Returns the clicked label, or null.
+ */
+async function dismissBlockingModalDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const isVisible = (el: Element | null): boolean => {
+        if (!el) return false;
+        const r = (el as HTMLElement).getClientRects();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return (
+          s.visibility !== "hidden" &&
+          s.display !== "none" &&
+          Number(s.opacity || "1") > 0.05
+        );
+      };
+      const modals = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "[role=dialog],[aria-modal=true],[class*=modal i],[class*=popup i],[class*=lightbox i],[class*=overlay i]",
+        ),
+      ).filter(isVisible);
+      for (const modal of modals) {
+        const rect = modal.getBoundingClientRect();
+        if (rect.width < 200 || rect.height < 100) continue;
+        const st = window.getComputedStyle(modal);
+        if (st.position !== "fixed" && st.position !== "absolute") continue;
+        // NEVER close a booking step: skip if it holds form inputs…
+        if (
+          modal.querySelector(
+            "input:not([type=hidden]):not([type=button]):not([type=submit]),select,textarea",
+          )
+        ) {
+          continue;
+        }
+        // …or a booking-action button (this is a step, not an info popup).
+        const actionable = Array.from(
+          modal.querySelectorAll<HTMLElement>("button,a,[role=button]"),
+        );
+        const hasBookingAction = actionable.some((b) => {
+          const t = (b.textContent || "").trim();
+          return (
+            t.length < 30 &&
+            /\b(book|reserve|continue|select|confirm|add to|checkout|proceed|next|search|apply|view rooms?|view rates?|choose)\b/i.test(
+              t,
+            )
+          );
+        });
+        if (hasBookingAction) continue;
+        // Find a close affordance inside the modal and click it.
+        const CLOSE_TXT =
+          /^(×|✕|✖|x|close|close\s*x|got it|dismiss|no thanks?|maybe later|i understand|okay|ok)$/i;
+        const candidates = Array.from(
+          modal.querySelectorAll<HTMLElement>(
+            "button,a,[role=button],[aria-label],span,i,svg",
+          ),
+        );
+        for (const c of candidates) {
+          if (!isVisible(c)) continue;
+          const txt = (c.textContent || "").trim();
+          const aria = (c.getAttribute("aria-label") || "").trim();
+          const cls = (c.getAttribute("class") || "").toString();
+          if (
+            (txt.length <= 12 && CLOSE_TXT.test(txt)) ||
+            /\bclose\b|dismiss/i.test(aria) ||
+            /(^|[-_ ])(close|modal-close|btn-close|dialog-close|close-btn|closebutton)([-_ ]|$)/i.test(
+              cls,
+            )
+          ) {
+            c.click();
+            return (txt || aria || "close").slice(0, 20);
           }
         }
       }
