@@ -231,8 +231,20 @@ async function runBrowserBookingInner(args: {
       `[book] ${item.title}: using platform booking URL ${golfOverrideUrl} instead of ${places.website ?? "(no site)"} (marketing site is bot-walled).`,
     );
   }
+  // GOLF with no Places website must STILL try — never instant-fail to
+  // "reservations by phone". A course named after a sub-venue ("The King's
+  // Course") often has no standalone Google site, but it books on the resort's
+  // own page. Start the agent at a web search for the course's tee times so it
+  // can FIND and drive the real booking. Hotels/cars keep the honest fail —
+  // they're searched API-first and the agent genuinely needs a real site.
+  const golfSearchStart =
+    item.type === "TEE_TIME"
+      ? `https://www.google.com/search?q=${encodeURIComponent(
+          `${item.title}${item.location ? ` ${item.location}` : ""} tee times book online`,
+        )}`
+      : null;
   const startUrl =
-    golfOverrideUrl ?? places.website ?? (item.location ?? "").trim();
+    golfOverrideUrl ?? places.website ?? golfSearchStart ?? (item.location ?? "").trim();
   if (!startUrl || !/^https?:\/\//i.test(startUrl)) {
     // No website to book against. Mark FAILED with the "no online form"
     // failure code so the UI shows the website/phone fallback honestly.
