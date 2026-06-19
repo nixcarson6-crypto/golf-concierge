@@ -941,6 +941,7 @@ export async function runStagehandBooking(
     // card step with NO model calls at all — fast and consistent, every form.
     let conductorReachedCard = false;
     let dateArmAttempts = 0;
+    let openedRepeats = 0;
     let bookingFrameLogged = false;
     try {
       const tick = async (): Promise<string | null> => {
@@ -1059,6 +1060,18 @@ export async function runStagehandBooking(
             dateArmAttempts += 1;
             if (dateArmAttempts >= 6) { datesAlreadySet = true; return `dates give-up (out pending)`; }
             return `dates ${r}`;
+          }
+          // "OPENED" = the calendar is open but we couldn't resolve a clickable
+          // day this pass. ONE open-click is legit progress; after that, repeated
+          // OPENED is NOT progress (it was masquerading as an action, resetting
+          // the stall counter, so a Pikaday calendar we couldn't read looped
+          // "dates OPENED" ~28s before giving up). Cap it: after 2, return null
+          // so it counts as a stall and hands to the agent fast.
+          if (r === "OPENED") {
+            openedRepeats += 1;
+            if (openedRepeats <= 2) return `dates ${r}`;
+            datesAlreadySet = true; // stop re-opening; let the agent finish dates
+            return null;
           }
           if (r) {
             dateArmAttempts += 1;
@@ -2724,6 +2737,25 @@ async function clickStayDatesDeterministically(
         //  2) an aria-label containing "Month D, YYYY",
         //  3) the day number + the cell's month (monthOfCell).
         const cellISO = (cell: HTMLElement): string | null => {
+          // Pikaday — one of the most common date pickers on hotel sites (The
+          // Pearl, and countless others). The day button carries the FULL date
+          // in data-pika-year / data-pika-month / data-pika-day. CRUCIAL: the
+          // month is 0-INDEXED (data-pika-month="5" is June), so +1. Without
+          // this the resolver couldn't read a single cell and the setter looped
+          // "OPENED" forever, dumping every Pikaday hotel to the slow agent.
+          const pk =
+            (cell.matches?.("[data-pika-day]") ? cell : null) ??
+            cell.querySelector<HTMLElement>("[data-pika-day]");
+          if (pk) {
+            const py = pk.getAttribute("data-pika-year");
+            const pm = pk.getAttribute("data-pika-month");
+            const pd = pk.getAttribute("data-pika-day");
+            if (py && pm != null && pd != null) {
+              const mi = parseInt(pm, 10) + 1;
+              if (mi >= 1 && mi <= 12)
+                return `${py}-${String(mi).padStart(2, "0")}-${String(parseInt(pd, 10)).padStart(2, "0")}`;
+            }
+          }
           const dEl =
             (cell.matches?.("[date],[data-date]") ? cell : null) ??
             cell.querySelector<HTMLElement>("[date],[data-date]");
