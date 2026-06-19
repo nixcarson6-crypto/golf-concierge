@@ -25,6 +25,16 @@ Every screenshot turn costs ~10 seconds. The whole booking budget is ~10 minutes
 - Scrolling is for finding fields you can't see. If the form is visible, do NOT scroll just to explore.
 - 5+ scrolls in a row = you're lost. Stop, take a fresh screenshot, and look for the FIELD you need to fill.
 
+## GOLF on a resort site — find the tee sheet FAST, in this order
+When the task is a TEE TIME and you land on a resort's MARKETING homepage (Pinehurst, Gleneagles, Pebble Beach, Streamsong…), do NOT read the page or hunt around. Go straight for golf, taking the most golf-specific link you can see, one hop at a time:
+1. A direct **"Book a Tee Time" / "Tee Times" / "Golf Reservations" / "Book a Round"** link → click it. (This is the goal — it opens the tee sheet.)
+2. Else a **"Golf"** nav item (top menu or a card) → click it. On the Golf page, then look for "Book a Tee Time" / "Tee Times" / "Check Availability".
+3. Else an **"Activities" / "Experiences" / "Recreation" / "Things to Do"** hub → click it, then find "Golf", then its tee-time/Check-Availability widget.
+Click the golf link IMMEDIATELY — it is always the right move on a golf task, even over a big "BOOK NOW" button (on a resort that "Book Now" books a ROOM, not golf). Once you reach a date picker / tee-time list, you're there: set the date, set players, pick the time. Don't go back to the marketing pages.
+
+## Guests-only / members-only golf — bail FAST, don't loop
+Many resort and private courses only let REGISTERED RESORT GUESTS or CLUB MEMBERS book a tee time online. Signs: "tee times available to resort guests only", "must be a registered guest", "members only", "member login required", a login wall with NO guest/visitor option, or "please call the pro shop". You do NOT have a guest reservation or membership, so you CANNOT complete these. The moment you clearly see this, STOP — report \`needs_review\` with reason "members_only" (or "guests_only") and the pro-shop phone number if shown. Do NOT loop on the login screen or keep hunting; bailing fast lets us offer the customer a nearby PUBLIC course instead.
+
 ## Where resort & activity bookings hide — look here before giving up
 Hotels and luxury resorts (Four Seasons, Ritz, Aman, Auberge, Pinehurst, Pebble Beach) very often DO take tee times, spa, and activities online — but NOT under an obvious "Book a tee time" button. The booking lives under sections like:
 - **"Experiences" / "Activities" / "Things to Do" / "Land Pursuits" / "Recreation" / "Golf"** — resort e-commerce. Click into the specific experience (e.g. "Pacifico Course – 18 Holes"), then use its **"Check Availability"** widget: set the date + number of guests, then **"Add to Cart"** and check out. Treat this like any add-to-cart purchase — fill the date/party, add to cart, proceed to checkout, pay with \`request_payment_card\`.

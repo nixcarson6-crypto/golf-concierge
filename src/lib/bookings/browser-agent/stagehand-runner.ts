@@ -768,6 +768,12 @@ export async function runStagehandBooking(
     let advanceRepeats = 0;
     let bookCtaLabel = "";
     let bookCtaRepeats = 0;
+    // Golf-section navigation (resort landing page → Golf → Tee Times) state:
+    // distinct labels are progress (Activities → Golf → Tee Times), repeats /
+    // a hard cap stop a nav loop.
+    let golfNavLabel = "";
+    let golfNavRepeats = 0;
+    let golfNavClicks = 0;
     // true ONLY when the date setter confirmed "in=…". Gates the room picker
     // (in the conductor AND the per-step pass) so it can't fire on a calendar.
     let datesConfirmed = false;
@@ -1131,6 +1137,26 @@ export async function runStagehandBooking(
           }
           const n = await deterministicGuestFill(bf, opts.autofill);
           if (n > 0) return `autofill ${n} fields`;
+        }
+        // GOLF on a RESORT page: the tee sheet is usually buried behind the
+        // resort's nav (Pinehurst/Gleneagles homepage → "Golf" → "Tee Times" →
+        // the widget). The generic Book CTA can't help — on a resort homepage it
+        // either finds nothing golf-y or grabs the HOTEL "Book Now". Since we
+        // KNOW this is a golf booking, deterministically drill into the golf
+        // section (tee-time link > Golf section > Activities), one hop per tick,
+        // BEFORE the generic CTA — this is the "find the golf fast" path. Stops
+        // the moment we're in a tee-sheet/calendar (the date/slot recognizers
+        // take over). Distinct labels = progress; repeats / a cap stop a loop.
+        if (opts.selectTeeSlot && bf === pageCtx && golfNavClicks < 5) {
+          const gnav = await clickGolfSectionDeterministically(pageCtx);
+          if (gnav) {
+            if (gnav === golfNavLabel) golfNavRepeats += 1;
+            else { golfNavLabel = gnav; golfNavRepeats = 0; }
+            if (golfNavRepeats < 1) {
+              golfNavClicks += 1;
+              return `golf-nav "${gnav}"`;
+            }
+          }
         }
         // Off a marketing page → click the Book CTA (on the OUTER page — it's
         // what opens the booking widget/iframe). Once we're ALREADY inside the
@@ -4790,6 +4816,86 @@ async function clickBookingEntryDeterministically(
             // Keep the navigation in THIS tab so the agent doesn't lose the
             // page (target=_blank booking links otherwise spawn a tab the
             // about-to-start agent isn't looking at).
+            if (el instanceof HTMLAnchorElement) el.target = "_self";
+            el.click();
+            return txt;
+          }
+        }
+      }
+      return null;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * GOLF-only navigator: on a resort/marketing page, drill toward the tee-time
+ * booking by clicking the most golf-specific nav link available. Because we
+ * only call this for KNOWN golf bookings, clicking a "Golf" / "Tee Times" link
+ * is always correct, so these take priority over a generic hotel "Book Now"
+ * (which on a resort homepage would book a ROOM, not a round). One hop per call:
+ *   tee-time link  →  Golf section  →  Activities/Experiences (golf hides here)
+ * Returns the clicked label, or null when there's nothing to navigate (e.g. we
+ * already reached the tee sheet — a calendar/known engine is present).
+ */
+async function clickGolfSectionDeterministically(
+  page: unknown,
+): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      // Already at the tee sheet? A known engine host or a live calendar means
+      // navigation is done — let the date/players/slot recognizers drive.
+      const host = location.host.toLowerCase();
+      if (
+        /chronogolf|foreupsoftware|teesnap|cps\.golf|golfnow|teeoff|golfwithaccess|quick18|sagacity|golfback|teeon|teequest|ezlinks|foretees/.test(
+          host,
+        )
+      ) {
+        return null;
+      }
+      if (
+        document.querySelector(
+          "[data-pika-day], [role=gridcell], .pika-button, [class*=teetime i], [class*=tee-time i]",
+        )
+      ) {
+        return null;
+      }
+      const isVisible = (el: Element | null): boolean => {
+        if (!el) return false;
+        const rects = (el as HTMLElement).getClientRects();
+        if (!rects || rects.length === 0) return false;
+        const st = window.getComputedStyle(el as HTMLElement);
+        return (
+          st.visibility !== "hidden" &&
+          st.display !== "none" &&
+          Number(st.opacity || "1") > 0.05
+        );
+      };
+      const labelOf = (el: HTMLElement): string =>
+        (el.innerText || el.textContent || el.getAttribute("aria-label") || "")
+          .trim()
+          .replace(/^[\s›»→⟶▶‹«←◀<>·•|]+|[\s›»→⟶▶‹«←◀<>·•|]+$/g, "")
+          .trim();
+      const nodes = Array.from(
+        document.querySelectorAll<HTMLElement>("a, button, [role=button]"),
+      );
+      // Most-specific → least. Tee-time booking link beats a generic "Golf"
+      // section, which beats an "Activities"/"Experiences" hub (golf often
+      // lives one level under those on resort sites).
+      const TEE =
+        /^(book a tee time|tee times?|reserve a tee time|reserve tee times?|golf reservations?|book golf|book a round|book your tee time|tee time booking|reserve your tee time|golf booking|book your round)$/i;
+      const GOLF =
+        /^(golf|play golf|golf courses?|the golf|golf course|golf club|championship golf|golf & .*|golf and .*|the courses?)$/i;
+      const ACT =
+        /^(activities|experiences|recreation|things to do|land pursuits|sports (&|and) recreation|resort activities|play|pursuits)$/i;
+      for (const re of [TEE, GOLF, ACT]) {
+        for (const el of nodes) {
+          const txt = labelOf(el);
+          if (!txt || txt.length > 40) continue;
+          if (re.test(txt) && isVisible(el)) {
             if (el instanceof HTMLAnchorElement) el.target = "_self";
             el.click();
             return txt;
