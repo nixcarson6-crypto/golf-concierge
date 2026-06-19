@@ -184,6 +184,33 @@ export async function searchFlights(
   scored.sort((a, b) => a.score - b.score);
   const offers = scored.slice(0, cap).map((x) => x.offer);
 
+  // Cabin fallback. Small / regional / domestic routes frequently have NO
+  // business- or first-class inventory at all (Dallas → ECP "Northwest Florida
+  // Beaches" is exactly this), so a business search returns ZERO offers and the
+  // customer is left staring at empty placeholder flights — "it didn't book the
+  // flights." When the requested premium cabin yields nothing, retry ONE cabin
+  // cheaper (first → business → premium_economy → economy) so we surface the
+  // best ACTUALLY-BOOKABLE option rather than nothing. Only fires on an empty
+  // result, so whenever the requested cabin exists it's used unchanged. Each
+  // returned offer still carries its real cabin, so the UI shows what it is.
+  if (offers.length === 0) {
+    const ladder: CabinClass[] = [
+      "first",
+      "business",
+      "premium_economy",
+      "economy",
+    ];
+    const cur = input.cabin ?? "economy";
+    const idx = ladder.indexOf(cur);
+    const next = idx >= 0 && idx < ladder.length - 1 ? ladder[idx + 1] : null;
+    if (next) {
+      console.log(
+        `[duffel-search] no ${cur}-class offers ${input.slices[0]?.origin}→${input.slices[0]?.destination} — retrying ${next}`,
+      );
+      return searchFlights({ ...input, cabin: next });
+    }
+  }
+
   return { ok: true, offerRequestId: json.data.id, offers };
 }
 
