@@ -1343,6 +1343,25 @@ export async function runStagehandBooking(
     // strong private signal AND zero golf-booking widgets, so a bookable course
     // is never wrongly bailed.
     if (opts.selectTeeSlot) {
+      // NO TEE TIMES for the date → surface "no availability" (don't spin).
+      const noAvail = await detectNoTeeAvailability(
+        await bookingFrame(stagehand.context.activePage() ?? page),
+      ).catch(() => false);
+      if (noAvail) {
+        console.log(
+          `[stagehand] 🚫 golf tee sheet shows NO availability for the date — reporting no_availability (${elapsed()})`,
+        );
+        return {
+          outcome: {
+            status: "failed",
+            failureReason: "no_availability",
+            message:
+              "There are no tee times available at this course for the selected date — our concierge can grab a nearby course or a different day.",
+          },
+          sessionUrl,
+          finalScreenshot: null,
+        };
+      }
       const privMsg = await detectPrivateGolfClub(
         await bookingFrame(stagehand.context.activePage() ?? page),
       ).catch(() => null);
@@ -3764,7 +3783,7 @@ async function clickGolfSearchDeterministically(
   try {
     return await cdp.evaluate<string | null>(() => {
       const RE =
-        /^(search tee times?|search times?|find tee times?|find times?|search availability|check availability|view tee times?|show tee times?|get tee times?|search|find|go)$/i;
+        /^(search tee times?|search times?|find tee times?|find times?|search availability|check availability|view tee times?|show tee times?|get tee times?|apply|apply filters?|update|update search|refresh|search|find|go)$/i;
       const isVisible = (el: Element | null): boolean => {
         if (!el) return false;
         const r = (el as HTMLElement).getClientRects();
@@ -4597,6 +4616,42 @@ async function deterministicGuestFill(
  * "Request could not be satisfied" / "Access Denied" / "Attention Required".
  * Cheap single read; returns a short signal string when blocked, else null.
  */
+/**
+ * Detect a golf tee sheet that clearly has NO tee times available for the
+ * chosen date, so we surface "no availability" (and let the swap-to-a-nearby-
+ * course flow run) instead of spinning "finding your time…" forever. Runs
+ * AFTER the conductor has set the date + clicked Apply, so a "No Results" here
+ * is genuine (not just an un-applied date). CONSERVATIVE: only fires on an
+ * explicit no-times message AND when no bookable slot is actually present.
+ */
+async function detectNoTeeAvailability(page: unknown): Promise<boolean> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return false;
+  try {
+    return await cdp.evaluate<boolean>(() => {
+      const body = (document.body?.innerText || "").toLowerCase();
+      const noTimes =
+        /no\s+(tee\s+)?times?\s+(are\s+)?available|there\s+are\s+no\s+tee\s+times|no\s+results|sold\s+out|fully\s+booked|no\s+available\s+times|no\s+times\s+(were\s+)?found/.test(
+          body,
+        );
+      if (!noTimes) return false;
+      // If a real bookable slot is on the page, it's NOT a no-availability page.
+      const nodes = Array.from(
+        document.querySelectorAll<HTMLElement>("a,button,[role=button],li,tr,div"),
+      );
+      const hasSlot = nodes.some((el) => {
+        const t = (el.textContent || "").trim();
+        if (!t || t.length > 120) return false;
+        const times = t.match(/\b\d{1,2}:\d{2}\s*[ap]?\.?m?\.?/gi) || [];
+        return times.length === 1 && /\$\s?\d|\bbook\b|\breserve\b|\bselect\b/i.test(t);
+      });
+      return !hasSlot;
+    });
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Detect a clearly PRIVATE / members-only golf club with NO public booking
  * path, so a golf run bails fast (with a customer-facing message) instead of

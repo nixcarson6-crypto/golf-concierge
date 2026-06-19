@@ -42,6 +42,9 @@ const PLATFORM_HOSTS: { match: RegExp; platform: GolfPlatform }[] = [
   { match: /foreupsoftware\.com|\bforeup\b/i, platform: "foreup" },
   { match: /\bteesnap\.(net|com)/i, platform: "teesnap" },
   { match: /golfnow\.com/i, platform: "golfnow" },
+  // TeeItUp = GolfNow/NBC's white-label engine (book.teeitup.golf) — same
+  // guest-checkout flow, so reuse the GolfNow hint/behaviour.
+  { match: /teeitup\.golf|book\.teeitup|teeitup/i, platform: "golfnow" },
   { match: /teeoff\.com/i, platform: "teeoff" },
   { match: /golfwithaccess\.com/i, platform: "troon-access" },
   { match: /\bcps\.golf\b/i, platform: "clubprophet" },
