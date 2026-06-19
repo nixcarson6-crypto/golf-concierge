@@ -24,6 +24,24 @@ const GOLF_PLATFORM_URLS: PlatformRule[] = [
     match: /troon\s*north/i,
     url: "https://www.golfwithaccess.com/course/troon-north-golf-club/reserve-tee-time",
   },
+  // Gleneagles — Google Places returns only the resort HOMEPAGE
+  // (gleneagles.com), where the agent lands on a search modal and never reaches
+  // the tee sheet. Each championship course has its own page with a "Book a Tee
+  // Time" CTA that opens the (iframe) tee sheet — start there so the agent skips
+  // the marketing site. Match resort + course in either order (the hay is
+  // title + location + placesWebsite).
+  {
+    match: /gleneagles.*\bking|\bking.*gleneagles/i,
+    url: "https://gleneagles.com/golf/the-kings",
+  },
+  {
+    match: /gleneagles.*\bqueen|\bqueen.*gleneagles/i,
+    url: "https://gleneagles.com/golf/the-queens",
+  },
+  {
+    match: /gleneagles.*(pga|centenary)|(pga|centenary).*gleneagles/i,
+    url: "https://gleneagles.com/golf/pga-centenary",
+  },
 ];
 
 /**
