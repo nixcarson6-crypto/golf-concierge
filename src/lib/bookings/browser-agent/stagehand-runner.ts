@@ -1362,6 +1362,26 @@ export async function runStagehandBooking(
     // strong private signal AND zero golf-booking widgets, so a bookable course
     // is never wrongly bailed.
     if (opts.selectTeeSlot) {
+      // RESORT-GUEST GATE: course requires an existing hotel confirmation
+      // number (Sea Island) → can't book standalone, route to concierge to do
+      // it WITH the stay (and never sit mis-filling the confirmation field).
+      const gateMsg = await detectResortConfirmationGate(
+        await bookingFrame(stagehand.context.activePage() ?? page),
+      ).catch(() => null);
+      if (gateMsg) {
+        console.log(
+          `[stagehand] 🏨 resort-guest golf gate (needs hotel confirmation) — routing to concierge (${elapsed()})`,
+        );
+        return {
+          outcome: {
+            status: "needs_review",
+            failureReason: "members_only",
+            message: gateMsg,
+          },
+          sessionUrl,
+          finalScreenshot: null,
+        };
+      }
       // NO TEE TIMES for the date → surface "no availability" (don't spin).
       const noAvail = await detectNoTeeAvailability(
         await bookingFrame(stagehand.context.activePage() ?? page),
@@ -4526,6 +4546,17 @@ async function deterministicGuestFill(
           const m = meta(el);
           // NEVER touch payment fields.
           if (/card|cc-|cvc|cvv|expir|pan\b/.test(m)) continue;
+          // NEVER fill a confirmation / reservation NUMBER field — we don't have
+          // one, and its label often contains "…email" (Sea Island's golf gate:
+          // "confirmation number from your confirmation email"), which the
+          // confirm-email rule below would otherwise wrongly grab the email for.
+          if (
+            /confirmation\s*(number|code|no\b|#)|reservation\s*(number|code|#)|booking\s*(number|reference|code)|record\s*locator|conf(irmation)?\s*#/i.test(
+              m,
+            )
+          ) {
+            continue;
+          }
           const type = (el.getAttribute("type") || "text").toLowerCase();
           if (/given-name|first.?name|\bfname\b/.test(m)) setVal(el, d.firstName);
           else if (/family-name|last.?name|surname|\blname\b/.test(m)) setVal(el, d.lastName);
@@ -4666,6 +4697,32 @@ async function deterministicGuestFill(
  * "Request could not be satisfied" / "Access Denied" / "Attention Required".
  * Cheap single read; returns a short signal string when blocked, else null.
  */
+/**
+ * Detect a RESORT-GUEST golf gate that requires an existing HOTEL booking to
+ * proceed (Sea Island: "Enter the confirmation number from your Sea Island
+ * confirmation email" + "last name under which the room reservation was made").
+ * We can't satisfy this standalone — the customer's stay has to be booked first
+ * — so bail with a message that routes it to the concierge to book WITH the
+ * stay, instead of mis-filling the gate and looping. Returns the message or null.
+ */
+async function detectResortConfirmationGate(page: unknown): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const body = (document.body?.innerText || "").toLowerCase();
+      const gate =
+        /confirmation number from your[\s\S]{0,40}(confirmation|reservation)[\s\S]{0,12}email|last name under which the room reservation|enter (the )?confirmation number from your|reservation confirmation number|number from your .{0,20}confirmation email/.test(
+          body,
+        );
+      if (!gate) return null;
+      return "This resort books tee times only for confirmed guests — it asks for your room confirmation number. Our concierge will reserve your tee times together with your resort stay.";
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Detect a golf tee sheet that clearly has NO tee times available for the
  * chosen date, so we surface "no availability" (and let the swap-to-a-nearby-
