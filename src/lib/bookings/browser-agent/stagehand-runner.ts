@@ -3671,7 +3671,17 @@ async function diagnoseGuestForm(page: unknown): Promise<string> {
         let node = (el as HTMLElement).parentElement;
         for (let i = 0; i < 4 && node; i++, node = node.parentElement) {
           if (node.querySelectorAll("input,select,textarea").length > 2) break;
-          const l = node.querySelector("label,legend,mat-label,[class*=label i]");
+          let l: Element | null = node.querySelector(
+            "label,legend,mat-label,[class*=label i]",
+          );
+          if (!l) {
+            l =
+              Array.from(node.querySelectorAll("span,div,p,strong,b")).find((e) => {
+                if (e.querySelector("input,select,textarea")) return false;
+                const tx = (e.textContent || "").replace(/\s+/g, " ").trim();
+                return tx.length >= 2 && tx.length <= 28;
+              }) ?? null;
+          }
           const txt = l?.textContent?.replace(/\s+/g, " ").trim();
           if (txt && txt.length <= 30) {
             t += " " + txt;
@@ -5018,9 +5028,23 @@ async function deterministicGuestFill(
           let node: HTMLElement | null = el.parentElement;
           for (let i = 0; i < 4 && node; i++, node = node.parentElement) {
             if (node.querySelectorAll("input,select,textarea").length > 2) break;
-            const lbl = node.querySelector(
+            // Prefer a real label element; fall back to a short-text span/div/p
+            // (floating-label engines like iHotelier render "First Name" in a
+            // bare <span>, not a <label>). Exclude any element that WRAPS the
+            // input — its text would be the whole field, not the label.
+            let lbl: Element | null = node.querySelector(
               "label,legend,mat-label,[class*=label i]",
             );
+            if (!lbl) {
+              lbl =
+                Array.from(node.querySelectorAll("span,div,p,strong,b")).find(
+                  (e) => {
+                    if (e.querySelector("input,select,textarea")) return false;
+                    const tx = (e.textContent || "").replace(/\s+/g, " ").trim();
+                    return tx.length >= 2 && tx.length <= 28;
+                  },
+                ) ?? null;
+            }
             const txt = lbl?.textContent?.replace(/\s+/g, " ").trim();
             if (txt && txt.length <= 30) {
               parts.push(txt);
