@@ -3228,10 +3228,29 @@ async function clickStayDatesDeterministically(
 
         // Arm a closed calendar by clicking the arrival field/label/box.
         const openCalendar = (): boolean => {
+          // An Angular MATERIAL datepicker toggle is the most reliable opener —
+          // its "Choose date" input is readonly, so only the toggle (or clicking
+          // the input) opens the <mat-calendar>. Common on golf tee sheets
+          // (Total-e-Integrated) and Material SPAs. Try it first.
+          const toggle = Array.from(
+            document.querySelectorAll<HTMLElement>(
+              "mat-datepicker-toggle button, .mat-datepicker-toggle button, [class*=datepicker-toggle i] button, button[aria-label*=calendar i], button[aria-label='Choose date'], button[aria-label*='select date' i]",
+            ),
+          ).find(isVisible);
+          if (toggle) {
+            toggle.click();
+            return true;
+          }
           const want = [
             "check-in", "check in", "checkin", "arrival", "arrive",
             "select dates", "select your dates", "choose dates", "dates",
             "add dates",
+            // SINGLE-DATE triggers (golf tee sheets, Material "Choose date") —
+            // the old list was hotel-only ("choose dates" plural), so a tee-time
+            // "Choose date" field never opened and the page stayed on today.
+            "choose date", "select date", "pick a date", "pick date",
+            "tee date", "play date", "event date", "reservation date",
+            "booking date", "round date",
           ];
           const els = Array.from(
             document.querySelectorAll<HTMLElement>(
