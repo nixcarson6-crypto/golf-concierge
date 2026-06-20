@@ -2,9 +2,17 @@
  * Single source of truth for WHAT the browser agent books.
  *
  * The agent handles the high-value reservations that have a real web
- * booking flow: HOTELS, GOLF tee times, and CAR RENTALS. Flights go
- * through Duffel; dining/activities/nightlife/spa are presented as
- * contact suggestions (call/website), never auto-booked.
+ * booking flow: HOTELS and CAR RENTALS. Flights go through Duffel.
+ *
+ * GOLF (tee times) is SELF-BOOK at launch (June 2026): there's no reliable
+ * tee-time API, the browser agent can't be trusted with the exact date/time,
+ * and customers WANT to choose their round + time with their group anyway —
+ * so we hand them a direct booking link and they reserve it themselves.
+ * Re-enable the golf agent once it's reliable with
+ * NEXT_PUBLIC_GOLF_AGENT_ENABLED=true.
+ *
+ * Dining / activities / nightlife / spa are presented as contact suggestions
+ * (call/website), never auto-booked.
  *
  * TRANSPORT is special: a trip's transport items are mostly per-ride
  * Uber/chauffeur transfers ("Uber Black: AUS → Omni Barton Creek") that
@@ -17,8 +25,9 @@
  * what the endpoint accepts).
  */
 
-/** Item types the agent can book outright (no per-item inspection). */
-const ALWAYS_BOOKABLE = new Set(["LODGING", "TEE_TIME"]);
+/** Item types the agent can book outright (no per-item inspection). Golf
+ *  (TEE_TIME) used to live here but is now SELF-BOOK by default — see below. */
+const ALWAYS_BOOKABLE = new Set(["LODGING"]);
 
 /**
  * KILL SWITCH (MVP): item types forced to "links only" — the agent never
@@ -53,9 +62,23 @@ export function isAgentBookable(
 ): boolean {
   const off = linksOnlyTypes();
   if (off.has("ALL") || off.has(type)) return false;
+  // GOLF is self-book by default (launch decision) — the customer reserves
+  // their own tee time so they can pick the round + time with their group,
+  // and we never risk auto-booking the wrong slot. Opt back in per-env.
+  if (type === "TEE_TIME") return golfAgentEnabled();
   if (ALWAYS_BOOKABLE.has(type)) return true;
   if (type === "TRANSPORT") return isCarRental(title, description);
   return false;
+}
+
+/** Opt-in re-enable of the browser agent for golf — OFF by default at launch.
+ *  Flip NEXT_PUBLIC_GOLF_AGENT_ENABLED=true once the agent is reliable enough
+ *  to trust with the exact tee date/time. */
+function golfAgentEnabled(): boolean {
+  return (
+    (process.env.NEXT_PUBLIC_GOLF_AGENT_ENABLED ?? "").trim().toLowerCase() ===
+    "true"
+  );
 }
 
 /**

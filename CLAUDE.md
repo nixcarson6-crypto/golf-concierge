@@ -197,7 +197,39 @@ hasn't been merged in a while.
 
 ## Next-up priorities
 
-### 🔴 RESUME HERE — ACTIVE FIX: make the agent reach the card step in ~4 min on EVERY hotel
+### 🟢 LAUNCH SCOPE DECISION (Carson, June 2026): book the SURE THINGS, self-book golf
+
+Carson's call, to launch reliably: **auto-book only what we can do correctly —
+flights (Duffel) + API-covered hotels (LiteAPI/Hotelbeds). GOLF is now
+SELF-BOOK (direct links), the customer picks their own tee time.** Reasoning:
+(1) a wrong auto-booked tee date = refund + chargeback + a 1-star review, which
+a pre-launch luxury brand can't absorb; a flaky auto-booker isn't a moat, it's a
+liability. (2) Tee time is the ONE thing customers WANT flexible — they pick the
+round/time with their group; flight + hotel dates are locked at quiz time. So we
+auto-book the rigid things and link the flexible one. The browser agent isn't
+deleted — it's PARKED behind a flag; flip it back on when AI/the agent is
+reliable enough to trust with an exact date/time.
+
+**Implemented:** golf (`TEE_TIME`) is no longer agent-bookable by default
+(`agent-scope.ts` → `isAgentBookable` returns false for golf unless
+`NEXT_PUBLIC_GOLF_AGENT_ENABLED=true`). Because every booking path (book-all,
+book-agent, dispatch-agent, the panel) gates on `isAgentBookable`, golf now
+skips the agent everywhere automatically. The booking-status panel renders golf
+as a self-book row: Flag icon, "You pick the time — book it yourself," and a
+copper **"Book your tee time"** link (course website if known, else a
+"<course> tee times" search). Golf is excluded from the "X of Y confirmed"
+counter so a self-book trip never reads as incomplete.
+
+**Hotels — "make sure they work":** keep the API-first path (LiteAPI → Hotelbeds)
++ the agent fallback for non-API properties (Aman, resort-direct). Carson should
+validate the API path with `pnpm check:liteapi` + `pnpm check:hotelbeds`. If he
+wants non-API hotel MISSES to LINK instead of running the (slower, fallible)
+agent, that's `HOTEL_AGENT_DISABLED=true` — offered, not yet on.
+
+**The agent-hardening section below is now PARKED for golf** (kept for HOTELS +
+the eventual golf re-enable). Don't chase golf-agent card-step fixes for launch.
+
+### 🔴 (PARKED for golf) ACTIVE FIX: make the agent reach the card step in ~4 min on EVERY hotel
 
 **The goal (Carson's exact words):** "complete Aman in about 4 min, get to the
 card step" — and **the fixes must be GENERAL (apply to every booking form), not
@@ -373,8 +405,10 @@ no matter the flag. (`run-booking.ts`, `stagehand-runner.ts`, `approve-price`,
   avoids famous names; no Bandon/Pinehurst on repeat.
 - **Safety net:** no booking can strand in SEARCHING (watchdog + catch → queue).
 - **Build fail-fast + Opus→Sonnet fallback** when Opus overloads.
-- **Kill switches:** `NEXT_PUBLIC_BOOKING_LINKS_ONLY` (golf=links) and
-  `HOTEL_AGENT_DISABLED` (APIs only, link the rest).
+- **Kill switches / scope flags:** golf is now self-book BY DEFAULT in code (see
+  LAUNCH SCOPE above) — `NEXT_PUBLIC_GOLF_AGENT_ENABLED=true` re-enables the golf
+  agent later. `NEXT_PUBLIC_BOOKING_LINKS_ONLY` (comma list, force any type to
+  links) and `HOTEL_AGENT_DISABLED` (hotels: APIs only, link the misses) remain.
 
 ### P0 — this week (critical path)
 

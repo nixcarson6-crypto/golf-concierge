@@ -556,13 +556,20 @@ export function BookingStatusPanel({
   const bookable = rows.filter(
     (r) =>
       !SUGGESTION_TYPES.has(r.item.type) &&
-      r.item.reservationNeed !== "walk_in",
+      r.item.reservationNeed !== "walk_in" &&
+      // Golf is self-booked via a direct link when the agent is off — exclude
+      // it from the "X of Y confirmed" count so a self-book trip never reads
+      // as permanently incomplete (same treatment as dining suggestions).
+      !(
+        r.item.type === "TEE_TIME" &&
+        !isAgentBookable(r.item.type, r.item.title, r.item.description)
+      ),
   );
   const total = bookable.length;
   const confirmed = bookable.filter((r) => r.kind === "confirmed").length;
   const inFlight = bookable.filter((r) => r.kind === "booking").length;
   const pct = total > 0 ? Math.round((confirmed / total) * 100) : 0;
-  const allDone = confirmed === total;
+  const allDone = total > 0 && confirmed === total;
   const hasUnbooked = bookable.some(
     (r) => r.kind === "pending" || r.kind === "failed",
   );
@@ -700,6 +707,11 @@ export function BookingStatusPanel({
                     item.title,
                     item.description,
                   );
+                  // GOLF self-book (launch): the agent is off for golf, so we
+                  // never auto-book a tee time — the customer reserves it
+                  // themselves so they can pick the round + time with their
+                  // group. The row shows a direct "Book your tee time" link.
+                  const isSelfGolf = item.type === "TEE_TIME" && !agentBookable;
                   const isPhoneOnly =
                     kind === "failed" &&
                     failureReason === "form_not_found" &&
@@ -754,27 +766,37 @@ export function BookingStatusPanel({
                     `https://www.google.com/search?q=${encodeURIComponent(
                       `${item.title}${item.location ? ` ${item.location}` : ""}`,
                     )}`;
+                  // Self-book golf: link to the course's own site when we have
+                  // it, otherwise a tee-time search that surfaces its booking.
+                  const golfHref =
+                    website ??
+                    `https://www.google.com/search?q=${encodeURIComponent(
+                      `${item.title}${item.location ? ` ${item.location}` : ""} tee times`,
+                    )}`;
                   const isThisBooking = bookingId === item.id;
                   const statusText = isThisBooking
                     ? "Starting…"
                     : isWalkIn
                       ? "Walk-in · no booking needed"
-                      : suggestionNeedsContact
-                        ? "Reserve directly with the venue"
-                        : isPhoneOnly
-                          ? "Reservations by phone"
-                          : canBook
-                            ? "Tap to book"
-                            : // While booking, show the live step ("Checking
-                              // availability…") instead of a flat "Booking…".
-                              kind === "booking"
-                              ? agentProgress || statusLabel(kind)
-                              : statusLabel(kind);
+                      : isSelfGolf
+                        ? "You pick the time — book it yourself"
+                        : suggestionNeedsContact
+                          ? "Reserve directly with the venue"
+                          : isPhoneOnly
+                            ? "Reservations by phone"
+                            : canBook
+                              ? "Tap to book"
+                              : // While booking, show the live step ("Checking
+                                // availability…") instead of a flat "Booking…".
+                                kind === "booking"
+                                ? agentProgress || statusLabel(kind)
+                                : statusLabel(kind);
                   const rowInner = (
                     <>
-                      {isSuggestion && !isThisBooking ? (
-                        // Suggestions aren't a booking task — show the venue
-                        // type icon, not a to-do circle that reads "unbooked".
+                      {(isSuggestion || isSelfGolf) && !isThisBooking ? (
+                        // Suggestions + self-book golf aren't a Pyltrix booking
+                        // task — show the venue type icon, not a to-do circle
+                        // that would read as "unbooked" forever.
                         <span className="grid size-5 place-items-center shrink-0">
                           <TypeIcon type={item.type} />
                         </span>
@@ -882,6 +904,28 @@ export function BookingStatusPanel({
                               </>
                             )}
                           </button>
+                        </div>
+                      )}
+                      {/* GOLF SELF-BOOK — the customer reserves their own tee
+                          time so they can pick the round + time with their
+                          group. A direct link to the course; Pyltrix never
+                          auto-books it (no reliable API + wrong-date risk). */}
+                      {isSelfGolf && kind === "pending" && (
+                        <div className="pl-9 pr-2.5 pb-2 -mt-0.5 space-y-1.5">
+                          <p className="text-[11px] text-muted-foreground leading-snug">
+                            You choose the round and the time that suits your
+                            group — reserve your tee time directly with the
+                            course.
+                          </p>
+                          <a
+                            href={golfHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--copper))] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[hsl(var(--copper))]/90 transition"
+                          >
+                            <Flag className="size-3.5" />
+                            Book your tee time
+                          </a>
                         </div>
                       )}
                       {/* BOOKING — brief note that a real-site booking takes
@@ -1171,7 +1215,7 @@ export function BookingStatusPanel({
         totalCents={bookable
           .filter((r) => r.kind === "pending" || r.kind === "failed")
           .reduce((sum, r) => sum + (r.item.cost ?? 0), 0)}
-        paymentNote="Flights are charged now; hotels, golf, and most venues settle at the property. You'll get every confirmation by email."
+        paymentNote="Flights are charged now; hotels settle at booking or at the property. Tee times you book yourself, at the time you choose. You'll get every confirmation by email."
         confirmLabel="Confirm & book all"
         busy={bookingAll}
         onConfirm={() => void bookAll()}
