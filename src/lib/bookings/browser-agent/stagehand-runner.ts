@@ -565,6 +565,17 @@ export async function runStagehandBooking(
   // heavy-page watchdog ABOVE the provider branch so both Stagehand
   // constructions can reference the logger.)
   const wallClock = setTimeout(() => controller.abort(), opts.timeoutMs);
+  // STALL WATCHDOG handle (started just before agent.execute, cleared in the
+  // finally). A time-based safety net: when the LLM agent stops completing
+  // steps — it HANGS, doesn't error (Streamsong sat ~280s on the rooms/Book
+  // step with no steps logged until the wall-clock) — the per-step
+  // deterministic passes never fire either (they're keyed on onStepFinish), so
+  // nothing pushes the booking forward and nothing captures WHERE it's stuck.
+  // This drives the same conductor recognizers on a timer instead. GENERAL.
+  let stallWatch: ReturnType<typeof setInterval> | null = null;
+  // Declared at function scope (not inside the try) so the catch/finally can
+  // read it — it gates the one-shot stuck-DOM dump across all exit paths.
+  let stuckDiagged = false;
   const t0 = Date.now();
   const elapsed = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
 
@@ -1340,6 +1351,15 @@ export async function runStagehandBooking(
 
     const maxSteps = opts.maxSteps ?? MAX_STEPS;
     let stepCount = 0;
+    // Stall-watchdog state. lastStepAt is bumped every time the agent finishes a
+    // step (and after a watchdog nudge lands); if it goes quiet for too long the
+    // agent is hung and the watchdog steps in. stuckDiagged makes the DOM dump
+    // one-shot; wdAdvance* anti-hammers a no-op Search/Continue button.
+    let lastStepAt = Date.now();
+    let nudging = false;
+    let wdAdvanceLabel = "";
+    let wdAdvanceRepeats = 0;
+    let wdNudgeCount = 0;
     // The conductor already drove to the card step → skip the AI booking loop
     // entirely (the payment phase below still uses `agent` to enter the card).
     type ExecResult = Awaited<ReturnType<typeof agent.execute>>;
@@ -1452,6 +1472,95 @@ export async function runStagehandBooking(
     console.log(
       `[stagehand] agent.execute starting (maxSteps=${maxSteps}, toolTimeout=${TOOL_TIMEOUT_MS}ms)…`,
     );
+    // STALL WATCHDOG: the LLM agent sometimes HANGS rather than erroring —
+    // Streamsong sat ~280s on the rooms/Book step with ZERO steps logged, just
+    // riding the wall-clock to a timeout. The per-step deterministic passes
+    // can't rescue that: they're keyed on onStepFinish, which never fires while
+    // the agent is hung. So poll on a timer instead. When the agent has gone
+    // quiet past STALL_NUDGE_MS we (1) dump the stuck DOM ONCE so the exact step
+    // is visible in the next run's logs, and (2) drive the same conductor
+    // recognizers (close modal → skip upsell → pick room → autofill → advance)
+    // to push the booking forward on our own. Every recognizer self-guards to
+    // its step, so a nudge can't act on the wrong screen, and the advance click
+    // already refuses to fire on a card step. GENERAL — every hotel/golf form.
+    const STALL_CHECK_MS = 9_000;
+    const STALL_NUDGE_MS = 28_000; // ~2× a normal step — only true hangs trip it
+    const WD_NUDGE_CAP = 10; // bounded; after this the wall-clock routes to concierge
+    stallWatch = setInterval(() => {
+      void (async () => {
+        if (controller.signal.aborted || nudging) return;
+        if (Date.now() - lastStepAt < STALL_NUDGE_MS) return; // agent still stepping
+        if (wdNudgeCount >= WD_NUDGE_CAP) return;
+        nudging = true;
+        try {
+          const active = stagehand.context.activePage();
+          if (!active) return;
+          const bf = await bookingFrame(active).catch(() => active);
+          // One-shot: capture exactly where it hung for the next run's triage.
+          if (!stuckDiagged) {
+            stuckDiagged = true;
+            const idle = ((Date.now() - lastStepAt) / 1000).toFixed(0);
+            const d = await diagnoseBookingStep(bf).catch(() => "");
+            if (d)
+              console.log(
+                `[stagehand] 🔬 STUCK booking-step diag (agent idle ${idle}s, step ${stepCount}) :: ${d}`,
+              );
+          }
+          // Deterministic nudge, in conductor order — each is self-guarded.
+          let nudged: string | null = null;
+          {
+            const m = await dismissBlockingModalDeterministically(active).catch(() => null);
+            if (m) nudged = `closed modal "${m}"`;
+          }
+          if (!nudged && bf !== active) {
+            const m = await dismissBlockingModalDeterministically(bf).catch(() => null);
+            if (m) nudged = `closed modal "${m}"`;
+          }
+          if (!nudged) {
+            const up = await clickThroughUpsellDeterministically(bf).catch(() => null);
+            if (up) nudged = `upsell-skip "${up}"`;
+          }
+          if (!nudged) {
+            const r = await clickCheapestRoomDeterministically(bf).catch(() => null);
+            if (r) nudged = `room ${r}`;
+          }
+          // Autofill BEFORE advancing, so a half-empty guest form gets completed
+          // rather than submitted blank by an early Continue click.
+          let filledThisPass = 0;
+          if (!nudged && opts.autofill) {
+            filledThisPass = await deterministicGuestFill(bf, opts.autofill).catch(() => 0);
+            if (filledThisPass > 0) nudged = `autofill ${filledThisPass} fields`;
+          }
+          // Advance (Search / Continue / Book) ONLY when nothing above acted and
+          // there was nothing left to fill — i.e. a rooms/search step or a
+          // already-complete form, never a half-filled one. The recognizer
+          // itself also refuses to fire on a card step.
+          if (!nudged && filledThisPass === 0) {
+            const a = await clickAdvanceButtonDeterministically(bf).catch(() => null);
+            if (a) {
+              if (a === wdAdvanceLabel) wdAdvanceRepeats += 1;
+              else {
+                wdAdvanceLabel = a;
+                wdAdvanceRepeats = 0;
+              }
+              // Same button 3× with no agent step between = a no-op; stop hammering.
+              if (wdAdvanceRepeats < 3) nudged = `advance "${a}"`;
+            }
+          }
+          if (nudged) {
+            wdNudgeCount += 1;
+            console.log(
+              `[stagehand] 🫀 stall-watchdog nudged a hung agent → ${nudged} (${elapsed()})`,
+            );
+            lastStepAt = Date.now(); // let the nudge land before re-firing
+          }
+        } catch {
+          /* best-effort */
+        } finally {
+          nudging = false;
+        }
+      })();
+    }, STALL_CHECK_MS);
     result = await agent.execute({
       instruction: opts.task,
       maxSteps,
@@ -1470,6 +1579,7 @@ export async function runStagehandBooking(
       callbacks: {
         onStepFinish: async () => {
           stepCount += 1;
+          lastStepAt = Date.now(); // agent is alive — reset the stall watchdog
           console.log(`[stagehand]   step ${stepCount} done (${elapsed()})`);
           await opts.onStep?.(progressLabel(stepCount));
           // BOT-DETECTION WALL mid-flow: Access's "verify your browser", or a
@@ -1749,10 +1859,32 @@ export async function runStagehandBooking(
         },
       },
     });
+    if (stallWatch) {
+      clearInterval(stallWatch);
+      stallWatch = null;
+    }
     }
     console.log(
       `[stagehand] ✓ agent finished (${elapsed()}) success=${result.success} completed=${result.completed} steps=${result.actions?.length ?? stepCount}\n  agent message: ${result.message?.slice(0, 600) || "(no message)"}`,
     );
+    // If the agent stopped WITHOUT confirming (success=false, or a thin/empty
+    // message that signals a silent stop), dump where it ended — the conductor's
+    // handoff diag only captures the START of the agent phase, not where the
+    // agent itself gave up. One line, best-effort, so the next run is fixable
+    // from real DOM instead of a guess.
+    if (
+      !stuckDiagged &&
+      (result.success === false || (result.message ?? "").trim().length < 40)
+    ) {
+      try {
+        const sctx = await bookingFrame(stagehand.context.activePage() ?? page);
+        const sdiag = await diagnoseBookingStep(sctx);
+        if (sdiag)
+          console.log(`[stagehand] 🔬 agent-stopped booking-step diag :: ${sdiag}`);
+      } catch {
+        /* best-effort */
+      }
+    }
     // Browser-verification wall hit: classify as captcha_blocked so the retry
     // loop re-runs with ADVANCED STEALTH (the actual unblock for bot-detection
     // walls). We aborted on purpose, so don't treat it as a crash.
@@ -2048,6 +2180,20 @@ export async function runStagehandBooking(
     // Loud, tagged, one-line root cause — so the dev terminal shows
     // exactly why the agent stopped instead of a silent black screen.
     console.error(`[stagehand] ✗ FAILED (${elapsed()}) — ${msg}`);
+    // On a wall-clock TIMEOUT, dump where it died (unless the watchdog already
+    // captured a stuck step) so a slow/looping site is fixable from real DOM.
+    if (aborted && !heavyAbort && !stuckDiagged) {
+      try {
+        const ap =
+          stagehand.context.activePage() ?? stagehand.context.pages().at(-1);
+        const sctx = await bookingFrame(ap);
+        const sdiag = await diagnoseBookingStep(sctx);
+        if (sdiag)
+          console.log(`[stagehand] 🔬 timed-out booking-step diag :: ${sdiag}`);
+      } catch {
+        /* best-effort */
+      }
+    }
     // A wall-clock TIMEOUT (the 4-min lock-in) isn't a failure — the agent was
     // actively booking when the clock hit. Hand it to the CONCIERGE
     // (needs_review), not a red "couldn't book", so the customer waits ≤4 min
@@ -2078,6 +2224,7 @@ export async function runStagehandBooking(
     };
   } finally {
     clearTimeout(wallClock);
+    if (stallWatch) clearInterval(stallWatch);
     await stagehand.close().catch(() => {});
     // Steel sessions persist until released or they hit their timeout — free
     // it now so we're not paying for an idle browser.
