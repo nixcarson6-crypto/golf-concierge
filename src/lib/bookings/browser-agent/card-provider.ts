@@ -19,10 +19,8 @@ import {
   revealCard,
 } from "@/lib/payments/issuing";
 import { chargeCustomer } from "@/lib/payments/customer-charge";
+import { serviceFeeCents } from "@/lib/payments/pricing";
 import type { CardProvider } from "./agent";
-
-/** Pyltrix service fee charged to the customer on top of the vendor cost. */
-const SERVICE_FEE_BPS = 500; // 5% — placeholder; tune later.
 
 /**
  * Build a CardProvider closure tied to a specific user + booking. The
@@ -104,7 +102,7 @@ export function buildCardProviderForBooking(args: {
         reason: `The checkout total we read ($${Math.round(observed / 100)}) is far above the expected budget — pausing to avoid overcharging. Call report_outcome with status 'needs_review'.`,
       };
     }
-    const fee = Math.round((vendorAmount * SERVICE_FEE_BPS) / 10_000);
+    const fee = serviceFeeCents(vendorAmount);
     const customerChargeCents = vendorAmount + fee;
     // Persist the real total onto the booking so the <2s auth webhook can
     // gate the virtual-card charge against the amount we actually expect.

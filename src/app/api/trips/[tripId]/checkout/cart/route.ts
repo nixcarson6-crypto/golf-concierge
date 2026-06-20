@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { requireTripAccess, requireUser } from "@/lib/auth";
 import { stripe, stripeConfigured } from "@/lib/stripe";
 import { env } from "@/lib/env";
+import { serviceFeeCents } from "@/lib/payments/pricing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,7 +78,7 @@ export async function POST(
   }
 
   const currency = trip.currency.toLowerCase();
-  const lineItems = unpaid.map((b) => ({
+  const itemLines = unpaid.map((b) => ({
     price_data: {
       currency,
       product_data: {
@@ -91,7 +92,31 @@ export async function POST(
     quantity: 1,
   }));
 
-  const total = unpaid.reduce((sum, b) => sum + (b.cost ?? 0), 0);
+  const subtotal = unpaid.reduce((sum, b) => sum + (b.cost ?? 0), 0);
+  // Pyltrix concierge service fee — a separate, transparent line item so the
+  // customer sees exactly what they're paying for. Rate lives in
+  // payments/pricing (ONE source of truth, shared with the agent-path charge).
+  const fee = serviceFeeCents(subtotal);
+  const lineItems = [
+    ...itemLines,
+    ...(fee > 0
+      ? [
+          {
+            price_data: {
+              currency,
+              product_data: {
+                name: "Pyltrix concierge service",
+                description: undefined as string | undefined,
+              },
+              unit_amount: fee,
+            },
+            quantity: 1,
+          },
+        ]
+      : []),
+  ];
+
+  const total = subtotal + fee;
 
   const sk = stripe();
   const appUrl = env("NEXT_PUBLIC_APP_URL");
