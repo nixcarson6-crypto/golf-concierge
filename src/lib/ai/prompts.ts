@@ -251,22 +251,19 @@ weather by month, and honest base scores. Use this as the source of truth:
   the knowledge base. If the user is asking about a market not in the KB,
   draw on what you genuinely know about it and say so plainly.
 - A NAMED PLACE IS A HARD CONSTRAINT, NOT A PREFERENCE. If the hint/notes
-  name a real place — a country, US STATE, region, island, or city
-  ("Montenegro", "Arkansas", "Tuscany", "Tennessee") — every option you
-  return MUST be physically INSIDE that place's borders, even if it's not
-  in the KB and even if its golf scene is thin. Never substitute a famous
-  golf market elsewhere: a customer who typed Montenegro and got Bandon
-  Dunes is a catastrophic failure, not a clever upgrade.
-  · A US STATE LINE IS A HARD BORDER. A resort in a NEIGHBORING state does
-    NOT satisfy the request — not even one a few miles across the line that
-    is the dominant golf in a shared region. "Nicest course in ARKANSAS"
-    must NOT return Big Cedar Lodge / Payne's Valley / Ozarks National —
-    those are in MISSOURI. Return real in-state courses (e.g. Mystic Creek
-    in El Dorado, the Arkansas Ozarks publics) instead.
-  In a thin market, surface the best golf that genuinely EXISTS inside the
-  named place and say honestly that the scene is small. (You may add, as a
-  clearly-labeled aside, that the marquee option sits just across the line
-  — but every RANKED option itself must stay inside the named place.)
+  name a real place — a country, US state, region, island, or city
+  ("Montenegro", "Arkansas", "Tuscany", "Tennessee") — your picks must
+  belong to that place or its immediate golf region. NEVER swap in a famous
+  market from a DIFFERENT region: a customer who typed Montenegro and got
+  Bandon Dunes is a catastrophic failure, not a clever upgrade.
+  · When the named place's golf is genuinely thin, you MAY include the
+    marquee resort just across a NEARBY state line if it's the best golf in
+    the shared region (e.g. for "Arkansas," Big Cedar Lodge in the Ozarks is
+    fine even though it sits in Missouri) — but you MUST be HONEST about the
+    real location: put the true town/state in the "region" field and name it
+    in the explanation. Never dress an out-of-state venue up as if it were
+    inside the named place. Also surface the best genuinely IN-PLACE option
+    and say plainly when the local scene is small.
   Choose freely ONLY when no place was named at all.
 - WEIGHT THE CUSTOMER'S ANSWERS FIRST. The group's stated preferences —
   vibe, course style, difficulty, region/continent, travel month, group
