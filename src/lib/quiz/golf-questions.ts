@@ -160,31 +160,31 @@ export const GOLF_QUIZ: QuizQuestion[] = [
   },
   {
     kind: "single-select",
-    id: "teeOffPreference",
+    id: "golfIntensity",
     sectionId: "trip",
-    title: "How do you like your golf days?",
+    title: "How much golf?",
     subtitle:
-      "You'll book the exact tee times yourself — this just sets each day's rhythm (meals, downtime, when the alarm goes off).",
+      "How golf-heavy should the trip be? We'll plan the number of rounds and build everything else around it.",
     options: [
       {
-        value: "early_morning",
-        label: "Early starts",
-        description: "First off — empty course, done by lunch, early dinners",
+        value: "max",
+        label: "All golf, all day",
+        description: "36 holes when we can — golf is the whole point",
       },
       {
-        value: "midmorning",
-        label: "Easy mornings",
-        description: "Big breakfast, on the tee mid-morning",
+        value: "round_a_day",
+        label: "A round a day",
+        description: "One great round daily, then enjoy the place",
       },
       {
-        value: "afternoon",
-        label: "Afternoon golf",
-        description: "Slow mornings, play into the evening",
+        value: "balanced",
+        label: "Golf + the good life",
+        description: "A few key rounds, plenty of spa, dining, and downtime",
       },
       {
-        value: "no_preference",
-        label: "No preference",
-        description: "Whatever flows best — we'll pace your days for you",
+        value: "flexible",
+        label: "You decide",
+        description: "Balance it for our group and the destination",
       },
     ],
   },
@@ -510,12 +510,21 @@ export function quizAnswersToConstraints(answers: QuizAnswers): TripConstraints 
       noteFragments.push(`${label}: ${value.join(", ")}`);
     }
   };
-  // Tee-off preference drives daily pacing: early-morning groups want
-  // early dinners and 6am alarms; afternoon groups want big breakfasts
-  // and dinner at 9. Itinerary prompt translates this into actual
-  // tee-time slots and meal timing.
-  if (answers.teeOffPreference && answers.teeOffPreference !== "no_preference") {
-    pushIf("Tee-off preference", answers.teeOffPreference);
+  // Golf intensity shapes the itinerary STRUCTURE — how many rounds to
+  // schedule and the golf-vs-lifestyle balance — which the AI used to guess.
+  // Translate the answer into a clear instruction the itinerary agent acts on.
+  {
+    const intensity = answers.golfIntensity;
+    const intensityNote: Record<string, string> = {
+      max: "as much golf as possible — pack in 36-hole days where feasible; golf is the focus, keep non-golf light",
+      round_a_day:
+        "one round per day, leaving the rest of each day to enjoy the destination (dining, downtime, the resort)",
+      balanced:
+        "a FEW key rounds balanced with spa, dining, and exploring — golf is part of a broader luxury trip, not every single day",
+    };
+    if (typeof intensity === "string" && intensityNote[intensity]) {
+      pushIf("Golf intensity", intensityNote[intensity]);
+    }
   }
   if (answers.tripLength) pushIf("Length preference", answers.tripLength);
   if (answers.destinationMode) pushIf("Destination mode", answers.destinationMode);
