@@ -93,7 +93,9 @@ Real venues only — no inventing names. Same category as the current item. For 
 
 PROXIMITY IS MANDATORY: every alternative MUST be in the SAME area as the current pick — a short drive from "${currentLocation}" / within the trip's destination — because it has to fit the customer's EXISTING trip (their hotel and their other rounds are already there). A golf course or hotel in a different city or region is useless even if it's great. Pick the best comparable venue that's genuinely CLOSE. For a sold-out tee time, that means the best nearby course the group can actually drive to from where they're staying.
 
-CRITICAL: every alternative must be PUBLICLY BOOKABLE — a resort course, daily-fee/public course, or a hotel/restaurant open to the public. NEVER suggest private members-only clubs (e.g. Cypress Point, Rock Creek Cattle Company tier) — the customer can't book those, so they're useless as a swap.`;
+CRITICAL: every alternative must be PUBLICLY BOOKABLE — a resort course, daily-fee/public course, or a hotel/restaurant open to the public. NEVER suggest private members-only clubs (e.g. Cypress Point, Rock Creek Cattle Company tier) — the customer can't book those, so they're useless as a swap.
+
+FOR A TEE_TIME, "bookable" means ONLINE-bookable: a recognizable PUBLIC or RESORT course that takes online tee-time reservations (it has a real booking widget / appears on GolfNow or TeeOff / runs its own online tee sheet). DO NOT suggest tiny 9-hole, par-3, or small municipal courses that only take phone or pro-shop bookings — no online form means we can't book it, which is the whole problem we're solving. Pick the best well-known public-access course nearby that the group can actually reserve online.`;
   const userMsg = `Trip destination: ${tripDestination}
 Item type: ${itemType}
 Current pick: "${currentTitle}"${item.description ? ` (${item.description})` : ""}

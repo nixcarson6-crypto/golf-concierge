@@ -52,6 +52,9 @@ Time is expensive, but don't quit on a venue that has a form you just haven't fo
 - You've checked the Experiences/Activities/Reservations areas and none has a date-picker or availability/cart flow.
 Don't loop forever on pure marketing slideshows — but DO check the e-commerce sections above first.
 
+## No booking form on a PUBLIC course's own site → try GolfNow before giving up
+If a PUBLIC / daily-fee course genuinely has NO online tee-time form on its own website — only a phone number or pro-shop contact (very common for small municipal / 9-hole courses) — do NOT report form_not_found yet. Public courses are almost always reservable through an aggregator. Navigate to **https://www.golfnow.com**, search for the course by its NAME and the requested DATE, and if it appears, select the tee time at/nearest the requested time and check out as a GUEST (no account) — fill the guest details and stop at the card step. If GolfNow doesn't carry it, try **https://www.teeoff.com** the same way. Only report \`form_not_found\` if the course isn't on either aggregator. (This does NOT apply to private / members-only clubs — those still bail fast with \`members_only\`; aggregators only carry public/resort courses.)
+
 ## SKIP optional fields
 Most booking forms have many optional fields (marketing checkboxes, "special requests", upgrade prompts, allergies, dietary preferences). Fill ONLY fields marked required (usually a red asterisk * or "required"). Do NOT type anything into fields you weren't told to fill — don't type "N/A", don't type "none", don't make stuff up. If a field is optional and we have no data for it, LEAVE IT BLANK and move on.
 

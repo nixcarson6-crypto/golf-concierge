@@ -712,8 +712,12 @@ export function BookingStatusPanel({
                   // Private members-only club (e.g. Rock Creek Cattle Co.):
                   // the public can't book it AT ALL, ever. Same recovery —
                   // tell the customer plainly and offer a bookable alternative.
+                  // Fires on review OR failed — the private-golf bail can land as
+                  // either (detectPrivateGolfClub → failed, the resort-guest gate
+                  // → review), and both mean "private, public can't just book it."
                   const isMembersOnly =
-                    kind === "failed" && failureReason === "members_only";
+                    (kind === "failed" || kind === "review") &&
+                    failureReason === "members_only";
                   // GOLF: a nearby course is ALWAYS a valid recovery, so offer
                   // "Find a nearby course" on ANY genuine golf miss — sold out,
                   // private, no form found, or a needs_review the concierge
@@ -960,6 +964,7 @@ export function BookingStatusPanel({
                               )}
                             </>
                           ) : item.type === "TEE_TIME" &&
+                            !needsAlternative &&
                             (failureReason === "members_only" ||
                               failureReason === "form_not_found") ? (
                             <>
