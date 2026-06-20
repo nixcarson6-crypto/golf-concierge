@@ -95,7 +95,9 @@ PROXIMITY IS MANDATORY: every alternative MUST be in the SAME area as the curren
 
 CRITICAL: every alternative must be PUBLICLY BOOKABLE — a resort course, daily-fee/public course, or a hotel/restaurant open to the public. NEVER suggest private members-only clubs (e.g. Cypress Point, Rock Creek Cattle Company tier) — the customer can't book those, so they're useless as a swap.
 
-FOR A TEE_TIME, "bookable" means ONLINE-bookable: a recognizable PUBLIC or RESORT course that takes online tee-time reservations (it has a real booking widget / appears on GolfNow or TeeOff / runs its own online tee sheet). DO NOT suggest tiny 9-hole, par-3, or small municipal courses that only take phone or pro-shop bookings — no online form means we can't book it, which is the whole problem we're solving. Pick the best well-known public-access course nearby that the group can actually reserve online.`;
+FOR A TEE_TIME, "bookable" means ONLINE-bookable: a recognizable PUBLIC or RESORT course that takes online tee-time reservations (it has a real booking widget / appears on GolfNow or TeeOff / runs its own online tee sheet). DO NOT suggest tiny 9-hole, par-3, or small municipal courses that only take phone or pro-shop bookings — no online form means we can't book it, which is the whole problem we're solving.
+
+THE GOAL IS TO HAND THE CUSTOMER ONE COURSE THEY CAN ACTUALLY BOOK ON THE FIRST TRY — not a series of dead ends. So pick the MOST PROMINENT, well-known FULL-SIZE (18-hole) PUBLIC or RESORT course in the area that you are confident takes GUEST tee times online (it'll be on GolfNow / TeeOff or its own tee sheet) — even if it's a few more minutes' drive than some obscure local course. Prominent public/resort courses are reliably on the aggregators; tiny local ones are the ones that strand us. When unsure, choose the bigger, better-known public course.`;
   const userMsg = `Trip destination: ${tripDestination}
 Item type: ${itemType}
 Current pick: "${currentTitle}"${item.description ? ` (${item.description})` : ""}

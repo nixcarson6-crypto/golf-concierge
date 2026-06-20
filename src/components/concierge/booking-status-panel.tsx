@@ -853,7 +853,13 @@ export function BookingStatusPanel({
                             {isMembersOnly
                               ? `${item.title} is private — only members and resort guests can play, so you'd need to be staying at the resort. We'll find a great nearby course you can actually book.`
                               : item.type === "TEE_TIME"
-                                ? `We couldn't get you onto ${item.title} for your date — we'll find the best nearby course you can play instead.`
+                                ? failureReason === "form_not_found"
+                                  ? `${item.title} only takes tee times by phone — there's no online booking. We'll find a nearby course you can book online instead.`
+                                  : failureReason === "no_availability"
+                                    ? `${item.title} has no tee times open for your date. We'll find the best nearby course you can play instead.`
+                                    : failureReason === "login_required"
+                                      ? `${item.title} only lets members book online. We'll find a nearby public course you can book instead.`
+                                      : `We couldn't get you onto ${item.title} for your date — we'll find the best nearby course you can play instead.`
                                 : `${item.title} is sold out for your dates.`}
                           </p>
                           <button
