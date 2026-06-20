@@ -847,9 +847,9 @@ export function BookingStatusPanel({
                         <div className="pl-9 pr-2.5 pb-2 -mt-0.5 space-y-1">
                           <p className="text-[11px] text-muted-foreground leading-snug">
                             {isMembersOnly
-                              ? `${item.title} is a private members-only club — the public can't book it.`
+                              ? `${item.title} is private — only members and resort guests can play, so you'd need to be staying at the resort. We'll find a great nearby course you can actually book.`
                               : item.type === "TEE_TIME"
-                                ? `${item.title} has no tee times for your date — we'll find the best nearby course you can play instead.`
+                                ? `We couldn't get you onto ${item.title} for your date — we'll find the best nearby course you can play instead.`
                                 : `${item.title} is sold out for your dates.`}
                           </p>
                           <button

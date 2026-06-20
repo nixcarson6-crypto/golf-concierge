@@ -5525,7 +5525,7 @@ async function detectPrivateGolfClub(page: unknown): Promise<string | null> {
       if (ctas.some((t) => t.length < 40 && TEE.test(t))) return null;
       // Strong private + no booking path anywhere → genuinely unbookable.
       const phone = (bodyText.match(/\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}/) || [])[0] || null;
-      return `This course is a private members-only club, so we can't book a public tee time here${phone ? ` (pro shop: ${phone})` : ""} — our concierge can arrange access or suggest a nearby course you can play.`;
+      return `This course is private — only members and resort guests can play, so the public can't book a tee time here${phone ? ` (pro shop: ${phone})` : ""}. Stay at the resort to play it, or our concierge can grab a nearby course you can book.`;
     });
   } catch {
     return null;

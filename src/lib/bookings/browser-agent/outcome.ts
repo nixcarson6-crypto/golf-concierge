@@ -274,6 +274,11 @@ export function failureCopy(
         message: `No availability${at} for your requested time. Try another slot directly with the venue.`,
         showFallback: true,
       };
+    case "members_only":
+      return {
+        message: `${venueName ?? "This course"} is private — only members and resort guests can play, so the public can't book a tee time here. Stay at the resort to play it, or our concierge can grab a nearby course you can book.`,
+        showFallback: true,
+      };
     case "captcha_blocked":
       return {
         message: `This site has a security check we can't clear automatically. Please book directly below.`,

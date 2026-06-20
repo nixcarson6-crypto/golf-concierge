@@ -35,6 +35,7 @@ export type GolfPlatform =
   | "golfback"
   | "teeon"
   | "ezlinks"
+  | "totaleintegrated"
   | "foretees";
 
 const PLATFORM_HOSTS: { match: RegExp; platform: GolfPlatform }[] = [
@@ -52,6 +53,9 @@ const PLATFORM_HOSTS: { match: RegExp; platform: GolfPlatform }[] = [
   { match: /golfback\.com/i, platform: "golfback" },
   { match: /\bteeon\.com/i, platform: "teeon" },
   { match: /ezlinks|teequest/i, platform: "ezlinks" },
+  // Total-e-Integrated (TEI) — Angular tee-sheet app on *.totaleintegrated.net
+  // (e.g. playnapa.com → napa.totaleintegrated.net/web/tee-times).
+  { match: /totaleintegrated\.net|totale.?integrated/i, platform: "totaleintegrated" },
   { match: /foretees\.com/i, platform: "foretees" },
 ];
 
@@ -92,6 +96,8 @@ const HINTS: Record<GolfPlatform, string> = {
     "GOLF PLATFORM — TEE-ON. Set date + players, click the tee time nearest the requested time, fill guest details, and stop at the card step.",
   ezlinks:
     "GOLF PLATFORM — EZLINKS / TEEQUEST. Set the date + players, Search, click the tee time nearest the requested time (a grid of times), pick the standard public rate if asked, fill guest details, and stop at the card step.",
+  totaleintegrated:
+    'GOLF PLATFORM — TOTAL-E-INTEGRATED (totaleintegrated.net). An Angular app with a TOP SEARCH BAR — a "Choose date" date picker, a course field, a "Players" selector, and a time/"schedule" field — then a Search button that loads a GRID of tee-time cards (e.g. "3:23 PM · Napa GC · $49 · 2-4"). CRITICAL: the page defaults to TODAY, so you MUST change the "Choose date" field to the requested date FIRST (open the picker, navigate to the right month, click the day) — confirm the visible date matches before going on. Then set Players, click Search ONCE, and click the tee-time CARD nearest the requested time (do NOT keep clicking Search once cards are showing, and close any "Close calendar" popup that blocks them). After selecting the card, proceed to the booking; if it forces an account LOGIN to finish (no guest checkout), report needs_review / login_required — do not invent credentials. Otherwise fill the guest details and stop at the card step.',
   foretees:
     "GOLF PLATFORM — FORETEES (private members club). This is members-only and needs a member login you do NOT have. Report needs_review / members_only with any phone number — the public cannot book here.",
 };
