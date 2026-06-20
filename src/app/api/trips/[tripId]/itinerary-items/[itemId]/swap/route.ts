@@ -89,7 +89,7 @@ export async function GET(
 
 ${tieredSchemaSpec}
 
-Real venues only — no inventing names. Same category as the current item. For LODGING, mean nightly rate. For TEE_TIME, mean per-player green fee. For DINING, mean per-person dinner check.
+Real venues only — no inventing names. EVERY alternative MUST be a DIFFERENT venue from the current pick — NEVER suggest "${currentTitle}" back, and never the same hotel/resort/course/restaurant under a slightly different room name or sub-venue. The entire point is to REPLACE the current pick with something else. Same category as the current item. For LODGING, mean nightly rate. For TEE_TIME, mean per-player green fee. For DINING, mean per-person dinner check.
 
 PROXIMITY IS MANDATORY: every alternative MUST be in the SAME area as the current pick — a short drive from "${currentLocation}" / within the trip's destination — because it has to fit the customer's EXISTING trip (their hotel and their other rounds are already there). A golf course or hotel in a different city or region is useless even if it's great. Pick the best comparable venue that's genuinely CLOSE. For a sold-out tee time, that means the best nearby course the group can actually drive to from where they're staying.
 
@@ -125,7 +125,35 @@ Suggest ${tier ? `1 ${tier} alternative` : "3 alternatives following the cheaper
         { status: 502, headers: { "Content-Type": "application/json" } },
       );
     }
-    return new Response(JSON.stringify(parsed.data), {
+    // Safety net: NEVER hand back the same venue as an "alternative" (the AI
+    // sometimes returns the current pick under a slightly different name). Drop
+    // any whose name is the same place — exact, a prefix either way, or sharing
+    // the leading brand token ("Hartl Resort — Maximilian" vs "Hartl Resort —
+    // Standard"). If that empties the list, the swap genuinely failed.
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const leadToken = (s: string): string => {
+      const lead = norm(s.split(/[—–·|(]|\s-\s/)[0] ?? "");
+      return lead.split(" ")[0] ?? "";
+    };
+    const curNorm = norm(currentTitle);
+    const curLead = leadToken(currentTitle);
+    const distinct = parsed.data.alternatives.filter((a) => {
+      const an = norm(a.name);
+      if (!an) return false;
+      if (an === curNorm || an.startsWith(curNorm) || curNorm.startsWith(an)) {
+        return false;
+      }
+      // Same resort/brand (first significant word matches) = same place.
+      if (curLead.length >= 4 && leadToken(a.name) === curLead) return false;
+      return true;
+    });
+    if (distinct.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Couldn't find a different venue — try again." }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
+    return new Response(JSON.stringify({ alternatives: distinct }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
