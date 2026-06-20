@@ -220,11 +220,14 @@ copper **"Book your tee time"** link (course website if known, else a
 "<course> tee times" search). Golf is excluded from the "X of Y confirmed"
 counter so a self-book trip never reads as incomplete.
 
-**Hotels — "make sure they work":** keep the API-first path (LiteAPI → Hotelbeds)
-+ the agent fallback for non-API properties (Aman, resort-direct). Carson should
-validate the API path with `pnpm check:liteapi` + `pnpm check:hotelbeds`. If he
-wants non-API hotel MISSES to LINK instead of running the (slower, fallible)
-agent, that's `HOTEL_AGENT_DISABLED=true` — offered, not yet on.
+**Hotels — "make sure they work":** API-first (LiteAPI → Hotelbeds). Carson should
+validate the API path with `pnpm check:liteapi` + `pnpm check:hotelbeds`.
+**LAUNCH DEFAULT (June 2026): the hotel browser agent is OFF.** Non-API hotels
+(resort-direct — Streamsong/Pinehurst/Pebble/Aman, on slow engines like Agilysys
+the agent can't finish in a decent time — Streamsong's Agilysys flow took ~4.5
+min JUST to pick a room) now LINK for direct/concierge booking instead of
+grinding the agent. Re-enable the hotel agent with `HOTEL_AGENT_ENABLED=true`
+once it's reliable on those engines (`HOTEL_AGENT_DISABLED=true` still forces off).
 
 **The agent-hardening section below is now PARKED for golf** (kept for HOTELS +
 the eventual golf re-enable). Don't chase golf-agent card-step fixes for launch.

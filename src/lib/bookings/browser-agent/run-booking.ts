@@ -642,16 +642,22 @@ async function runBrowserBookingInner(args: {
       }
       console.log(`[book] ${p.name} didn't book ${item.title} (${api.reason}).`);
     }
-    console.log(`[book] No API carried ${item.title} — using browser agent.`);
-    // HOTEL AGENT KILL SWITCH (MVP): if the browser agent isn't reliable
-    // enough on luxury hotels, set HOTEL_AGENT_DISABLED=true. Hotels that
-    // LiteAPI/Hotelbeds DO cover still book above (API-first); only the
-    // UNCOVERED ones land here, and instead of a slow agent run we hand the
-    // customer a direct booking link — exactly the "rely on the APIs, link the
-    // rest" fallback. Flip the env off again to re-enable the agent.
-    if (process.env.HOTEL_AGENT_DISABLED === "true") {
+    console.log(`[book] No API carried ${item.title} — hotel agent path.`);
+    // LAUNCH DEFAULT (reliability): hotels no bedbank carries are resort-direct
+    // (Streamsong, Pinehurst, Pebble, Aman) and ride slow engines like
+    // Agilysys that the agent can't finish in a decent time — Streamsong's
+    // Agilysys flow took ~4.5 min JUST to pick a room before the contact form.
+    // So instead of grinding the agent on them, we hand the customer a clean
+    // direct-booking link (concierge confirms). API-covered hotels still book
+    // above (API-first); only the UNCOVERED ones land here. Opt the hotel
+    // agent back ON once it's reliable on these engines with
+    // HOTEL_AGENT_ENABLED=true (HOTEL_AGENT_DISABLED=true forces it off).
+    const hotelAgentOn =
+      (process.env.HOTEL_AGENT_ENABLED ?? "").trim().toLowerCase() === "true" &&
+      process.env.HOTEL_AGENT_DISABLED !== "true";
+    if (!hotelAgentOn) {
       console.log(
-        `[book] HOTEL_AGENT_DISABLED — linking ${item.title} instead of the agent.`,
+        `[book] hotel agent off (launch default) — linking ${item.title} for direct/concierge booking instead of grinding the agent.`,
       );
       await markBookingFailed({
         booking,
@@ -659,7 +665,7 @@ async function runBrowserBookingInner(args: {
         tripId: args.tripId,
         failureReason: "form_not_found",
         message:
-          "No partner API covers this hotel — book it directly with the link below.",
+          "This resort books directly, not through our partners — reserve it on their site below, or our concierge will lock it in for you.",
         fallbackContact: { website: startUrl, phone: places.phone ?? null },
       });
       return;
