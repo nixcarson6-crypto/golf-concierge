@@ -223,7 +223,7 @@ export async function POST(
           ? {
               ...constraints,
               destination: null,
-              notes: `User's destination hint: "${hintForAgent}". NON-NEGOTIABLE: if this hint names a real place (a country, region, island, or city — e.g. "Montenegro", "Tuscany", "Tennessee"), every option you return MUST be IN that place. Never substitute a different country/region because its golf scene is small — find the best golf that actually exists there. Only pick freely when the hint names no place at all. ${constraints.notes ?? ""}`.trim(),
+              notes: `User's destination hint: "${hintForAgent}". NON-NEGOTIABLE: if this hint names a real place (a country, US STATE, region, island, or city — e.g. "Montenegro", "Arkansas", "Tuscany", "Tennessee"), every option you return MUST be physically INSIDE that place. A US STATE LINE IS A HARD BORDER — a resort a few miles into a NEIGHBORING state does NOT count (e.g. "nicest course in Arkansas" must NOT return Big Cedar Lodge / Payne's Valley / Ozarks National — those are in Missouri; return real Arkansas courses instead). Never substitute a different state/country because the named one's golf is thin — return the best golf that ACTUALLY exists inside it and say honestly if the scene is small. Only pick freely when the hint names no place at all. ${constraints.notes ?? ""}`.trim(),
             }
           : { ...constraints, destination: null };
         // Don't re-suggest a place this customer was just shown. Returning
