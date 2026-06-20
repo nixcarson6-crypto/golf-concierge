@@ -5045,8 +5045,11 @@ async function clickAddGuestDeterministically(page: unknown): Promise<string | n
  * checkout fields by autocomplete/name/id/label and fills them with the
  * traveler's known values using native setters + synthetic input/change
  * events (so React/Angular forms register the values). Only touches VISIBLE,
- * EMPTY fields; never touches checkboxes (consent is the agent's call) or
- * card fields. Returns how many fields it filled. Best-effort, never throws.
+ * EMPTY fields; never touches card fields. After filling text/selects it
+ * satisfies any REQUIRED consent selection that would otherwise block the
+ * Continue button — an unselected SMS/terms radio group (ResNexus's
+ * "TextingOptInSelection") stalled a 9-minute run — picking the affirmative,
+ * non-marketing option. Returns how many fields it set. Best-effort, never throws.
  */
 async function deterministicGuestFill(
   page: unknown,
@@ -5357,6 +5360,80 @@ async function deterministicGuestFill(
             }
           }
         }
+
+        // ── REQUIRED CONSENT / COMMUNICATION SELECTIONS ──────────────────
+        // The text fill above leaves radios + checkboxes alone, but a REQUIRED
+        // consent group BLOCKS the Continue button. ResNexus's
+        // "TextingOptInSelection" ("I agree to receive important reservation
+        // information via text" / "Do not send…") stalled a 9-minute run
+        // because nothing selected it. Satisfy these so the form advances. We
+        // already passed the guest-form gate, and we ONLY touch consent-ish
+        // groups (communication prefs / terms / age) — never a meaningful
+        // choice like room or rate — so it's safe and GENERAL across engines.
+        const consentRe =
+          /text|sms|e-?mail|phone|call|contact|communicat|marketing|promotion|newsletter|opt.?in|opt.?out|consent|agree|terms|conditions|privacy|policy|reservation\s*information|receive|notify|do not send|important/i;
+        const marketingRe =
+          /marketing|promotion|newsletter|special\s*offers?|third.?part|advertis/i;
+        const consentMeta = (el: HTMLElement): string =>
+          `${el.getAttribute("name") || ""} ${el.id || ""} ${meta(el)}`.toLowerCase();
+        // click() drives the native toggle + fires the events React/jQuery
+        // listen to; a follow-up change covers vanilla change-only handlers.
+        const fireToggle = (el: HTMLInputElement) => {
+          el.click();
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          filled++;
+        };
+
+        // Radio groups: select ONE option in any UNSELECTED consent group.
+        const allRadios = Array.from(
+          document.querySelectorAll<HTMLInputElement>("input[type=radio]"),
+        ).filter((el) => visible(el) && !el.disabled);
+        const radioGroups = new Map<string, HTMLInputElement[]>();
+        for (const r of allRadios) {
+          const key = r.name || r.id || "";
+          if (!radioGroups.has(key)) radioGroups.set(key, []);
+          radioGroups.get(key)!.push(r);
+        }
+        for (const group of radioGroups.values()) {
+          if (group.some((r) => r.checked)) continue; // already satisfied
+          const groupText = group.map(consentMeta).join(" ");
+          if (!consentRe.test(groupText)) continue; // not a consent group → skip
+          const isMarketingGroup = marketingRe.test(groupText);
+          // Score each option so we pick the affirmative TRANSACTIONAL choice
+          // (so the customer still gets their reservation texts) but NEVER opt
+          // into marketing — for a marketing-only group, pick the decline.
+          const scored = group.map((r) => {
+            const t = consentMeta(r);
+            let s = 0;
+            if (marketingRe.test(t)) s -= 5;
+            if (/\bi agree\b|agree to|\byes\b|receive (important|reservation|booking|your)/.test(t)) s += 3;
+            if (/important|reservation\s*information|transactional/.test(t)) s += 2;
+            if (/do not|don.?t|decline|opt.?out|unsubscribe/.test(t))
+              s += isMarketingGroup ? 3 : -1;
+            return { r, s };
+          });
+          scored.sort((a, b) => b.s - a.s);
+          if (scored[0]) fireToggle(scored[0].r);
+        }
+
+        // Checkboxes: tick REQUIRED terms/age/consent boxes (never marketing);
+        // leave optional + marketing boxes exactly as the page set them.
+        const allChecks = Array.from(
+          document.querySelectorAll<HTMLInputElement>("input[type=checkbox]"),
+        ).filter((el) => visible(el) && !el.disabled && !el.checked);
+        for (const c of allChecks) {
+          const required =
+            c.hasAttribute("required") || c.getAttribute("aria-required") === "true";
+          const t = consentMeta(c);
+          const looksRequiredConsent =
+            /terms|conditions|privacy|policy|\bage\b|\b18\b|older|i agree|i accept|acknowledge|cancellation\s*policy|consent/.test(
+              t,
+            );
+          if ((required || looksRequiredConsent) && !marketingRe.test(t)) {
+            fireToggle(c);
+          }
+        }
+
         return filled;
       },
       data as never,
