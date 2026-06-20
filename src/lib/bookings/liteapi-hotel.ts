@@ -239,29 +239,65 @@ export async function tryLiteApiHotelBooking(args: {
       `[liteapi-hotel] ✓ ${hotel.name}: ${totalOffers} bookable offer(s) for these dates — prebooking the cheapest…`,
     );
 
-    // Try up to 5 rates, cheapest first. Individual rates can 400 at prebook
-    // ("no prebook availability" — stale or non-prebookable); the next room
-    // type usually locks fine. Giving up after ONE attempt was sending
-    // bookable hotels to the 8-minute browser agent.
-    let pre: Awaited<ReturnType<typeof prebook>> | null = null;
-    let lockedTotal: number | null = null;
-    for (const cand of hotelRates.offers.slice(0, 5)) {
+    // Prebook the cheapest, walking up to 5 rates. Two real failure modes:
+    //  • 400 "no prebook availability" — that rate isn't prebookable; the
+    //    next room type usually locks fine.
+    //  • 409 "...price exceeds locked selling price, please search again" —
+    //    the price MOVED between search and prebook. Walking the OTHER
+    //    (equally stale) rates from the same search just 409s again — exactly
+    //    what stranded The Read House (200 offers, every one stale). LiteAPI
+    //    is telling us to RE-SEARCH, so on a stale-price signal we re-search
+    //    ONCE for fresh prices and retry before falling back to the agent.
+    let sawStalePrice = false;
+    const walkRates = async (
+      offers: typeof hotelRates.offers,
+    ): Promise<{ pre: Awaited<ReturnType<typeof prebook>>; total: number | null } | null> => {
+      for (const cand of offers.slice(0, 5)) {
+        try {
+          const p = await prebook(cand.offerId);
+          return { pre: p, total: cand.total };
+        } catch (e) {
+          const msg = (e as Error).message;
+          if (/search again|exceeds locked|price.*(chang|mov)/i.test(msg)) {
+            sawStalePrice = true;
+          }
+          console.warn(
+            `[liteapi-hotel] prebook failed on a rate (${msg.slice(0, 110)}) — trying next rate…`,
+          );
+        }
+      }
+      return null;
+    };
+
+    let locked = await walkRates(hotelRates.offers);
+    if (!locked && sawStalePrice) {
+      console.log(
+        `[liteapi-hotel] prices moved — re-searching ${hotel.name} for fresh rates and retrying prebook…`,
+      );
       try {
-        pre = await prebook(cand.offerId);
-        lockedTotal = cand.total;
-        break;
+        const fresh = await searchHotelRates({
+          checkin: args.checkin,
+          checkout: args.checkout,
+          adults: Math.max(1, args.adults),
+          hotelIds: [hotel.id],
+          countryCode: loc.countryCode,
+        });
+        const freshRates = fresh.find((r) => r.offers.length > 0);
+        if (freshRates) locked = await walkRates(freshRates.offers);
       } catch (e) {
         console.warn(
-          `[liteapi-hotel] prebook failed on a rate (${(e as Error).message.slice(0, 110)}) — trying next rate…`,
+          `[liteapi-hotel] re-search failed: ${(e as Error).message.slice(0, 110)}`,
         );
       }
     }
-    if (!pre) {
+    if (!locked) {
       return {
         booked: false,
-        reason: `no prebookable rate (tried ${Math.min(5, hotelRates.offers.length)})`,
+        reason: `no prebookable rate (tried ${Math.min(5, hotelRates.offers.length)}${sawStalePrice ? " + re-search" : ""})`,
       };
     }
+    const pre = locked.pre;
+    const lockedTotal = locked.total;
     const result = await book({
       prebookId: pre.prebookId,
       holder: {
