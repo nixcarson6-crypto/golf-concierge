@@ -1580,10 +1580,25 @@ export async function runStagehandBooking(
             const up = await clickThroughUpsellDeterministically(bf).catch(() => null);
             if (up) nudged = `upsell-skip "${up}"`;
           }
-          // Hotel room pick — only for lodging (a golf tee sheet has no rooms).
-          if (!nudged && !opts.selectTeeSlot) {
+          // Hotel room pick — lodging only, and ONLY if we haven't already
+          // picked one (the shared roomPicked flag, set by the conductor /
+          // per-step pass). On a TWO-PANEL engine (Streamsong/Agilysys) the
+          // rooms list stays visible beside the cart, so without this guard the
+          // watchdog re-clicks the room forever instead of falling through to
+          // Proceed. GENERAL — every two-panel booking page.
+          if (!nudged && !opts.selectTeeSlot && !roomPicked) {
             const r = await clickCheapestRoomDeterministically(bf).catch(() => null);
-            if (r) nudged = `room ${r}`;
+            if (r) {
+              roomPicked = true;
+              nudged = `room ${r}`;
+            }
+          }
+          // Reveal a COLLAPSED guest form (Agilysys "Guest details (0/2)" hides
+          // First/Last/Email behind an "Add Guest" button) so autofill has
+          // fields to fill — otherwise Proceed stays gated on empty guest info.
+          if (!nudged && opts.autofill) {
+            const ag = await clickAddGuestDeterministically(bf).catch(() => null);
+            if (ag) nudged = `reveal-guest "${ag}"`;
           }
           // Autofill BEFORE advancing, so a half-empty guest form gets completed
           // rather than submitted blank by an early Continue click.
@@ -1728,6 +1743,15 @@ export async function runStagehandBooking(
                     console.log(`[stagehand] 🔬 guest-form diag :: ${gdiag}`);
                   }
                 }
+                // Reveal a collapsed guest form first (Agilysys "Add Guest")
+                // so the First/Last/Email fields exist before we autofill.
+                const revealed = await clickAddGuestDeterministically(active).catch(
+                  () => null,
+                );
+                if (revealed)
+                  console.log(
+                    `[stagehand] ⚡ revealed guest form ("${revealed}") (${elapsed()})`,
+                  );
                 const filled = await deterministicGuestFill(active, opts.autofill);
                 if (filled > 0)
                   console.log(
@@ -4691,6 +4715,75 @@ async function selectCheapestRateRadioDeterministically(
         choice.click.dispatchEvent(new Event("change", { bubbles: true }));
       }
       return `rate=${choice.price != null ? "$" + choice.price : choice.text.slice(0, 30)}`;
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reveal a COLLAPSED guest-details form. Several checkout engines keep the
+ * First/Last/Email inputs hidden behind an "Add Guest" button — Streamsong /
+ * Agilysys shows "Guest details (0/2)" with the fields collapsed — so autofill
+ * finds nothing and the booking stalls at Proceed with no guest entered. Click
+ * "Add Guest" to expand the form. Self-limiting: it only fires when NO guest
+ * name field is visible yet, so the instant the fields appear it stops clicking
+ * (no runaway row-adding). GENERAL — any "Add Guest"-gated checkout. Best-effort.
+ */
+async function clickAddGuestDeterministically(page: unknown): Promise<string | null> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return null;
+  try {
+    return await cdp.evaluate<string | null>(() => {
+      const vis = (el: Element): boolean => {
+        const r = (el as HTMLElement).getClientRects?.();
+        if (!r || r.length === 0) return false;
+        const s = window.getComputedStyle(el as HTMLElement);
+        return s.visibility !== "hidden" && s.display !== "none";
+      };
+      // Form already open (a name field is on screen)? Nothing to reveal — and
+      // this is what stops it re-clicking once the fields appear.
+      const nameVisible = Array.from(
+        document.querySelectorAll<HTMLInputElement>("input"),
+      ).some((el) => {
+        if (!vis(el)) return false;
+        const m = [
+          el.name,
+          el.id,
+          el.getAttribute("placeholder"),
+          el.getAttribute("aria-label"),
+          el.labels?.[0]?.textContent,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return /first ?name|last ?name|full name|guest name/.test(m);
+      });
+      if (nameVisible) return null;
+      // Find an "Add Guest" control. Icon ligatures can make the text read
+      // "add Add Guest", so match the trailing words on short labels only — and
+      // never "Add special request".
+      const ctrls = Array.from(
+        document.querySelectorAll<HTMLElement>("button,a,[role=button]"),
+      );
+      for (const el of ctrls) {
+        if (!vis(el)) continue;
+        const t = (
+          el.innerText ||
+          el.textContent ||
+          el.getAttribute("aria-label") ||
+          ""
+        )
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
+        if (t.length > 24) continue;
+        if (/\badd guests?( details?)?$/.test(t)) {
+          el.click();
+          return "Add Guest";
+        }
+      }
+      return null;
     });
   } catch {
     return null;
