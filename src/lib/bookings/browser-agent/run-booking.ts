@@ -645,8 +645,20 @@ async function runBrowserBookingInner(args: {
                 postal_code: traveler.addressPostalCode,
                 country: traveler.addressCountry ?? "US",
               },
+              // FINISH > FAST (Carson's call): give slow luxury forms enough
+              // time to actually REACH the card step instead of getting cut off
+              // mid-flow and bailing to concierge. Hotels 9 min (heavy multi-
+              // iframe checkouts — Pearl/Streamsong/Aman), golf 8 min (platform
+              // nav + form), else 6. Most still finish in 3-5 and never feel it;
+              // this just stops the slow ones aborting at the finish line.
+              // BROWSER_AGENT_TIMEOUT_MS overrides everything.
               timeoutMs:
-                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) || 360_000,
+                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
+                (item.type === "LODGING"
+                  ? 540_000
+                  : item.type === "TEE_TIME"
+                    ? 480_000
+                    : 360_000),
               onStep: async (label) => {
                 await bridgeNudge(label);
               },
@@ -733,8 +745,20 @@ async function runBrowserBookingInner(args: {
               // to concierge at 4 min). Past 6 min it hands off. The UI tells
               // the customer WHY a longer one is taking a bit. Override per-
               // deploy with BROWSER_AGENT_TIMEOUT_MS.
+              // FINISH > FAST (Carson's call): give slow luxury forms enough
+              // time to actually REACH the card step instead of getting cut off
+              // mid-flow and bailing to concierge. Hotels 9 min (heavy multi-
+              // iframe checkouts — Pearl/Streamsong/Aman), golf 8 min (platform
+              // nav + form), else 6. Most still finish in 3-5 and never feel it;
+              // this just stops the slow ones aborting at the finish line.
+              // BROWSER_AGENT_TIMEOUT_MS overrides everything.
               timeoutMs:
-                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) || 360_000,
+                Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
+                (item.type === "LODGING"
+                  ? 540_000
+                  : item.type === "TEE_TIME"
+                    ? 480_000
+                    : 360_000),
               maxSteps,
               // Run the browser in the region nearest the venue so each of
               // the ~25 actions has a short round-trip (an Italian hotel

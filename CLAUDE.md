@@ -282,8 +282,13 @@ diag), per-ENGINE DOM gaps — fix from a fresh run's diag HTML, do NOT guess bl
 
 **Target:** dates deterministic (~10s) + room/rate/enhancements deterministic
 (already working) + guest autofill (~5s) = Aman to the card step in ~3–4 min.
-Cap is currently **6 min** (`BROWSER_AGENT_TIMEOUT_MS` || 360_000) — leave it at
-6 unless these fixes land it under 4 reliably.
+Timeout policy (Carson's call, updated): **FINISH > FAST.** A booking that
+reaches the card step in 9 min beats a fast one that aborts at minute 5. Caps
+are now type-aware in `run-booking.ts`: **LODGING 9 min** (540_000), **TEE_TIME
+8 min** (480_000), else 6 min — `BROWSER_AGENT_TIMEOUT_MS` overrides all. Most
+bookings still finish in 3-5 and never feel it; the higher caps only stop slow
+luxury forms (Pearl/Streamsong/Aman) aborting at the finish line. Don't lower
+them for speed — reliability of COMPLETION is the priority now.
 
 **Hard truth to keep stating to Carson:** the agent fills everything UP TO the
 card step; it **cannot click "Pay/Confirm" without Stripe Issuing** (the virtual
