@@ -169,8 +169,23 @@ export async function resolveHotelId(args: {
         if (strongWanted.has(t)) strongShared++;
       }
     }
+    // PRECISION GATE: a candidate must be substantially ABOUT the wanted
+    // hotel, not just mention its name among unrelated words. A vacation
+    // rental like "Hideaway — Blackberry Farm — Hot Tub — Fire Pit — Pet
+    // Friendly" shares the brand tokens ("blackberry", "farm") but drowns
+    // them in a dozen others; booking it for "Blackberry Farm" would send the
+    // guest to the WRONG property — the worst failure we have. So require the
+    // matched DISTINCTIVE tokens to be a meaningful fraction of the
+    // candidate's distinctive tokens (place words don't count as noise).
+    const haveDistinctive = new Set(
+      [...have].filter((t) => !placeTokens.has(t)),
+    );
+    const precision =
+      haveDistinctive.size > 0 ? strongShared / haveDistinctive.size : 0;
     const qualifies =
-      strongWanted.size > 0 ? strongShared >= 1 : shared === wanted.size;
+      strongWanted.size > 0
+        ? strongShared >= 1 && precision >= 0.34
+        : shared === wanted.size;
     if (qualifies && shared > bestScore) {
       bestScore = shared;
       best = h;
