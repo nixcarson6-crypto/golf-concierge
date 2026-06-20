@@ -389,20 +389,29 @@ async function runBrowserBookingInner(args: {
   // estimate from the build's web lookup (Carson's ask — show a price), and we
   // don't want that to ever pause a tee-time booking for "price approval". Golf
   // is pay-at-course anyway, so there's no charge to gate. Hotels/cars keep it.
+  // BILL-SHOCK gate (cents) — the ONLY mid-flow stop. The estimate is ROUGH
+  // (per-night × nights, no taxes / resort fees), so a venue's real total
+  // routinely lands 20-40% higher; gating on the bare estimate would pause a
+  // normal booking for "approval" and force a full form RE-RUN (a $12.6k Auberge
+  // estimate vs a $15.8k real total did exactly that). So gate at the estimate +
+  // a generous buffer: only a TRUE overage (well past taxes/fees) pauses. null
+  // when the customer already approved a real price, or for pay-at-course golf.
   const priceGateCents =
     approvedPriceCents != null || item.type === "TEE_TIME"
       ? null
-      : task.budgetCents;
+      : task.budgetCents != null
+        ? Math.round(task.budgetCents * 1.6)
+        : null;
 
-  // MVP "review before charging" (Carson's call): the agent fills everything to
-  // the card step and STOPS for a one-tap customer approval before any money
-  // moves. ON by default; the customer's approval (approve-price) re-runs the
-  // booking with approvedPriceCents set, which turns this OFF so the re-run
-  // pays. Golf is pay-at-course (no upfront charge to review), and pay-at-
-  // property hotels never reach a card step, so neither is slowed. Flip to
-  // full-auto later with BOOKING_REQUIRE_PAYMENT_REVIEW=false.
+  // APPROVE UP FRONT, BOOK STRAIGHT THROUGH (Carson's call). The customer's
+  // up-front confirm — "Confirm & book all" / "Book it for me", which shows the
+  // price BEFORE anything runs — IS the authorization. So the agent runs ONCE,
+  // all the way to the card step, with NO mandatory mid-flow pause (that pause
+  // re-ran the whole form, which the customer never wanted to sit through
+  // twice). OFF by default now; the only mid-flow stop is the bill-shock gate
+  // above. Set BOOKING_REQUIRE_PAYMENT_REVIEW=true to force the old review back.
   const requirePaymentReview =
-    optionalEnv("BOOKING_REQUIRE_PAYMENT_REVIEW") !== "false" &&
+    optionalEnv("BOOKING_REQUIRE_PAYMENT_REVIEW") === "true" &&
     approvedPriceCents == null &&
     item.type !== "TEE_TIME";
 

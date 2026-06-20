@@ -779,6 +779,9 @@ export async function runStagehandBooking(
     // per run (shared by the per-step pass + the stall-watchdog), so we never
     // add guest rows in a loop.
     let guestFormRevealed = false;
+    // One-shot: on a single-page checkout (contact info + card on ONE page) fill
+    // the contact fields the moment the card step is reached, before handing off.
+    let cardStepFilled = false;
     // One-shot guard so the calendar diagnostic dumps at most once per run.
     let calendarDiagnosed = false;
     // One-shot: dump the guest/checkout form's real field structure so a SynXis
@@ -1008,8 +1011,31 @@ export async function runStagehandBooking(
           const fm = await dismissBlockingModalDeterministically(bf);
           if (fm) return `closed modal "${fm}"`;
         }
-        // Reached the card step → stop, the payment phase takes over.
+        // Reached the card step → FILL any contact/guest fields still on this
+        // page FIRST (autofill always skips the card field itself), THEN stop.
+        // Single-page checkouts (Auberge/iHotelier) put Contact Info ABOVE the
+        // card on the SAME page, and this card check runs before the autofill
+        // step further down — so without this the conductor parks at the card
+        // step with name/email/address blank (a real 42s Auberge run did exactly
+        // that). One-shot + speed-neutral (~100ms fill, then it stops next tick).
         if (await detectCardFieldPresent(bf)) {
+          if (opts.autofill && !cardStepFilled) {
+            cardStepFilled = true;
+            const n = await deterministicGuestFill(bf, opts.autofill).catch(() => 0);
+            if (n > 0) {
+              console.log(
+                `[stagehand] ⚡ filled ${n} contact fields at the card step (${elapsed()})`,
+              );
+              return `card-step autofill ${n}`;
+            }
+            // Filled nothing but there's a card here, so a contact form likely
+            // sits above it — dump its real structure once so a field-matching
+            // miss is fixable from DOM (the conductor stops here, so the agent's
+            // own guest-form diag never runs on this page).
+            const gd = await diagnoseGuestForm(bf).catch(() => "");
+            if (gd)
+              console.log(`[stagehand] 🔬 card-step guest-form diag :: ${gd}`);
+          }
           conductorReachedCard = true;
           return null;
         }
@@ -3705,11 +3731,21 @@ async function diagnoseGuestForm(page: unknown): Promise<string> {
       const controls = Array.from(
         document.querySelectorAll<HTMLElement>("input,select,textarea"),
       ).filter(vis);
-      // Only dump a real guest/checkout form (a name field present).
+      // Dump a real guest/checkout form. Normally that means a NAME field — but
+      // a floating-label form whose labels we can't resolve would read as
+      // nameless and dump nothing, which is exactly the case we need to SEE. So
+      // also dump when there's a substantial form (≥4 text/email/tel inputs),
+      // e.g. a single-page checkout, even with no resolvable name.
       const hasName = controls.some((el) =>
         /first.?name|given-name|last.?name|surname|family-name/.test(metaOf(el)),
       );
-      if (!hasName) return "";
+      const looksLikeCheckout =
+        controls.filter((el) =>
+          ["text", "email", "tel"].includes(
+            (el.getAttribute("type") || "text").toLowerCase(),
+          ),
+        ).length >= 4;
+      if (!hasName && !looksLikeCheckout) return "";
       const clip = (s: string | null | undefined, n: number) =>
         (s || "").replace(/\s+/g, " ").trim().slice(0, n);
       const fields = controls.slice(0, 40).map((el) => ({
