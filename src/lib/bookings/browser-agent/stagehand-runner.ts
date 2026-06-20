@@ -2952,12 +2952,24 @@ async function clickStayDatesDeterministically(
         // element's OWN text to be just a 1-2 digit day.
         const gridCells = Array.from(
           document.querySelectorAll<HTMLElement>(
-            "[role=gridcell], button, a, [role=button], td, li",
+            "[role=gridcell], button, a, [role=button], td, li, div",
           ),
         ).filter((el) => {
           if (!isVisible(el)) return false;
           if (el.matches?.("[role=gridcell]")) return true;
-          return /^\d{1,2}$/.test((el.textContent || "").replace(/\s+/g, ""));
+          const raw = (el.textContent || "").trim();
+          // Pure day number ("12").
+          if (/^\d{1,2}$/.test(raw.replace(/\s+/g, ""))) return true;
+          // Day number FOLLOWED BY a rate/status — Streamsong-style cells are
+          // "21 $307" / "20 Sold out" / "12 $1,058". Match a short cell that
+          // STARTS with a 1-2 digit day and carries a price or sold-out marker,
+          // so a priced calendar grid is no longer skipped. (cellISO already
+          // pulls the leading day number; the month comes from the header.)
+          return (
+            raw.length <= 22 &&
+            /^\d{1,2}\b/.test(raw) &&
+            /\$\s?\d|sold\s*out|unavailable|\/\s*night/i.test(raw)
+          );
         });
         // The month a cell sits under, from an ancestor aria-label/caption
         // (One&Only's <table aria-label="August 2026">) OR the nearest preceding
@@ -4262,8 +4274,20 @@ async function clickCheapestRoomDeterministically(
         }
         return el.parentElement || el;
       };
+      // RESTRICTED rates the customer can't actually use — resident / AAA /
+      // AARP / military / government / employee / senior rates that need an ID
+      // or proof at check-in. The cheapest rate is often one of these (Streamsong
+      // leads with a "Florida/Georgia Resident Rate" that needs a state license),
+      // so we must NOT auto-pick it — take the cheapest UNRESTRICTED rate instead.
+      const RESTRICTED =
+        /\bresident\b|\baaa\b|\baarp\b|military|veteran|government|\bgovt\b|\bemployee\b|\bsenior\b|present your|valid (photo )?id\b|driver'?s licen|corporate rate|first responder|\bnurse\b|\bteacher\b|membership rate|member['’]?s rate/i;
       const seen = new Set<HTMLElement>();
-      const rooms: { cta: HTMLElement; price: number | null; book: boolean }[] = [];
+      const rooms: {
+        cta: HTMLElement;
+        price: number | null;
+        book: boolean;
+        restricted: boolean;
+      }[] = [];
       for (const cta of ctaEls) {
         const card = cardOf(cta);
         if (seen.has(card)) continue;
@@ -4276,10 +4300,12 @@ async function clickCheapestRoomDeterministically(
         ).filter((e) => isVisible(e) && labelOf(e).length <= 24);
         const booking = ctas.find((e) => BOOK_CTA.test(labelOf(e)));
         const chosen = booking || cta;
+        const cardText = card.textContent || "";
         rooms.push({
           cta: chosen,
-          price: priceOf(card.textContent || ""),
+          price: priceOf(cardText),
           book: !!booking,
+          restricted: RESTRICTED.test(cardText),
         });
       }
       // Require a real PRICE on the room. A priceless "room" is almost always
@@ -4289,13 +4315,17 @@ async function clickCheapestRoomDeterministically(
       const priced = rooms.filter((r) => r.price != null);
       if (priced.length === 0) return null;
       priced.sort((a, b) => {
+        // UNRESTRICTED rates first (a resident/AAA/military rate the customer
+        // can't redeem is worse than a pricier rate they can actually book)…
+        if (a.restricted !== b.restricted) return a.restricted ? 1 : -1;
+        // …then cheapest, then a booking-forward CTA over an info link.
         const pa = a.price ?? Infinity;
         const pb = b.price ?? Infinity;
         if (pa !== pb) return pa - pb;
         return (b.book ? 1 : 0) - (a.book ? 1 : 0);
       });
       priced[0].cta.click();
-      return `room=$${priced[0].price}`;
+      return `room=$${priced[0].price}${priced[0].restricted ? " (restricted-only)" : ""}`;
     });
   } catch {
     return null;
@@ -4569,6 +4599,30 @@ async function deterministicGuestFill(
         const hasEmail = anyType("email") || anyMeta(/\be-?mail\b/);
         const hasPhone = anyType("tel") || anyMeta(/phone|mobile|\btel\b/);
         if (!hasName && !hasCard && !(hasEmail && hasPhone)) return 0;
+        // Skip a NEWSLETTER / subscribe form. Streamsong's reservations page has
+        // a "Stay Current on Everything Streamsong" signup (First / Last / Email
+        // + terms) that passed the name gate above and got auto-filled as if it
+        // were the guest form. A REAL checkout also has a card field, a phone,
+        // OR an address — a newsletter has none of those, just a Subscribe-type
+        // control nearby. Only skip when that's unmistakable.
+        const hasAddr = anyMeta(
+          /address|street|postal|\bzip\b|\bcity\b|\bstate\b|country/,
+        );
+        const subscribeCtx = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "button,input[type=submit],a,h1,h2,h3,h4,legend",
+          ),
+        ).some((b) =>
+          /subscribe|sign\s?up for|stay current|newsletter|join (our|the).*(list|club)|get (our )?updates|email (sign|list)/i.test(
+            (
+              (b as HTMLElement).innerText ||
+              (b as HTMLInputElement).value ||
+              b.textContent ||
+              ""
+            ).trim(),
+          ),
+        );
+        if (subscribeCtx && !hasCard && !hasPhone && !hasAddr) return 0;
 
         for (const el of inputs) {
           const m = meta(el);
