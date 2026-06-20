@@ -1364,6 +1364,17 @@ export async function runStagehandBooking(
     let wdAdvanceLabel = "";
     let wdAdvanceRepeats = 0;
     let wdNudgeCount = 0;
+    // ADAPTIVE STALL THRESHOLD. Step time varies wildly by hotel — a normal
+    // engine finishes a step in ~8-13s, but a heavyweight SPA (Aman) legitimately
+    // takes 25-35s per step because its DOM is enormous. A fixed 20s threshold
+    // would fire the watchdog DURING a normal Aman step and fight the working
+    // agent. So track recent step durations and only call it "frozen" when it's
+    // been quiet for ~1.6× the slowest of the last few steps — the watchdog
+    // auto-tunes to each hotel's pace instead of one number that's wrong for half
+    // of them. GENERAL: never fights a slow-but-working agent, always catches a
+    // real freeze (Streamsong froze for 280s — trips at any threshold).
+    let prevStepAt = Date.now();
+    const recentStepMs: number[] = [];
     // Golf one-shot progress for the watchdog (mirrors the conductor's golf
     // flags) so a frozen tee-sheet advances Visitors → Players → Search → slot →
     // rate one step per wake instead of re-clicking the same one.
@@ -1497,7 +1508,16 @@ export async function runStagehandBooking(
     // its step, so a nudge can't act on the wrong screen, and the advance click
     // already refuses to fire on a card step. GENERAL — every hotel/golf form.
     const STALL_CHECK_MS = 8_000;
-    const STALL_NUDGE_MS = 20_000; // ~2× a normal step — only a real freeze trips it
+    const STALL_NUDGE_FLOOR_MS = 22_000; // never call it frozen sooner than this
+    // "Frozen" = quiet for longer than ~1.6× the slowest of the last few steps,
+    // but never less than the floor. On a normal hotel that's ~22s; on a
+    // heavyweight SPA whose steps run 30s+ it stretches to ~50s, so the watchdog
+    // doesn't fire mid-step and fight a working agent.
+    const stallThresholdMs = () =>
+      Math.max(
+        STALL_NUDGE_FLOOR_MS,
+        recentStepMs.length ? Math.max(...recentStepMs) * 1.6 : 0,
+      );
     const WD_NUDGE_CAP = 28; // bounded; a burst uses several, so allow a few bursts
     let wdLastStuckUrl = ""; // re-diag when the frozen screen CHANGES, not just once
     // One deterministic "advance the stuck booking" action — the conductor's
@@ -1618,7 +1638,7 @@ export async function runStagehandBooking(
     stallWatch = setInterval(() => {
       void (async () => {
         if (controller.signal.aborted || nudging) return;
-        if (Date.now() - lastStepAt < STALL_NUDGE_MS) return; // agent still stepping
+        if (Date.now() - lastStepAt < stallThresholdMs()) return; // agent still working at this hotel's pace
         if (wdNudgeCount >= WD_NUDGE_CAP) return;
         nudging = true;
         try {
@@ -1692,7 +1712,13 @@ export async function runStagehandBooking(
       callbacks: {
         onStepFinish: async () => {
           stepCount += 1;
-          lastStepAt = Date.now(); // agent is alive — reset the stall watchdog
+          const now = Date.now();
+          // Record how long this step took so the watchdog can adapt its
+          // "frozen" threshold to THIS hotel's pace (keep the last 5).
+          recentStepMs.push(now - prevStepAt);
+          if (recentStepMs.length > 5) recentStepMs.shift();
+          prevStepAt = now;
+          lastStepAt = now; // agent is alive — reset the stall watchdog
           console.log(`[stagehand]   step ${stepCount} done (${elapsed()})`);
           await opts.onStep?.(progressLabel(stepCount));
           // BOT-DETECTION WALL mid-flow: Access's "verify your browser", or a
@@ -3518,43 +3544,77 @@ async function diagnoseBookingStep(page: unknown): Promise<string> {
         const s = window.getComputedStyle(el as HTMLElement);
         return s.visibility !== "hidden" && s.display !== "none";
       };
+      // Is this element part of the site CHROME (nav / header / footer / cookie
+      // bar) rather than the booking content? On big marketing SPAs (Aman) the
+      // chrome has dozens of links + footer items that swamp the diag and bury
+      // the actual room cards, so the diag came back useless. Skip chrome so the
+      // capture is the booking step. GENERAL — every nav-heavy hotel SPA.
+      const inChrome = (el: Element): boolean => {
+        let n: Element | null = el;
+        for (let i = 0; i < 6 && n; i++, n = n.parentElement) {
+          const tag = n.tagName;
+          if (tag === "NAV" || tag === "HEADER" || tag === "FOOTER") return true;
+          if (/navigation|banner|contentinfo/i.test(n.getAttribute("role") || ""))
+            return true;
+          const cls =
+            typeof (n as HTMLElement).className === "string"
+              ? (n as HTMLElement).className
+              : "";
+          if (
+            /(^|[-_\s])(navbar|navigation|site-?header|site-?footer|page-?header|page-?footer|main-?nav|top-?nav|mega-?menu|cookie|consent|gdpr|onetrust)([-_\s]|$)/i.test(
+              `${cls} ${n.id || ""}`,
+            )
+          )
+            return true;
+        }
+        return false;
+      };
       const clip = (s: string | null | undefined, n: number) =>
         (s || "").replace(/\s+/g, " ").trim().slice(0, n);
       const uniq = (a: string[]) => a.filter((t, i) => t && a.indexOf(t) === i);
+      const content = (el: Element) => vis(el) && !inChrome(el);
       const buttons = uniq(
         Array.from(
           document.querySelectorAll<HTMLElement>(
             "button,a,[role=button],input[type=submit],input[type=button]",
           ),
         )
-          .filter(vis)
+          .filter(content)
           .map((el) =>
             clip(
               el.innerText || el.textContent || (el as HTMLInputElement).value || el.getAttribute("aria-label"),
               32,
             ),
           ),
-      ).slice(0, 30);
+      ).slice(0, 40);
       const priced = uniq(
         Array.from(document.querySelectorAll<HTMLElement>("*"))
           .filter(
             (el) =>
-              vis(el) &&
+              content(el) &&
+              el.tagName !== "SCRIPT" &&
+              el.tagName !== "STYLE" &&
               el.children.length <= 4 &&
-              /[£$€]\s?\d|\d+(?:[.,]\d{2})?\s?(?:USD|GBP|EUR)/.test(el.textContent || ""),
+              // Include ¥/₩/₹ — Aman Tokyo (and other markets) quote in yen, which
+              // the old $/£/€-only check missed, so no real price ever showed.
+              /[£$€¥₩₹]\s?\d|\d[\d.,]*\s?(?:USD|GBP|EUR|JPY|CNY|YEN|AUD|CAD|CHF|SGD)\b/i.test(
+                el.textContent || "",
+              ),
           )
           .map((el) => clip(el.textContent, 48)),
       ).slice(0, 16);
       const headings = uniq(
         Array.from(
-          document.querySelectorAll<HTMLElement>("h1,h2,h3,[class*=step i],[class*=heading i]"),
+          document.querySelectorAll<HTMLElement>(
+            "h1,h2,h3,h4,[class*=step i],[class*=heading i],[class*=room i] [class*=name i],[class*=rate i] [class*=name i]",
+          ),
         )
-          .filter(vis)
-          .map((el) => clip(el.textContent, 40)),
-      ).slice(0, 10);
+          .filter(content)
+          .map((el) => clip(el.textContent, 44)),
+      ).slice(0, 14);
       const inputs = uniq(
         Array.from(document.querySelectorAll<HTMLElement>("input,select"))
-          .filter(vis)
+          .filter(content)
           .map((el) =>
             clip(
               el.getAttribute("name") ||
@@ -3564,14 +3624,14 @@ async function diagnoseBookingStep(page: unknown): Promise<string> {
               28,
             ),
           ),
-      ).slice(0, 20);
+      ).slice(0, 22);
       return JSON.stringify({
         url: location.href.slice(0, 140),
         headings,
         buttons,
         priced,
         inputs,
-      }).slice(0, 4500);
+      }).slice(0, 4800);
     });
   } catch {
     return "";
