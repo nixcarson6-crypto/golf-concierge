@@ -775,6 +775,10 @@ export async function runStagehandBooking(
     // picked on an EARLIER step (so it can't re-click the room on the same DOM).
     let rateCardPicked = false;
     let roomPickedAtStep = -1;
+    // One-shot: a collapsed guest form ("Add Guest") gets expanded at most once
+    // per run (shared by the per-step pass + the stall-watchdog), so we never
+    // add guest rows in a loop.
+    let guestFormRevealed = false;
     // One-shot guard so the calendar diagnostic dumps at most once per run.
     let calendarDiagnosed = false;
     // One-shot: dump the guest/checkout form's real field structure so a SynXis
@@ -1491,9 +1495,113 @@ export async function runStagehandBooking(
     // to push the booking forward on our own. Every recognizer self-guards to
     // its step, so a nudge can't act on the wrong screen, and the advance click
     // already refuses to fire on a card step. GENERAL — every hotel/golf form.
-    const STALL_CHECK_MS = 9_000;
-    const STALL_NUDGE_MS = 28_000; // ~2× a normal step — only true hangs trip it
-    const WD_NUDGE_CAP = 10; // bounded; after this the wall-clock routes to concierge
+    const STALL_CHECK_MS = 8_000;
+    const STALL_NUDGE_MS = 20_000; // ~2× a normal step — only a real freeze trips it
+    const WD_NUDGE_CAP = 28; // bounded; a burst uses several, so allow a few bursts
+    let wdLastStuckUrl = ""; // re-diag when the frozen screen CHANGES, not just once
+    // One deterministic "advance the stuck booking" action — the conductor's
+    // recognizers, in order. Returns a label when it acted, else null. Each one
+    // self-guards to its own step (room only on a rooms list, advance refuses on
+    // a card step, autofill is idempotent), so it can't act on the wrong screen.
+    const driveStuckBooking = async (
+      active: unknown,
+      bf: unknown,
+    ): Promise<string | null> => {
+      // Blocking modal (page + booking frame).
+      {
+        const m = await dismissBlockingModalDeterministically(active).catch(() => null);
+        if (m) return `closed modal "${m}"`;
+      }
+      if (bf !== active) {
+        const m = await dismissBlockingModalDeterministically(bf).catch(() => null);
+        if (m) return `closed modal "${m}"`;
+      }
+      // GOLF tee-sheet steps — Visitors → Players → Search → slot → rate.
+      if (opts.selectTeeSlot) {
+        if (!wdVisitorDone) {
+          const tab = await clickGuestTabDeterministically(bf).catch(() => null);
+          if (tab === "already-visitors") wdVisitorDone = true;
+          else if (tab) {
+            wdVisitorDone = true;
+            return `guest-tab "${tab}"`;
+          }
+        }
+        if (!wdPlayersDone) {
+          const p = await setPlayersCountDeterministically(bf, opts.players ?? null).catch(
+            () => null,
+          );
+          if (p) {
+            if (p !== "players-open") wdPlayersDone = true;
+            return `players ${p}`;
+          }
+        }
+        if (!wdSearchDone) {
+          const s = await clickGolfSearchDeterministically(bf).catch(() => null);
+          if (s) {
+            wdSearchDone = true;
+            return `golf-search "${s}"`;
+          }
+        }
+        if (!wdSlotDone) {
+          const slot = await clickTeeTimeSlotDeterministically(
+            bf,
+            opts.teeTimeLabel ?? null,
+          ).catch(() => null);
+          if (slot) {
+            wdSlotDone = true;
+            return `slot ${slot}`;
+          }
+        }
+        if (!wdRateDone) {
+          const rate = await selectCheapestRateRadioDeterministically(bf).catch(() => null);
+          if (rate) {
+            wdRateDone = true;
+            return `rate ${rate}`;
+          }
+        }
+      }
+      // Upsell / add-on step.
+      {
+        const up = await clickThroughUpsellDeterministically(bf).catch(() => null);
+        if (up) return `upsell-skip "${up}"`;
+      }
+      // Hotel room — lodging only, one-shot (rooms stay visible on two-panel
+      // engines, so without roomPicked this would re-click forever).
+      if (!opts.selectTeeSlot && !roomPicked) {
+        const r = await clickCheapestRoomDeterministically(bf).catch(() => null);
+        if (r) {
+          roomPicked = true;
+          return `room ${r}`;
+        }
+      }
+      // Reveal a collapsed guest form (Agilysys "Add Guest"), one-shot.
+      if (opts.autofill && !guestFormRevealed) {
+        const ag = await clickAddGuestDeterministically(bf).catch(() => null);
+        if (ag) {
+          guestFormRevealed = true;
+          return `reveal-guest "${ag}"`;
+        }
+      }
+      // Autofill BEFORE advancing, so a half-empty form isn't submitted blank.
+      if (opts.autofill) {
+        const n = await deterministicGuestFill(bf, opts.autofill).catch(() => 0);
+        if (n > 0) return `autofill ${n} fields`;
+      }
+      // Advance (Search / Continue / Proceed). Refuses on a card step; anti-hammer
+      // stops a no-op button after a few identical clicks.
+      {
+        const a = await clickAdvanceButtonDeterministically(bf).catch(() => null);
+        if (a) {
+          if (a === wdAdvanceLabel) wdAdvanceRepeats += 1;
+          else {
+            wdAdvanceLabel = a;
+            wdAdvanceRepeats = 0;
+          }
+          if (wdAdvanceRepeats < 4) return `advance "${a}"`;
+        }
+      }
+      return null;
+    };
     stallWatch = setInterval(() => {
       void (async () => {
         if (controller.signal.aborted || nudging) return;
@@ -1501,135 +1609,51 @@ export async function runStagehandBooking(
         if (wdNudgeCount >= WD_NUDGE_CAP) return;
         nudging = true;
         try {
-          const active = stagehand.context.activePage();
-          if (!active) return;
-          const bf = await bookingFrame(active).catch(() => active);
-          // One-shot: capture exactly where it hung for the next run's triage.
-          if (!stuckDiagged) {
-            stuckDiagged = true;
-            const idle = ((Date.now() - lastStepAt) / 1000).toFixed(0);
-            const d = await diagnoseBookingStep(bf).catch(() => "");
-            if (d)
-              console.log(
-                `[stagehand] 🔬 STUCK booking-step diag (agent idle ${idle}s, step ${stepCount}) :: ${d}`,
-              );
-          }
-          // Deterministic nudge, in conductor order — each is self-guarded.
-          let nudged: string | null = null;
+          // The agent is FROZEN. First capture WHERE — and re-capture whenever the
+          // frozen screen changes (the first stall consumed the old one-shot diag,
+          // so a later, different freeze like Proceed was invisible). Then
+          // BURST-DRIVE: run the deterministic recognizers back-to-back so a
+          // multi-step finish (Add Guest → autofill → Proceed) completes in a few
+          // seconds, not one action per 20s wake.
           {
-            const m = await dismissBlockingModalDeterministically(active).catch(() => null);
-            if (m) nudged = `closed modal "${m}"`;
-          }
-          if (!nudged && bf !== active) {
-            const m = await dismissBlockingModalDeterministically(bf).catch(() => null);
-            if (m) nudged = `closed modal "${m}"`;
-          }
-          // GOLF tee-sheet steps — the conductor's golf flow, on a timer. A
-          // frozen golf agent would otherwise only get the hotel-shaped nudges
-          // below (room/advance), which don't fit a tee sheet. Each is one-shot
-          // so we walk the accordion instead of re-clicking one rung.
-          if (!nudged && opts.selectTeeSlot) {
-            if (!wdVisitorDone) {
-              // ChronoGolf "Visitors | Members" — "already-visitors" means we're
-              // on it (record it, but it's not an action worth counting).
-              const tab = await clickGuestTabDeterministically(bf).catch(() => null);
-              if (tab === "already-visitors") wdVisitorDone = true;
-              else if (tab) {
-                wdVisitorDone = true;
-                nudged = `guest-tab "${tab}"`;
-              }
+            const a0 = stagehand.context.activePage();
+            const bf0 = a0 ? await bookingFrame(a0).catch(() => a0) : null;
+            let url0 = "";
+            try {
+              url0 = (a0 as { url?: () => string })?.url?.() ?? "";
+            } catch {
+              /* best-effort */
             }
-            if (!nudged && !wdPlayersDone) {
-              const p = await setPlayersCountDeterministically(
-                bf,
-                opts.players ?? null,
-              ).catch(() => null);
-              if (p) {
-                if (p !== "players-open") wdPlayersDone = true; // "open" = accordion expanded, not set yet
-                nudged = `players ${p}`;
-              }
-            }
-            if (!nudged && !wdSearchDone) {
-              const s = await clickGolfSearchDeterministically(bf).catch(() => null);
-              if (s) {
-                wdSearchDone = true;
-                nudged = `golf-search "${s}"`;
-              }
-            }
-            if (!nudged && !wdSlotDone) {
-              const slot = await clickTeeTimeSlotDeterministically(
-                bf,
-                opts.teeTimeLabel ?? null,
-              ).catch(() => null);
-              if (slot) {
-                wdSlotDone = true;
-                nudged = `slot ${slot}`;
-              }
-            }
-            if (!nudged && !wdRateDone) {
-              const rate = await selectCheapestRateRadioDeterministically(bf).catch(
-                () => null,
-              );
-              if (rate) {
-                wdRateDone = true;
-                nudged = `rate ${rate}`;
-              }
+            if (bf0 && url0 !== wdLastStuckUrl) {
+              wdLastStuckUrl = url0;
+              stuckDiagged = true; // so the catch/post-run fallback diag doesn't double-dump
+              const idle = ((Date.now() - lastStepAt) / 1000).toFixed(0);
+              const d = await diagnoseBookingStep(bf0).catch(() => "");
+              if (d)
+                console.log(
+                  `[stagehand] 🔬 STUCK booking-step diag (agent idle ${idle}s, step ${stepCount}) :: ${d}`,
+                );
             }
           }
-          if (!nudged) {
-            const up = await clickThroughUpsellDeterministically(bf).catch(() => null);
-            if (up) nudged = `upsell-skip "${up}"`;
-          }
-          // Hotel room pick — lodging only, and ONLY if we haven't already
-          // picked one (the shared roomPicked flag, set by the conductor /
-          // per-step pass). On a TWO-PANEL engine (Streamsong/Agilysys) the
-          // rooms list stays visible beside the cart, so without this guard the
-          // watchdog re-clicks the room forever instead of falling through to
-          // Proceed. GENERAL — every two-panel booking page.
-          if (!nudged && !opts.selectTeeSlot && !roomPicked) {
-            const r = await clickCheapestRoomDeterministically(bf).catch(() => null);
-            if (r) {
-              roomPicked = true;
-              nudged = `room ${r}`;
-            }
-          }
-          // Reveal a COLLAPSED guest form (Agilysys "Guest details (0/2)" hides
-          // First/Last/Email behind an "Add Guest" button) so autofill has
-          // fields to fill — otherwise Proceed stays gated on empty guest info.
-          if (!nudged && opts.autofill) {
-            const ag = await clickAddGuestDeterministically(bf).catch(() => null);
-            if (ag) nudged = `reveal-guest "${ag}"`;
-          }
-          // Autofill BEFORE advancing, so a half-empty guest form gets completed
-          // rather than submitted blank by an early Continue click.
-          let filledThisPass = 0;
-          if (!nudged && opts.autofill) {
-            filledThisPass = await deterministicGuestFill(bf, opts.autofill).catch(() => 0);
-            if (filledThisPass > 0) nudged = `autofill ${filledThisPass} fields`;
-          }
-          // Advance (Search / Continue / Book) ONLY when nothing above acted and
-          // there was nothing left to fill — i.e. a rooms/search step or a
-          // already-complete form, never a half-filled one. The recognizer
-          // itself also refuses to fire on a card step.
-          if (!nudged && filledThisPass === 0) {
-            const a = await clickAdvanceButtonDeterministically(bf).catch(() => null);
-            if (a) {
-              if (a === wdAdvanceLabel) wdAdvanceRepeats += 1;
-              else {
-                wdAdvanceLabel = a;
-                wdAdvanceRepeats = 0;
-              }
-              // Same button 3× with no agent step between = a no-op; stop hammering.
-              if (wdAdvanceRepeats < 3) nudged = `advance "${a}"`;
-            }
-          }
-          if (nudged) {
+          const BURST_MAX = 8;
+          for (
+            let b = 0;
+            b < BURST_MAX && !controller.signal.aborted && wdNudgeCount < WD_NUDGE_CAP;
+            b++
+          ) {
+            const active = stagehand.context.activePage();
+            if (!active) break;
+            const bf = await bookingFrame(active).catch(() => active);
+            if (await detectCardFieldPresent(bf).catch(() => false)) break; // at the card step
+            const did = await driveStuckBooking(active, bf);
+            if (!did) break; // nothing left to do deterministically — let the agent/clock take over
             wdNudgeCount += 1;
             console.log(
-              `[stagehand] 🫀 stall-watchdog nudged a hung agent → ${nudged} (${elapsed()})`,
+              `[stagehand] 🫀 stall-watchdog (frozen agent) → ${did} (${elapsed()})`,
             );
-            lastStepAt = Date.now(); // let the nudge land before re-firing
+            await new Promise((r) => setTimeout(r, 1100)); // let each action land
           }
+          lastStepAt = Date.now(); // re-arm: give the burst time before firing again
         } catch {
           /* best-effort */
         } finally {
@@ -1745,13 +1769,18 @@ export async function runStagehandBooking(
                 }
                 // Reveal a collapsed guest form first (Agilysys "Add Guest")
                 // so the First/Last/Email fields exist before we autofill.
-                const revealed = await clickAddGuestDeterministically(active).catch(
-                  () => null,
-                );
-                if (revealed)
-                  console.log(
-                    `[stagehand] ⚡ revealed guest form ("${revealed}") (${elapsed()})`,
+                // One-shot via the shared flag so it can't add guest rows.
+                if (!guestFormRevealed) {
+                  const revealed = await clickAddGuestDeterministically(active).catch(
+                    () => null,
                   );
+                  if (revealed) {
+                    guestFormRevealed = true;
+                    console.log(
+                      `[stagehand] ⚡ revealed guest form ("${revealed}") (${elapsed()})`,
+                    );
+                  }
+                }
                 const filled = await deterministicGuestFill(active, opts.autofill);
                 if (filled > 0)
                   console.log(
