@@ -199,6 +199,14 @@ export type RunStagehandOptions = {
    *  tee-time list behind a "Players" step, so the deterministic Players
    *  picker needs the count to select it. null → leave the form default. */
   players?: number | null;
+  /** Resort-guest golf: set when this tee time is at a resort the customer is
+   *  staying at on the trip. `name` is the resort; `confirmationCode` is the
+   *  stay's confirmation if it's booked (the agent enters it to book the golf
+   *  as a guest), else null (stay not yet confirmed → link to it for the
+   *  concierge). When set, the "are you a resort guest?" gate does NOT bail to
+   *  a private-club dead end. null → not staying there → that course is private
+   *  to the customer (the private/public-course path). */
+  resortStay?: { name: string; confirmationCode: string | null } | null;
   /** Hotels only: when true, a zero-LLM pass clicks the cheapest ROOM card's
    *  CTA the moment a rooms/suites list renders — the agent's #1 hotel stall
    *  was sitting on the room grid. */
@@ -1467,18 +1475,47 @@ export async function runStagehandBooking(
         await bookingFrame(stagehand.context.activePage() ?? page),
       ).catch(() => null);
       if (gateMsg) {
-        console.log(
-          `[stagehand] 🏨 resort-guest golf gate (needs hotel confirmation) — routing to concierge (${elapsed()})`,
-        );
-        return {
-          outcome: {
-            status: "needs_review",
-            failureReason: "members_only",
-            message: gateMsg,
-          },
-          sessionUrl,
-          finalScreenshot: null,
-        };
+        const stay = opts.resortStay;
+        if (stay?.confirmationCode) {
+          // The customer IS staying here AND the stay is confirmed — let the
+          // agent book the golf as a resort guest using the confirmation number
+          // (the goal prompt carries it). Don't bail; fall through to the agent.
+          console.log(
+            `[stagehand] 🏨 resort-guest golf gate — staying at ${stay.name} (conf ${stay.confirmationCode}); booking as a guest (${elapsed()})`,
+          );
+        } else if (stay) {
+          // Staying here, but the stay isn't confirmed yet (agent-booked hotel,
+          // pending) — link the golf to the stay for the concierge to finish
+          // together. THIS is the legit "arranging with your stay" case.
+          console.log(
+            `[stagehand] 🏨 resort-guest golf gate — staying at ${stay.name}, stay not yet confirmed; linking to the stay (${elapsed()})`,
+          );
+          return {
+            outcome: {
+              status: "needs_review",
+              failureReason: "members_only",
+              message: `${stay.name} reserves tee times for resort guests — and you're staying there. Pyltrix is booking your tee time together with your ${stay.name} stay so it's confirmed under your reservation. Nothing for you to do — you'll get it by email.`,
+            },
+            sessionUrl,
+            finalScreenshot: null,
+          };
+        } else {
+          // NOT staying at this resort → the course is private to the customer.
+          // FAILED/members_only so the "find a nearby public course" recovery
+          // fires and the panel shows the "private — stay to play" message.
+          console.log(
+            `[stagehand] 🔒 resort-guest golf gate, customer NOT staying here — private to them, routing to a public course (${elapsed()})`,
+          );
+          return {
+            outcome: {
+              status: "failed",
+              failureReason: "members_only",
+              message: gateMsg,
+            },
+            sessionUrl,
+            finalScreenshot: null,
+          };
+        }
       }
       // NO TEE TIMES for the date → surface "no availability" (don't spin).
       const noAvail = await detectNoTeeAvailability(

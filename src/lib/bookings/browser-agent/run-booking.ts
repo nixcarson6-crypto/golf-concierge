@@ -145,6 +145,73 @@ async function failSafeToReview(
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Resort-guest golf: is this tee time at a resort the customer is staying at? */
+/* -------------------------------------------------------------------------- */
+
+const RESORT_STOP_WORDS = new Set([
+  "resort", "resorts", "hotel", "the", "golf", "course", "courses", "club",
+  "links", "spa", "lodge", "inn", "collection", "suite", "suites", "room",
+  "rooms", "villa", "villas", "tee", "time", "times", "north", "south", "east",
+  "west", "championship", "national", "country", "and",
+]);
+
+/** Significant brand tokens from a venue's leading name + location (e.g.
+ *  "Silverado Resort — South Course" → {"silverado"}). Used to tell whether a
+ *  golf course and a lodging belong to the SAME resort. */
+function resortBrandTokens(title: string, location: string | null): Set<string> {
+  const lead = (title || "").toLowerCase().split(/[—–·|(]|\s-\s/)[0];
+  const text = `${lead} ${(location || "").toLowerCase()}`.replace(
+    /[^a-z0-9 ]/g,
+    " ",
+  );
+  return new Set(
+    text
+      .split(/\s+/)
+      .filter((t) => t.length >= 4 && !RESORT_STOP_WORDS.has(t)),
+  );
+}
+
+/** True when a golf course and a lodging share a resort/brand token. */
+function sameResort(
+  golf: { title: string; location: string | null },
+  lodging: { title: string; location: string | null },
+): boolean {
+  const a = resortBrandTokens(golf.title, golf.location);
+  const b = resortBrandTokens(lodging.title, lodging.location);
+  for (const t of a) if (b.has(t)) return true;
+  return false;
+}
+
+/** Find a same-trip LODGING at the same resort as this tee time. Returns the
+ *  resort name + the stay's confirmation number (when the stay is already
+ *  CONFIRMED — so the agent can book the golf as a guest), else null. */
+async function resolveResortStay(args: {
+  tripId: string;
+  golfTitle: string;
+  golfLocation: string | null;
+}): Promise<{ name: string; confirmationCode: string | null } | null> {
+  const lodgings = await db.itineraryItem.findMany({
+    where: { itinerary: { tripId: args.tripId }, type: "LODGING" },
+    select: {
+      title: true,
+      location: true,
+      booking: { select: { status: true, confirmationCode: true } },
+    },
+  });
+  const golf = { title: args.golfTitle, location: args.golfLocation };
+  for (const lo of lodgings) {
+    if (!sameResort(golf, { title: lo.title, location: lo.location })) continue;
+    const code =
+      lo.booking?.status === "CONFIRMED"
+        ? lo.booking.confirmationCode ?? null
+        : null;
+    const name = (lo.title.split(/[—–·|(]|\s-\s/)[0] || lo.title).trim();
+    return { name, confirmationCode: code };
+  }
+  return null;
+}
+
 async function runBrowserBookingInner(args: {
   tripId: string;
   bookingId: string;
@@ -374,7 +441,38 @@ async function runBrowserBookingInner(args: {
       .catch(() => {});
   }
 
-  const task = buildBookingTask({ request, traveler, venue, accountPassword });
+  // RESORT-GUEST GOLF: when this tee time is at a RESORT the customer is also
+  // staying at on this trip (Pinehurst golf + a Pinehurst stay), the resort tee
+  // sheet usually gates golf behind "are you a resort guest?". Find that stay so
+  // the agent can book the golf as a guest — with the stay's confirmation number
+  // if it's already booked, or linked to the stay for the concierge if not.
+  // Returns null when the course is NOT a resort the customer is staying at —
+  // that course is simply private to them (the private/public-course path).
+  const resortStay =
+    item.type === "TEE_TIME"
+      ? await resolveResortStay({
+          tripId: args.tripId,
+          golfTitle: item.title,
+          golfLocation: item.location,
+        }).catch(() => null)
+      : null;
+  if (resortStay) {
+    console.log(
+      `[book] ${item.title}: customer is staying at ${resortStay.name}${
+        resortStay.confirmationCode
+          ? ` (confirmation ${resortStay.confirmationCode})`
+          : " — stay not yet confirmed"
+      } — resort-guest golf.`,
+    );
+  }
+
+  const task = buildBookingTask({
+    request,
+    traveler,
+    venue,
+    accountPassword,
+    resortStay,
+  });
 
   // HYBRID PRICE-APPROVAL GATE: by default the gate is the headroomed
   // estimate (task.budgetCents). Once the customer has APPROVED the real
@@ -811,6 +909,11 @@ async function runBrowserBookingInner(args: {
               // until "Players" is set, so the deterministic Players picker
               // needs the count. Source of truth is the trip's groupSize.
               players: item.type === "TEE_TIME" ? task.traveler.partySize : null,
+              // Resort-guest golf: when this course is at a resort the customer
+              // is staying at, the agent can clear the "are you a resort guest?"
+              // gate instead of bailing — with the stay's confirmation number if
+              // it's booked, or linked to the stay for the concierge if not.
+              resortStay: task.resortStay ?? null,
               onStep: async (label) => {
                 await bridgeNudge(label);
               },

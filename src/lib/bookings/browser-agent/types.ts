@@ -85,6 +85,15 @@ export type BookingTask = {
    *  forces account creation to book. Stored on the booking so the customer
    *  can recover access (or reset via their email). Null when not minted. */
   accountPassword: string | null;
+  /** Set ONLY for a TEE_TIME whose course belongs to a RESORT the customer is
+   *  also staying at on this trip (e.g. golf at Pinehurst + a Pinehurst stay).
+   *  Resort tee sheets often gate golf behind "are you a resort guest?" / a
+   *  stay confirmation number. `name` is the resort; `confirmationCode` is the
+   *  lodging's confirmation if it's already booked (so the agent can enter it
+   *  and book the golf as a guest), else null (stay not yet confirmed → link to
+   *  the stay for the concierge). null when the course is NOT a resort the
+   *  customer is staying at — that course is just private to them. */
+  resortStay?: { name: string; confirmationCode: string | null } | null;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -151,6 +160,8 @@ export function buildBookingTask(args: {
   venue: VenueTarget;
   /** Managed password for venues that force account creation. */
   accountPassword?: string | null;
+  /** Resort the customer is staying at, when this golf is at that resort. */
+  resortStay?: { name: string; confirmationCode: string | null } | null;
 }): BookingTask {
   const { request, traveler, venue } = args;
   const start = request.startTime ?? null;
@@ -194,6 +205,7 @@ export function buildBookingTask(args: {
     budgetCents: withEstimateHeadroom(normalizeBudget(request.budget)),
     budgetUsd: centsToUsd(withEstimateHeadroom(normalizeBudget(request.budget))),
     accountPassword: args.accountPassword ?? null,
+    resortStay: args.resortStay ?? null,
   };
 }
 

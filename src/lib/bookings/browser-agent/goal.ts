@@ -219,6 +219,18 @@ export function buildGoal(
   }
   if (task.displayTime) lines.push(`**Time (venue-local intent):** ${task.displayTime}`);
   lines.push(`**Party size:** ${t.partySize}`);
+  // Resort-guest golf: the customer is staying at this resort, so they're
+  // entitled to book the course as a guest. If the stay is confirmed, give the
+  // agent the confirmation number to clear the "are you a resort guest?" gate.
+  if (task.resortStay?.confirmationCode) {
+    lines.push(
+      `**You are a CONFIRMED RESORT GUEST at ${task.resortStay.name}.** Your stay confirmation number is **${task.resortStay.confirmationCode}**. This course reserves tee times for resort guests — that is YOU. If the tee sheet asks whether you're a resort guest, choose YES / "resort guest"; if it asks for a reservation/confirmation/booking number to verify your stay, enter **${task.resortStay.confirmationCode}**. Then book the tee time as a resort guest and continue to the card step. Do NOT bail as "private" — you have a stay here.`,
+    );
+  } else if (task.resortStay) {
+    lines.push(
+      `**The customer is staying at ${task.resortStay.name}** (this course's resort), so they can play it as a resort guest. If the tee sheet requires a stay confirmation number you don't have yet, report needs_review noting the golf should be booked together with the ${task.resortStay.name} stay — do NOT treat it as a private club the public can't access.`,
+    );
+  }
   if (task.budgetUsd != null)
     lines.push(`**Price estimate:** ~$${task.budgetUsd.toLocaleString()} total — guidance only. Book the cheapest suitable option even if the real price is higher, and quote the real total.`);
   else
