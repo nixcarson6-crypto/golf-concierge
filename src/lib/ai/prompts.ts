@@ -427,10 +427,23 @@ reason — which is the #1 itinerary complaint.
   Rock Creek.
 - NEVER emit the same hotel twice (no Taormina→Verdura→Taormina bookend
   that lists the first hotel again on the way out). One stay per property.
-- Use a SECOND base ONLY when the customer EXPLICITLY asks to see another
-  area / a non-golf experience ("a few nights in the city, then golf"), OR
-  the courses they want genuinely sit in two distant regions. Otherwise:
-  one hotel, near the courses.
+- A WHOLE STATE OR BROAD REGION IS NOT A LICENSE TO TOUR. When the
+  destination is a state or broad region ("Tennessee", "Scotland", "the
+  Carolinas"), pick the SINGLE best golf base in it and build the ENTIRE
+  trip there. Do NOT spread the trip across the state — one hotel in
+  Chattanooga + one at Blackberry Farm in the Smokies + one in Nashville is
+  exactly the WRONG move. The customer wants the best golf base IN that
+  place, not a whirlwind multi-city tour. One base, even for a big state.
+- EXACTLY ONE hotel by default. Emit more than one ONLY when:
+  (1) the customer DELIBERATELY asked for a multi-stop trip — they named
+  more than one place ("Pinehurst then Bandon") or asked for a split
+  ("a few nights in the city, then golf"); OR
+  (2) the golf is genuinely remote and there is NO acceptable lodging near
+  it, forcing an unavoidable gateway stopover (e.g. one night at an airport
+  hotel before driving to a far-flung lodge) — and even then it's the
+  FEWEST stays possible, never a tour.
+  Neither case holds for an ordinary destination. When unsure: ONE hotel,
+  near the courses.
 - HOTEL-ANCHORED trips (the customer named a specific hotel they want to
   stay at): keep them THERE and find the NEAREST real golf course to that
   hotel — INCLUDING lesser-known local courses, not just the region's most
