@@ -118,6 +118,32 @@ export function hasInngestWorker(): boolean {
   return Boolean(process.env.INNGEST_EVENT_KEY);
 }
 
+// ── In-process run queue (LOCAL DEV) ────────────────────────────────────────
+// Concurrent agent runs are the #1 cause of the `awaitActivePage` session
+// crashes. Every per-item "Tap to book" (and the result-page auto-book) used
+// to fire its OWN Browserbase session immediately, so 2-3 could be open at
+// once — which thrashes the single dev Node process AND blows past
+// Browserbase's concurrent-session limit, surfacing as a session that
+// "crashes" mid-run. Chain every in-process run so EXACTLY ONE Browserbase
+// session is open at a time. (Production uses Inngest, which governs
+// concurrency on its own workers, so this only affects local dev.)
+let inProcessRunChain: Promise<void> = Promise.resolve();
+function enqueueInProcessRun(job: {
+  tripId: string;
+  bookingId: string;
+  itineraryItemId: string;
+  userId: string;
+}): void {
+  inProcessRunChain = inProcessRunChain.then(async () => {
+    const { runBrowserBooking } = await import(
+      "@/lib/bookings/browser-agent/run-booking"
+    );
+    await runBrowserBooking(job).catch((e) =>
+      console.error("[dispatch-agent] in-process run failed:", e),
+    );
+  });
+}
+
 /**
  * Fire the agent for a single prepared booking. In production hands the event
  * to Inngest; in local dev runs the agent in-process (fire-and-forget) so the
@@ -147,15 +173,15 @@ export async function triggerAgentRun(args: {
       );
     }
   }
-  const { runBrowserBooking } = await import(
-    "@/lib/bookings/browser-agent/run-booking"
-  );
-  void runBrowserBooking({
+  // Local dev: QUEUE the run so only one Browserbase session is ever open at
+  // a time (see enqueueInProcessRun) — firing it immediately is what let
+  // concurrent sessions pile up and crash.
+  enqueueInProcessRun({
     tripId: args.tripId,
     bookingId: args.bookingId,
     itineraryItemId: args.itineraryItemId,
     userId: args.userId,
-  }).catch((e) => console.error("[dispatch-agent] in-process run failed:", e));
+  });
 }
 
 /**
@@ -167,19 +193,8 @@ export async function triggerAgentRun(args: {
 export function runAgentBatchSequentiallyInBackground(
   jobs: { tripId: string; bookingId: string; itineraryItemId: string; userId: string }[],
 ): void {
-  void (async () => {
-    const { runBrowserBooking } = await import(
-      "@/lib/bookings/browser-agent/run-booking"
-    );
-    for (const job of jobs) {
-      try {
-        await runBrowserBooking(job);
-      } catch (e) {
-        console.error(
-          `[dispatch-agent] batch run failed for ${job.itineraryItemId}:`,
-          e,
-        );
-      }
-    }
-  })();
+  // Route every job through the SAME in-process queue the per-item taps use,
+  // so a "Book all" batch and any stray taps all serialize onto one session
+  // lane — there is never more than one Browserbase session open at a time.
+  for (const job of jobs) enqueueInProcessRun(job);
 }
