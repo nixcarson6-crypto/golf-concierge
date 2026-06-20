@@ -1360,6 +1360,14 @@ export async function runStagehandBooking(
     let wdAdvanceLabel = "";
     let wdAdvanceRepeats = 0;
     let wdNudgeCount = 0;
+    // Golf one-shot progress for the watchdog (mirrors the conductor's golf
+    // flags) so a frozen tee-sheet advances Visitors → Players → Search → slot →
+    // rate one step per wake instead of re-clicking the same one.
+    let wdVisitorDone = false;
+    let wdPlayersDone = false;
+    let wdSearchDone = false;
+    let wdSlotDone = false;
+    let wdRateDone = false;
     // The conductor already drove to the card step → skip the AI booking loop
     // entirely (the payment phase below still uses `agent` to enter the card).
     type ExecResult = Awaited<ReturnType<typeof agent.execute>>;
@@ -1516,11 +1524,64 @@ export async function runStagehandBooking(
             const m = await dismissBlockingModalDeterministically(bf).catch(() => null);
             if (m) nudged = `closed modal "${m}"`;
           }
+          // GOLF tee-sheet steps — the conductor's golf flow, on a timer. A
+          // frozen golf agent would otherwise only get the hotel-shaped nudges
+          // below (room/advance), which don't fit a tee sheet. Each is one-shot
+          // so we walk the accordion instead of re-clicking one rung.
+          if (!nudged && opts.selectTeeSlot) {
+            if (!wdVisitorDone) {
+              // ChronoGolf "Visitors | Members" — "already-visitors" means we're
+              // on it (record it, but it's not an action worth counting).
+              const tab = await clickGuestTabDeterministically(bf).catch(() => null);
+              if (tab === "already-visitors") wdVisitorDone = true;
+              else if (tab) {
+                wdVisitorDone = true;
+                nudged = `guest-tab "${tab}"`;
+              }
+            }
+            if (!nudged && !wdPlayersDone) {
+              const p = await setPlayersCountDeterministically(
+                bf,
+                opts.players ?? null,
+              ).catch(() => null);
+              if (p) {
+                if (p !== "players-open") wdPlayersDone = true; // "open" = accordion expanded, not set yet
+                nudged = `players ${p}`;
+              }
+            }
+            if (!nudged && !wdSearchDone) {
+              const s = await clickGolfSearchDeterministically(bf).catch(() => null);
+              if (s) {
+                wdSearchDone = true;
+                nudged = `golf-search "${s}"`;
+              }
+            }
+            if (!nudged && !wdSlotDone) {
+              const slot = await clickTeeTimeSlotDeterministically(
+                bf,
+                opts.teeTimeLabel ?? null,
+              ).catch(() => null);
+              if (slot) {
+                wdSlotDone = true;
+                nudged = `slot ${slot}`;
+              }
+            }
+            if (!nudged && !wdRateDone) {
+              const rate = await selectCheapestRateRadioDeterministically(bf).catch(
+                () => null,
+              );
+              if (rate) {
+                wdRateDone = true;
+                nudged = `rate ${rate}`;
+              }
+            }
+          }
           if (!nudged) {
             const up = await clickThroughUpsellDeterministically(bf).catch(() => null);
             if (up) nudged = `upsell-skip "${up}"`;
           }
-          if (!nudged) {
+          // Hotel room pick — only for lodging (a golf tee sheet has no rooms).
+          if (!nudged && !opts.selectTeeSlot) {
             const r = await clickCheapestRoomDeterministically(bf).catch(() => null);
             if (r) nudged = `room ${r}`;
           }
