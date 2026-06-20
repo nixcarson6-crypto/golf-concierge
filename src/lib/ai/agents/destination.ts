@@ -11,7 +11,77 @@ import { allDestinationsBriefForAI, monthFromDate } from "@/lib/data/destination
 export type DestinationAgentInput = {
   tripId: string;
   constraints: TripConstraints;
+  /**
+   * True only for an OPEN-ENDED "Surprise me" (no place hint at all). When
+   * set, we inject a server-randomized shortlist of excellent markets and
+   * push the #1 off the reflex defaults. The model is stateless and can't
+   * "rotate its #1 run-to-run" on its own, so the variety has to come from
+   * the server — this flag is what supplies it.
+   */
+  variety?: boolean;
+  /** Destinations the customer was recently shown — never return these again. */
+  avoidDestinations?: string[];
 };
+
+/**
+ * Excellent, publicly-bookable golf markets to rotate the open-ended
+ * "Surprise me" #1 across. DELIBERATELY omits the three reflex defaults
+ * (Bandon Dunes, Pinehurst, Pebble Beach) so the server-side seed never
+ * re-suggests the exact market the customer is tired of seeing. The model
+ * may still land on one of those if the customer's OWN answers demand it,
+ * but it is never the lazy default.
+ */
+const VARIETY_POOL: string[] = [
+  "Scottsdale, AZ",
+  "Streamsong, FL",
+  "Sea Island, GA",
+  "Kiawah Island, SC",
+  "Whistling Straits / Kohler, WI",
+  "Sand Valley, WI",
+  "Cabot Cape Breton, Nova Scotia",
+  "Hilton Head Island, SC",
+  "Reynolds Lake Oconee, GA",
+  "The Greenbrier, WV",
+  "Cabo San Lucas, Mexico",
+  "Palm Springs / PGA West, CA",
+  "Forest Dunes, MI",
+  "Arcadia Bluffs, MI",
+  "French Lick, IN",
+  "Big Cedar Lodge, MO",
+  "Kapalua, Maui",
+  "Naples, FL",
+  "Las Vegas, NV",
+  "Cabot Citrus Farms, FL",
+  "Pursell Farms, AL",
+  "Erin Hills, WI",
+];
+
+const leadName = (s: string): string => s.toLowerCase().split(",")[0].trim();
+
+/** Fisher–Yates shuffle of the pool minus anything recently shown, take n. */
+function pickVarietyShortlist(avoid: string[], n = 6): string[] {
+  const avoidLeads = new Set(avoid.map(leadName).filter(Boolean));
+  const eligible = VARIETY_POOL.filter((m) => !avoidLeads.has(leadName(m)));
+  const arr = eligible.length >= n ? [...eligible] : [...VARIETY_POOL];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.slice(0, n);
+}
+
+/** The server-randomized variety block injected into the agent's prompt. */
+function buildVarietyDirective(avoid: string[]): string {
+  const shortlist = pickVarietyShortlist(avoid);
+  const avoidLine = avoid.length
+    ? `\nThe customer was RECENTLY shown these — do NOT return ANY of them again: ${avoid.join(", ")}.`
+    : "";
+  return [
+    `VARIETY SHORTLIST (server-randomized for THIS run — the customer chose "Surprise me" with no specific place in mind):`,
+    shortlist.map((m) => `  • ${m}`).join("\n"),
+    `Pick your #1 from THIS shortlist — whichever best fits the customer's travel month and any course-style / region / vibe answers they gave. Options 2 and 3 may be off-list, but all three must be genuinely DISTINCT from each other. Do NOT lead with Bandon Dunes, Pinehurst, or Pebble Beach unless the customer's OWN answers explicitly demand that exact style — those are the reflex defaults, and the whole point of "Surprise me" is a fresh, hand-picked place they wouldn't have guessed.${avoidLine}`,
+  ].join("\n");
+}
 
 export async function runDestinationAgent(input: DestinationAgentInput) {
   return withAgentRun({
@@ -55,18 +125,22 @@ export async function runDestinationAgent(input: DestinationAgentInput) {
                 ``,
                 `Group constraints:`,
                 JSON.stringify(input.constraints, null, 2),
+                ...(input.variety
+                  ? [``, buildVarietyDirective(input.avoidDestinations ?? [])]
+                  : []),
                 ``,
                 `Propose 3 destinations now, ranked, strongest fit first.`,
               ].join("\n"),
             },
           ],
           maxTokens: 4000,
-          // Higher temperature so "surprise me" genuinely varies its #1
-          // pick run-to-run instead of always landing on the highest
-          // base-score market (Bandon Dunes). The prompt makes the
-          // customer's answers the primary driver; this adds spread among
-          // equally-good fits.
-          temperature: 0.8,
+          // The model is STATELESS — it can't "rotate its #1 run-to-run" on
+          // its own (no memory of past picks), so on an open-ended "Surprise
+          // me" it always lands on the highest-base-score market (Bandon
+          // Dunes, golfScore 99). The server-randomized variety shortlist
+          // injected above is what actually forces rotation; a higher
+          // temperature just adds spread among the equally-good fits.
+          temperature: input.variety ? 0.9 : 0.8,
         });
       const isRetryable = (msg: string): boolean =>
         msg.includes("truncated at max_tokens") ||

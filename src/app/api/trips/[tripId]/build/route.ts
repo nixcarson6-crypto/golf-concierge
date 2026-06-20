@@ -214,6 +214,11 @@ export async function POST(
         // input so the agent still sees "the top-rated course in
         // Tennessee" even though cleanDestination rejected the sentence.
         const hintForAgent = userTyped || rawHint;
+        // TRUE "Surprise me" = no place hint at all. Only then do we inject
+        // the server-randomized variety shortlist; a hint ("Italy",
+        // "mountain golf") is a constraint to honor, not something a random
+        // spotlight should override.
+        const openEnded = !hintForAgent;
         const constraintsForAgent = hintForAgent
           ? {
               ...constraints,
@@ -221,9 +226,43 @@ export async function POST(
               notes: `User's destination hint: "${hintForAgent}". NON-NEGOTIABLE: if this hint names a real place (a country, region, island, or city — e.g. "Montenegro", "Tuscany", "Tennessee"), every option you return MUST be IN that place. Never substitute a different country/region because its golf scene is small — find the best golf that actually exists there. Only pick freely when the hint names no place at all. ${constraints.notes ?? ""}`.trim(),
             }
           : { ...constraints, destination: null };
+        // Don't re-suggest a place this customer was just shown. Returning
+        // Bandon Dunes (the highest base score) on every open-ended request
+        // is exactly what "Surprise me" must NOT do — feed the agent the
+        // recent picks to avoid. Best-effort; a query hiccup just skips the
+        // avoid list (the variety shortlist still rotates without it).
+        let avoidDestinations: string[] = [];
+        if (openEnded) {
+          try {
+            const recent = await db.trip.findMany({
+              where: {
+                ownerId: user.id,
+                id: { not: tripId },
+                destination: { not: null },
+              },
+              orderBy: { createdAt: "desc" },
+              take: 8,
+              select: { destination: true },
+            });
+            avoidDestinations = [
+              ...new Set(
+                recent
+                  .map((t) => t.destination)
+                  .filter(
+                    (d): d is string =>
+                      typeof d === "string" && d.trim().length > 0,
+                  ),
+              ),
+            ];
+          } catch {
+            /* best effort */
+          }
+        }
         const destRun = await runDestinationAgent({
           tripId,
           constraints: constraintsForAgent,
+          variety: openEnded,
+          avoidDestinations,
         });
         const top = destRun.output.options[0];
         if (!top) {

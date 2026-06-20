@@ -24,7 +24,31 @@ export async function POST(
   if (!trip) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const constraints = (trip.constraints as TripConstraints | null) ?? {};
-  const { output } = await runDestinationAgent({ tripId, constraints });
+  // A re-roll should hand back DIFFERENT options than what's already on
+  // screen — otherwise "regenerate" / "show me top 3" feels broken. Treat a
+  // trip with no specific named destination as open-ended (inject the
+  // variety shortlist) and tell the agent to avoid everything already shown
+  // plus the current pick.
+  const named =
+    typeof constraints.destination === "string" &&
+    constraints.destination.trim().length > 0;
+  const shown = await db.destinationOption.findMany({
+    where: { tripId },
+    select: { name: true },
+  });
+  const avoidDestinations = [
+    ...new Set(
+      [...shown.map((s) => s.name), trip.destination ?? ""].filter(
+        (s): s is string => typeof s === "string" && s.trim().length > 0,
+      ),
+    ),
+  ];
+  const { output } = await runDestinationAgent({
+    tripId,
+    constraints,
+    variety: !named,
+    avoidDestinations,
+  });
 
   await db.$transaction([
     db.destinationOption.deleteMany({ where: { tripId } }),
