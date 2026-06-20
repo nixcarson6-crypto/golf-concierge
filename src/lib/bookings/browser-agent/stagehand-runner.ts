@@ -1509,14 +1509,21 @@ export async function runStagehandBooking(
     // already refuses to fire on a card step. GENERAL — every hotel/golf form.
     const STALL_CHECK_MS = 8_000;
     const STALL_NUDGE_FLOOR_MS = 22_000; // never call it frozen sooner than this
+    const STALL_NUDGE_CEIL_MS = 55_000; // …and never wait longer than this to step in
     // "Frozen" = quiet for longer than ~1.6× the slowest of the last few steps,
-    // but never less than the floor. On a normal hotel that's ~22s; on a
-    // heavyweight SPA whose steps run 30s+ it stretches to ~50s, so the watchdog
-    // doesn't fire mid-step and fight a working agent.
+    // clamped to [floor, ceil]. On a normal hotel that's ~22s; on a heavyweight
+    // SPA whose steps run 30s+ it stretches toward the ceiling so the watchdog
+    // doesn't fire mid-step and fight a working agent — but the CEILING matters
+    // just as much: without it, one freakishly slow ~97s step (a real Streamsong
+    // run) pushed the threshold to ~155s and the watchdog went PASSIVE right when
+    // it needed to burst-fill the guest form. Cap it so it always steps in.
     const stallThresholdMs = () =>
-      Math.max(
-        STALL_NUDGE_FLOOR_MS,
-        recentStepMs.length ? Math.max(...recentStepMs) * 1.6 : 0,
+      Math.min(
+        STALL_NUDGE_CEIL_MS,
+        Math.max(
+          STALL_NUDGE_FLOOR_MS,
+          recentStepMs.length ? Math.max(...recentStepMs) * 1.6 : 0,
+        ),
       );
     const WD_NUDGE_CAP = 28; // bounded; a burst uses several, so allow a few bursts
     let wdLastStuckUrl = ""; // re-diag when the frozen screen CHANGES, not just once
@@ -3659,19 +3666,16 @@ async function diagnoseGuestForm(page: unknown): Promise<string> {
         if (lb)
           for (const id of lb.split(/\s+/))
             if (id) t += " " + (document.getElementById(id)?.textContent || "");
+        // Proximity label: smallest container (≤2 inputs) holding this field,
+        // first short label-like element — matches what autofill reads.
         let node = (el as HTMLElement).parentElement;
         for (let i = 0; i < 4 && node; i++, node = node.parentElement) {
-          const tag = node.tagName.toLowerCase();
-          const cls = typeof node.className === "string" ? node.className : "";
-          if (
-            tag === "mat-form-field" ||
-            /form-field|form-group|field-wrapper|input-group/i.test(cls)
-          ) {
-            const l = node.querySelector("mat-label,label,legend");
-            if (l?.textContent) {
-              t += " " + l.textContent;
-              break;
-            }
+          if (node.querySelectorAll("input,select,textarea").length > 2) break;
+          const l = node.querySelector("label,legend,mat-label,[class*=label i]");
+          const txt = l?.textContent?.replace(/\s+/g, " ").trim();
+          if (txt && txt.length <= 30) {
+            t += " " + txt;
+            break;
           }
         }
         return t.trim();
@@ -5003,21 +5007,24 @@ async function deterministicGuestFill(
           if (lb)
             for (const id of lb.split(/\s+/))
               if (id) parts.push(document.getElementById(id)?.textContent);
-          // Nearest field-container's own label (mat-form-field / .form-field),
-          // scoped so it's THIS input's label, not a neighbour's.
+          // PROXIMITY LABEL: the label-ish element inside the SMALLEST container
+          // that holds this input. Many forms (Agilysys, React, plain HTML) put
+          // "First Name" in a bare <label>/<span>/<div> above the field with NO
+          // for=/aria association and NO mat-form-field class, so nothing above
+          // catches it and the field reads as a blank id. Gate on the container
+          // holding ≤2 inputs (so the label is unambiguously THIS field's — a
+          // phone "+1" select + number still counts), and take the first short
+          // label-like element. GENERAL across form frameworks.
           let node: HTMLElement | null = el.parentElement;
           for (let i = 0; i < 4 && node; i++, node = node.parentElement) {
-            const tag = node.tagName.toLowerCase();
-            const cls = typeof node.className === "string" ? node.className : "";
-            if (
-              tag === "mat-form-field" ||
-              /form-field|form-group|field-wrapper|input-group/i.test(cls)
-            ) {
-              const lbl = node.querySelector("mat-label,label,legend");
-              if (lbl?.textContent) {
-                parts.push(lbl.textContent);
-                break;
-              }
+            if (node.querySelectorAll("input,select,textarea").length > 2) break;
+            const lbl = node.querySelector(
+              "label,legend,mat-label,[class*=label i]",
+            );
+            const txt = lbl?.textContent?.replace(/\s+/g, " ").trim();
+            if (txt && txt.length <= 30) {
+              parts.push(txt);
+              break;
             }
           }
           return parts.filter(Boolean).join(" ").toLowerCase();
