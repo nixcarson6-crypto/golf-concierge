@@ -1372,6 +1372,7 @@ export async function runStagehandBooking(
     let wdSearchDone = false;
     let wdSlotDone = false;
     let wdRateDone = false;
+    let wdGuestDiagged = false; // one-shot guest-form dump when autofill fills nothing
     // The conductor already drove to the card step → skip the AI booking loop
     // entirely (the payment phase below still uses `agent` to enter the card).
     type ExecResult = Awaited<ReturnType<typeof agent.execute>>;
@@ -1586,11 +1587,23 @@ export async function runStagehandBooking(
       if (opts.autofill) {
         const n = await deterministicGuestFill(bf, opts.autofill).catch(() => 0);
         if (n > 0) return `autofill ${n} fields`;
+        // Filled nothing — but a guest form may well be on screen (a field-
+        // matching miss). Dump its real structure ONCE so the gap is fixable
+        // from DOM, not a guess.
+        if (!wdGuestDiagged) {
+          wdGuestDiagged = true;
+          const gd = await diagnoseGuestForm(bf).catch(() => "");
+          if (gd) console.log(`[stagehand] 🔬 STUCK guest-form diag :: ${gd}`);
+        }
       }
-      // Advance (Search / Continue / Proceed). Refuses on a card step; anti-hammer
-      // stops a no-op button after a few identical clicks.
+      // Advance (Continue / Proceed / Save). Refuses on a card step; anti-hammer
+      // stops a no-op button after a few identical clicks. Once the room is
+      // picked, exclude the room-"Search" button — on a two-panel engine it
+      // stays visible and only RE-runs the search, never moves forward.
       {
-        const a = await clickAdvanceButtonDeterministically(bf).catch(() => null);
+        const a = await clickAdvanceButtonDeterministically(bf, {
+          excludeSearch: roomPicked,
+        }).catch(() => null);
         if (a) {
           if (a === wdAdvanceLabel) wdAdvanceRepeats += 1;
           else {
@@ -3576,6 +3589,33 @@ async function diagnoseGuestForm(page: unknown): Promise<string> {
         const s = window.getComputedStyle(el as HTMLElement);
         return s.visibility !== "hidden" && s.display !== "none";
       };
+      // Resolve a field's label the way Angular Material exposes it (no native
+      // <label for>): aria-labelledby → referenced <mat-label>, plus the nearest
+      // form-field container's label. Without this, Material forms (Agilysys)
+      // read as nameless and the diag wrongly returns empty.
+      const resolvedLabel = (el: Element): string => {
+        let t = "";
+        const lb = el.getAttribute("aria-labelledby");
+        if (lb)
+          for (const id of lb.split(/\s+/))
+            if (id) t += " " + (document.getElementById(id)?.textContent || "");
+        let node = (el as HTMLElement).parentElement;
+        for (let i = 0; i < 4 && node; i++, node = node.parentElement) {
+          const tag = node.tagName.toLowerCase();
+          const cls = typeof node.className === "string" ? node.className : "";
+          if (
+            tag === "mat-form-field" ||
+            /form-field|form-group|field-wrapper|input-group/i.test(cls)
+          ) {
+            const l = node.querySelector("mat-label,label,legend");
+            if (l?.textContent) {
+              t += " " + l.textContent;
+              break;
+            }
+          }
+        }
+        return t.trim();
+      };
       const metaOf = (el: Element): string =>
         [
           el.getAttribute("name"),
@@ -3583,6 +3623,7 @@ async function diagnoseGuestForm(page: unknown): Promise<string> {
           el.getAttribute("placeholder"),
           el.getAttribute("aria-label"),
           (el as HTMLInputElement).labels?.[0]?.textContent,
+          resolvedLabel(el),
         ]
           .filter(Boolean)
           .join(" ")
@@ -3605,6 +3646,7 @@ async function diagnoseGuestForm(page: unknown): Promise<string> {
         ph: clip(el.getAttribute("placeholder"), 40),
         aria: clip(el.getAttribute("aria-label"), 40),
         label: clip((el as HTMLInputElement).labels?.[0]?.textContent, 40),
+        lby: clip(resolvedLabel(el), 40),
         cls: clip(el.getAttribute("class"), 70),
         req: el.hasAttribute("required") || el.getAttribute("aria-required") === "true",
         opts:
@@ -3977,11 +4019,13 @@ async function pageStillSettling(page: unknown): Promise<boolean> {
  */
 async function clickAdvanceButtonDeterministically(
   page: unknown,
+  opts?: { excludeSearch?: boolean },
 ): Promise<string | null> {
   const cdp = page as CdpPage;
   if (typeof cdp?.evaluate !== "function") return null;
   try {
-    return await cdp.evaluate<string | null>(() => {
+    return await cdp.evaluate<string | null>((arg: unknown) => {
+      const excludeSearch = arg as boolean;
       // Never advance from the card step.
       const cardField = Array.from(
         document.querySelectorAll<HTMLInputElement>("input"),
@@ -4001,8 +4045,19 @@ async function clickAdvanceButtonDeterministically(
         );
       });
       if (cardField) return null;
-      const ADV =
-        /^(search( tee times?| availability| rates?)?|check (rates?|availability)|find( tee)? times?|find (a )?rooms?|search rooms?|view rooms?|see rooms?|show rooms?|see availability|continue|next|proceed|proceed to checkout|select rate to continue|continue to (guest|details|checkout|payment)|go to (cart|checkout)|view cart|checkout|review|view rates?|update search)$/i;
+      // FORWARD = move to the next step / commit the current one (incl. "Save"
+      // on a guest-details sub-form). SEARCH = look up inventory (find rooms /
+      // tee times). After a room is chosen, SEARCH is a TRAP: on a two-panel
+      // engine (Agilysys) the room-search bar stays on screen, and re-clicking
+      // it just re-runs the search instead of going forward — so the caller
+      // passes excludeSearch once the room is picked.
+      const FORWARD =
+        "continue|next|proceed|proceed to checkout|select rate to continue|continue to (guest|details|checkout|payment)|go to (cart|checkout)|view cart|checkout|review|save|save (guest|guest details|details|info|information)|save (and|&) continue|save (and|&) proceed";
+      const SEARCH =
+        "search( tee times?| availability| rates?)?|check (rates?|availability)|find( tee)? times?|find (a )?rooms?|search rooms?|view rooms?|see rooms?|show rooms?|see availability|update search|view rates?";
+      const ADV = excludeSearch
+        ? new RegExp(`^(${FORWARD})$`, "i")
+        : new RegExp(`^(${SEARCH}|${FORWARD})$`, "i");
       const isOk = (el: HTMLElement): boolean => {
         const r = el.getClientRects();
         if (!r || r.length === 0) return false;
@@ -4036,7 +4091,7 @@ async function clickAdvanceButtonDeterministically(
         }
       }
       return null;
-    });
+    }, opts?.excludeSearch ?? false);
   } catch {
     return null;
   }
@@ -4870,18 +4925,43 @@ async function deterministicGuestFill(
           const st = window.getComputedStyle(el as HTMLElement);
           return st.visibility !== "hidden" && st.display !== "none";
         };
-        const meta = (el: HTMLElement): string =>
-          [
+        const meta = (el: HTMLElement): string => {
+          const parts: (string | null | undefined)[] = [
             el.getAttribute("autocomplete"),
             el.getAttribute("name"),
             el.id,
             el.getAttribute("placeholder"),
             el.getAttribute("aria-label"),
             (el as HTMLInputElement).labels?.[0]?.textContent,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
+          ];
+          // aria-labelledby → the referenced label element(s). Angular Material
+          // (Agilysys + many hotel engines) gives the <input> no name/placeholder
+          // and points it at its <mat-label> this way, so this is the ONLY signal
+          // — without it First Name/Email/etc. read as a blank "mat-input-3" and
+          // nothing fills.
+          const lb = el.getAttribute("aria-labelledby");
+          if (lb)
+            for (const id of lb.split(/\s+/))
+              if (id) parts.push(document.getElementById(id)?.textContent);
+          // Nearest field-container's own label (mat-form-field / .form-field),
+          // scoped so it's THIS input's label, not a neighbour's.
+          let node: HTMLElement | null = el.parentElement;
+          for (let i = 0; i < 4 && node; i++, node = node.parentElement) {
+            const tag = node.tagName.toLowerCase();
+            const cls = typeof node.className === "string" ? node.className : "";
+            if (
+              tag === "mat-form-field" ||
+              /form-field|form-group|field-wrapper|input-group/i.test(cls)
+            ) {
+              const lbl = node.querySelector("mat-label,label,legend");
+              if (lbl?.textContent) {
+                parts.push(lbl.textContent);
+                break;
+              }
+            }
+          }
+          return parts.filter(Boolean).join(" ").toLowerCase();
+        };
         const setVal = (el: HTMLInputElement, val: string) => {
           // Already exactly right → leave it (don't re-type, don't double).
           if ((el.value || "").trim().toLowerCase() === val.trim().toLowerCase()) {
