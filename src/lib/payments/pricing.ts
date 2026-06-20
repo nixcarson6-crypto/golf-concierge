@@ -3,9 +3,12 @@
  * of the trip cost. ONE source of truth so the agent-path charge
  * (card-provider) and the "Pay" cart checkout never drift.
  *
- * 12% to start (Carson, June 2026). Step to 15–20% once golf is auto-booked
- * (more of the trip handled end-to-end = more service to charge for). Tune it
- * live with env BOOKING_SERVICE_FEE_BPS — e.g. "1500" = 15% — no code change.
+ * 10% to start (Carson, June 2026) — undercuts the ~15% a human travel
+ * advisor charges, and stacks on top of the invisible wholesale spread on
+ * API-booked hotels (so your real take is higher than the visible fee). Step
+ * to 12–15% once golf is auto-booked (more of the trip handled end-to-end =
+ * more service to charge for). Tune it live with env BOOKING_SERVICE_FEE_BPS
+ * — e.g. "1500" = 15% — no code change.
  *
  * Note: this is the VISIBLE fee on top of the price. On API-booked hotels you
  * ALSO earn the wholesale spread (retail − net) underneath it; on the agent
@@ -13,7 +16,7 @@
  * Stripe's ~3% with room to spare.
  */
 
-const DEFAULT_SERVICE_FEE_BPS = 1200; // 12%
+const DEFAULT_SERVICE_FEE_BPS = 1000; // 10%
 
 /** Current service-fee rate in basis points (100 bps = 1%). */
 export function serviceFeeBps(): number {
