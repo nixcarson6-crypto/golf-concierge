@@ -466,6 +466,12 @@ export async function runStagehandBooking(
   // with an honest fallback instead.
   let blindReads = 0;
   let heavyAbort = false;
+  // Set when the progress-stall watchdog aborts because the agent stopped
+  // advancing (staring at a frozen/looping screen). Distinct from heavyAbort
+  // (a too-heavy page) and a plain wall-clock timeout (it WAS progressing,
+  // just slow). The catch maps this to the honest "couldn't auto-book — book
+  // direct" fallback, never the "concierge is finishing it" message.
+  let stallAbort = false;
   const watchdogLogger = (line: { message?: string; category?: string }) => {
     const m = line?.message ?? "";
     if (/ariaTree\(\) timed out|extract\(\) timed out/.test(m)) {
@@ -1575,6 +1581,15 @@ export async function runStagehandBooking(
     // its step, so a nudge can't act on the wrong screen, and the advance click
     // already refuses to fire on a card step. GENERAL — every hotel/golf form.
     const STALL_CHECK_MS = 8_000;
+    // PROGRESS-STALL BAIL (Carson's flow). No NEW page state for this long, with
+    // the page settled and NOT at the card step = the agent is staring →
+    // abort to the honest "couldn't auto-book — book direct" fallback instead of
+    // grinding to the time ceiling. ~90s: long enough never to trip on a slow
+    // render or a legitimately slow step; short enough that a frozen/looping
+    // screen never eats the full 11 min. Override or disable via env.
+    const STALL_BAIL_MS =
+      Number(process.env.BROWSER_AGENT_STALL_BAIL_MS) || 90_000;
+    const stallBailOn = process.env.BROWSER_AGENT_STALL_BAIL_OFF !== "true";
     const STALL_NUDGE_FLOOR_MS = 22_000; // never call it frozen sooner than this
     const STALL_NUDGE_CEIL_MS = 55_000; // …and never wait longer than this to step in
     // "Frozen" = quiet for longer than ~1.6× the slowest of the last few steps,
@@ -1709,8 +1724,57 @@ export async function runStagehandBooking(
       }
       return null;
     };
+    // PROGRESS-STALL state (armed here, as the agent phase begins). We track
+    // DISTINCT page fingerprints: a brand-new screen = real forward progress; a
+    // frozen OR looping agent only revisits states it's already seen, so no NEW
+    // fingerprint appears and the bail timer runs down. (lastStepAt above is
+    // just "the agent is alive" — a staring agent still fires steps.)
+    const seenFps = new Set<string>();
+    let lastNewFpAt = Date.now();
     stallWatch = setInterval(() => {
       void (async () => {
+        if (controller.signal.aborted) return;
+        // ── PROGRESS-STALL BAIL ── runs regardless of step activity, so it
+        // catches a "staring" agent (firing steps, page never advancing) that
+        // the frozen-agent check below would miss.
+        if (stallBailOn) {
+          try {
+            const a = stagehand.context.activePage();
+            const f = a ? await bookingFrame(a).catch(() => a) : null;
+            if (f) {
+              let url = "";
+              try {
+                url = (a as { url?: () => string })?.url?.() ?? "";
+              } catch {
+                /* best-effort */
+              }
+              const fp = `${url}∷${await pageFingerprint(f).catch(() => "")}`;
+              if (fp && !seenFps.has(fp)) {
+                seenFps.add(fp); // a NEW screen — real progress
+                lastNewFpAt = Date.now();
+              } else if (Date.now() - lastNewFpAt > STALL_BAIL_MS) {
+                // No new state for STALL_BAIL_MS. Only bail if the page is
+                // SETTLED (not mid-render) and we're NOT at the card step (that
+                // would be a real finish handled by the payment phase).
+                const settling = await pageStillSettling(f).catch(() => false);
+                const atCard = await detectCardFieldPresent(f).catch(() => false);
+                if (!settling && !atCard) {
+                  stallAbort = true;
+                  console.warn(
+                    `[stagehand] ✗ no forward progress for ${Math.round(
+                      (Date.now() - lastNewFpAt) / 1000,
+                    )}s — agent is staring, bailing to fallback (${elapsed()})`,
+                  );
+                  controller.abort();
+                  return;
+                }
+                lastNewFpAt = Date.now(); // rendering / card step → not a stall
+              }
+            }
+          } catch {
+            /* best-effort */
+          }
+        }
         if (controller.signal.aborted || nudging) return;
         if (Date.now() - lastStepAt < stallThresholdMs()) return; // agent still working at this hotel's pace
         if (wdNudgeCount >= WD_NUDGE_CAP) return;
@@ -2503,11 +2567,28 @@ export async function runStagehandBooking(
         /* best-effort */
       }
     }
-    // A wall-clock TIMEOUT (the 4-min lock-in) isn't a failure — the agent was
-    // actively booking when the clock hit. Hand it to the CONCIERGE
-    // (needs_review), not a red "couldn't book", so the customer waits ≤4 min
-    // and a human finishes whatever's left. Heavy-page + real crashes still
-    // fail (link/phone fallback / retry).
+    // PROGRESS-STALL abort: the agent was STARING (no new screen for ~90s), not
+    // progressing — so this is NOT "concierge is finishing a slow one." Fail it
+    // honestly with a reason so the customer sees "couldn't auto-book — book
+    // direct / concierge", never a frozen screen or a false promise. Maps to
+    // form_not_found, which the panel renders as the clear book-direct reason.
+    if (aborted && stallAbort) {
+      return {
+        outcome: {
+          status: "failed",
+          failureReason: "form_not_found",
+          message:
+            "We couldn't complete this booking automatically — the venue's site stalled with no progress. Reserve it directly via the link below, or our concierge will lock it in for you.",
+        },
+        sessionUrl: null,
+        finalScreenshot: null,
+      };
+    }
+    // A wall-clock TIMEOUT (the lock-in ceiling) isn't a failure — the agent was
+    // actively PROGRESSING when the clock hit, just slowly. Hand it to the
+    // CONCIERGE (needs_review), not a red "couldn't book", so a human finishes
+    // whatever's left. Heavy-page + real crashes still fail (link/phone
+    // fallback / retry); a stall already bailed above.
     if (aborted && !heavyAbort) {
       return {
         outcome: {
@@ -4174,6 +4255,43 @@ async function diagnoseCalendar(page: unknown): Promise<string> {
  * slot list never appeared and the slot-picker had nothing to click. This
  * submits the search. Returns the button label clicked, or null.
  */
+/**
+/**
+ * Coarse, cheap fingerprint of the current page/frame, used by the
+ * progress-stall watchdog to tell "the booking advanced" from "the agent is
+ * staring." Captures the things that change a LOT between booking screens
+ * (calendar → rooms → guest → card) but stay stable on a frozen/looping one:
+ * the visible interactive-element count, the form-field count, the first
+ * heading, and the SPA hash route. A new fingerprint = real progress; the same
+ * (or a previously-seen) one = no progress. Never throws.
+ */
+async function pageFingerprint(page: unknown): Promise<string> {
+  const cdp = page as CdpPage;
+  if (typeof cdp?.evaluate !== "function") return "";
+  try {
+    return await cdp.evaluate<string>(() => {
+      const vis = (el: Element): boolean => {
+        const r = (el as HTMLElement).getClientRects();
+        return !!r && r.length > 0;
+      };
+      const interactive = Array.from(
+        document.querySelectorAll("button,[role=button],a,input,select,textarea"),
+      ).filter(vis).length;
+      const fields = document.querySelectorAll(
+        "input,select,textarea",
+      ).length;
+      const heading = (
+        document.querySelector("h1,h2")?.textContent || ""
+      )
+        .trim()
+        .slice(0, 48);
+      return `${interactive}|${fields}|${heading}|${location.hash}`;
+    });
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Cheap (DOM-only) check: is a credit-card NUMBER field on the page? This is
  * the "we've reached the card step — stop driving, hand to the payment flow"

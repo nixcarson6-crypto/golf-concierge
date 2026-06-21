@@ -811,7 +811,7 @@ export function BookingStatusPanel({
                   // The sold-out / members-only / golf cases have their own
                   // reason blocks already, so this covers hotels + the rest.
                   const failedExplanation = isResortDirectHotel
-                    ? "No travel partner carries this resort, so we can't auto-book it — it only books on its own site. Reserve it directly below, or our concierge will lock it in for you."
+                    ? "No travel partner carries this resort, so we couldn't auto-book it for you. Reserve it directly on their site below, or our concierge will lock it in for you."
                     : item.type === "LODGING"
                       ? failureReason === "captcha_blocked"
                         ? "The hotel's site blocked automated booking, so we couldn't finish it. Reserve it directly below, or our concierge will handle it."

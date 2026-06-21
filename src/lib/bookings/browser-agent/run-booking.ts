@@ -642,22 +642,19 @@ async function runBrowserBookingInner(args: {
       }
       console.log(`[book] ${p.name} didn't book ${item.title} (${api.reason}).`);
     }
-    console.log(`[book] No API carried ${item.title} — checking hotel agent policy.`);
-    // HOTEL AGENT — LAUNCH DEFAULT IS OFF (Carson's call, June 2026). Hotels
-    // that LiteAPI/Hotelbeds cover book API-first above and never reach here;
-    // the UNCOVERED resort-direct ones (Big Cedar, Bay Harbor, Aman, Pebble)
-    // are the hardest/slowest engines AND a Browserbase crash kills ~15% of
-    // runs regardless of our code — so we LINK them for direct/concierge
-    // booking instead of grinding the agent in front of a paying customer
-    // (the same call we made for golf). Ship the reliable lane; the agent stays
-    // a background bonus. Set HOTEL_AGENT_ENABLED=true to run it for testing;
-    // HOTEL_AGENT_DISABLED=true hard-forces off even if ENABLED is set.
-    const hotelAgentOn =
-      process.env.HOTEL_AGENT_ENABLED === "true" &&
-      process.env.HOTEL_AGENT_DISABLED !== "true";
-    if (!hotelAgentOn) {
+    console.log(`[book] No API carried ${item.title} — trying the browser agent.`);
+    // HOTEL AGENT — TRY EVERY TIME (Carson's flow, June 2026). Hotels
+    // LiteAPI/Hotelbeds cover book API-first above; the uncovered resort-direct
+    // ones reach here and we ALWAYS give the agent a shot. The safety is in the
+    // runner, not a kill switch: the progress-stall watchdog bails in ~90s if
+    // the agent is just staring at a frozen/looping page (→ the honest
+    // "couldn't auto-book — book direct" fallback below), while a booking that's
+    // actually advancing is allowed to finish up to the time ceiling. So a miss
+    // never grinds and never shows a frozen screen. HOTEL_AGENT_DISABLED=true
+    // still hard-forces the link path (skip the agent entirely).
+    if (process.env.HOTEL_AGENT_DISABLED === "true") {
       console.log(
-        `[book] hotel agent off (launch default) — linking ${item.title} for direct/concierge booking.`,
+        `[book] HOTEL_AGENT_DISABLED — linking ${item.title} for direct/concierge booking.`,
       );
       await markBookingFailed({
         booking,
@@ -670,7 +667,6 @@ async function runBrowserBookingInner(args: {
       });
       return;
     }
-    console.log(`[book] HOTEL_AGENT_ENABLED — running the browser agent for ${item.title}.`);
   }
 
   const cardProvider = buildCardProviderForBooking({
