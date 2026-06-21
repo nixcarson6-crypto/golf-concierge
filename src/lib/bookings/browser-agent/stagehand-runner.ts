@@ -2095,7 +2095,15 @@ export async function runStagehandBooking(
             try {
               const active = stagehand.context.activePage();
               if (active) {
-                const r = await clickCheapestRoomDeterministically(active);
+                // Drive against the booking FRAME — on iframe engines (SynXis,
+                // Boyne "brwf") the room grid lives inside the iframe, so a
+                // picker run on the raw page finds nothing and leaves room
+                // selection to the agent (which then gave up "Call to reserve"
+                // on Inn at Bay Harbor). The date + guest handlers already do
+                // this; the room/rate/upsell handlers didn't — now consistent.
+                const pickCtx =
+                  (await bookingFrame(active).catch(() => active)) ?? active;
+                const r = await clickCheapestRoomDeterministically(pickCtx);
                 if (r) {
                   roomPicked = true;
                   roomPickedAtStep = stepCount;
@@ -2122,7 +2130,9 @@ export async function runStagehandBooking(
             try {
               const active = stagehand.context.activePage();
               if (active) {
-                const r = await clickCheapestRoomDeterministically(active);
+                const pickCtx =
+                  (await bookingFrame(active).catch(() => active)) ?? active;
+                const r = await clickCheapestRoomDeterministically(pickCtx);
                 if (r) {
                   rateCardPicked = true;
                   console.log(
@@ -2143,7 +2153,9 @@ export async function runStagehandBooking(
             try {
               const active = stagehand.context.activePage();
               if (active) {
-                const up = await clickThroughUpsellDeterministically(active);
+                const pickCtx =
+                  (await bookingFrame(active).catch(() => active)) ?? active;
+                const up = await clickThroughUpsellDeterministically(pickCtx);
                 if (up)
                   console.log(
                     `[stagehand] ⚡ skipped add-on/upsell page ("${up}") (${elapsed()})`,
