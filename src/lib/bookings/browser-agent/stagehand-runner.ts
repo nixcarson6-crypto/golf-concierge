@@ -4994,6 +4994,28 @@ async function clickCheapestRoomDeterministically(
       // room list shows "from $X/night", so demand one.
       const priced = rooms.filter((r) => r.price != null);
       if (priced.length === 0) {
+        // RATE ALREADY EXPANDED → just SELECT it. brwf (Inn at Bay Harbor)
+        // reveals the rate ("Lodging only $2,264.20  [SELECT]") inside a huge
+        // unit-details card, so the price never associates with the SELECT
+        // button above and the picker kept expanding MORE rooms instead of
+        // locking the rate (timed out doing exactly that). A bare "SELECT" /
+        // "Select Rate" button is a rate-choice, never a step nav pip
+        // (those read "RESERVE" / "ACCOMMODATIONS"), so clicking it is safe.
+        const selectBtn = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            "a,button,[role=button],input[type=submit],input[type=button]",
+          ),
+        ).find(
+          (el) =>
+            isVisible(el) &&
+            /^(select|select rate|select room|choose rate|book this room)$/i.test(
+              labelOf(el),
+            ),
+        );
+        if (selectBtn) {
+          selectBtn.click();
+          return "rate select";
+        }
         // EXPANDER FALLBACK — some engines (Boyne "brwf", a few SynXis themes)
         // collapse the rate + Select button behind a per-card "Show Rates &
         // Unit Details" / "View Rates" toggle, so NO booking CTA is visible

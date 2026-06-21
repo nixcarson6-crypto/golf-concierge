@@ -70,9 +70,9 @@ export async function runBrowserBooking(args: {
   itineraryItemId: string;
   userId: string;
 }): Promise<void> {
-  // Hard ceiling ABOVE every per-type time cap (LODGING 540s + retry, etc.).
+  // Hard ceiling ABOVE every per-type time cap (LODGING 660s + retry, etc.).
   // If we blow past this, the run is hung — route it to the concierge queue.
-  const WATCHDOG_MS = 13 * 60_000;
+  const WATCHDOG_MS = 14 * 60_000;
   let settled = false;
   const watchdog = setTimeout(() => {
     if (settled) return;
@@ -753,15 +753,15 @@ async function runBrowserBookingInner(args: {
               },
               // FINISH > FAST (Carson's call): give slow luxury forms enough
               // time to actually REACH the card step instead of getting cut off
-              // mid-flow and bailing to concierge. Hotels 9 min (heavy multi-
-              // iframe checkouts — Pearl/Streamsong/Aman), golf 8 min (platform
+              // mid-flow and bailing to concierge. Hotels 11 min (heavy multi-
+              // iframe checkouts — Pearl/Streamsong/Aman/Boyne brwf), golf 8 min (platform
               // nav + form), else 6. Most still finish in 3-5 and never feel it;
               // this just stops the slow ones aborting at the finish line.
               // BROWSER_AGENT_TIMEOUT_MS overrides everything.
               timeoutMs:
                 Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
                 (item.type === "LODGING"
-                  ? 540_000
+                  ? 660_000
                   : item.type === "TEE_TIME"
                     ? 480_000
                     : 360_000),
@@ -853,15 +853,15 @@ async function runBrowserBookingInner(args: {
               // deploy with BROWSER_AGENT_TIMEOUT_MS.
               // FINISH > FAST (Carson's call): give slow luxury forms enough
               // time to actually REACH the card step instead of getting cut off
-              // mid-flow and bailing to concierge. Hotels 9 min (heavy multi-
-              // iframe checkouts — Pearl/Streamsong/Aman), golf 8 min (platform
+              // mid-flow and bailing to concierge. Hotels 11 min (heavy multi-
+              // iframe checkouts — Pearl/Streamsong/Aman/Boyne brwf), golf 8 min (platform
               // nav + form), else 6. Most still finish in 3-5 and never feel it;
               // this just stops the slow ones aborting at the finish line.
               // BROWSER_AGENT_TIMEOUT_MS overrides everything.
               timeoutMs:
                 Number(optionalEnv("BROWSER_AGENT_TIMEOUT_MS")) ||
                 (item.type === "LODGING"
-                  ? 540_000
+                  ? 660_000
                   : item.type === "TEE_TIME"
                     ? 480_000
                     : 360_000),
