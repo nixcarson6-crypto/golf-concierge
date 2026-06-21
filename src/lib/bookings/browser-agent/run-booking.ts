@@ -1005,10 +1005,20 @@ async function runBrowserBookingInner(args: {
           outcome.status === "failed"
             ? (outcome as { failureReason?: string }).failureReason
             : undefined;
+        // A credit/billing exhaustion is classified "ambiguous" (retryable) but
+        // a fresh session can NEVER fix it — the Anthropic account is empty, so
+        // retrying just burns 3 Browserbase sessions on the same dead error
+        // (exactly what happened on a Big Cedar run). Treat it as terminal.
+        const nonRecoverable =
+          outcome.status === "failed" &&
+          /ran out of credits|credit balance is too low|insufficient.*credit/i.test(
+            (outcome as { message?: string }).message ?? "",
+          );
         const shouldRetry =
           outcome.status === "failed" &&
           reason != null &&
           RETRYABLE.has(reason) &&
+          !nonRecoverable &&
           attempt < MAX_ATTEMPTS;
         if (!shouldRetry) break;
       }
