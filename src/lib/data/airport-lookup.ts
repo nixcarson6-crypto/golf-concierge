@@ -96,6 +96,20 @@ const FALLBACKS: Record<string, string> = {
   streamsong: "TPA",
   "sea island": "BQK",
   pinehurts: "RDU",
+  // RESORT NAMES a customer types as the destination — a bare AI airport
+  // lookup misreads some ("The Phoenician" → ancient Phoenicia → TUN, the
+  // bug this fixes). includes() match, so "The Phoenician" hits "phoenician".
+  phoenician: "PHX",
+  phoenix: "PHX",
+  scottsdale: "PHX",
+  broadmoor: "COS",
+  "colorado springs": "COS",
+  kiawah: "CHS",
+  charleston: "CHS",
+  greenbrier: "LWB",
+  kapalua: "OGG",
+  maui: "OGG",
+  "reynolds lake oconee": "ATL",
 };
 
 // Tight IATA regex — exactly three uppercase letters.
@@ -125,7 +139,7 @@ async function fromHaiku(destination: string): Promise<string | null> {
       model: modelFor("fast"),
       max_tokens: 12,
       system:
-        "You return ONE 3-letter IATA airport code for the nearest major international airport to the destination. NO prose, NO punctuation — just the code. Examples: Rome → FCO. Lake Como → MXP. Pebble Beach → MRY.",
+        "You return ONE 3-letter IATA airport code for the nearest major airport to the destination, for a present-day LUXURY GOLF TRIP. The destination is often a HOTEL or RESORT NAME — resolve the airport nearest that PROPERTY. NEVER confuse a resort name with an ancient civilization or a same-sounding foreign place: 'The Phoenician' is a resort in Scottsdale, Arizona → PHX (it is NOT ancient Phoenicia/Tunis). 'The Broadmoor' → COS. 'Pebble Beach' → MRY. 'Lake Como' → MXP. 'Rome' → FCO. NO prose, NO punctuation — just the 3-letter code.",
       messages: [{ role: "user", content: destination }],
     });
     const text = res.content
