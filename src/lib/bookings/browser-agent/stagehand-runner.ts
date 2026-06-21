@@ -3043,6 +3043,92 @@ async function clickStayDatesDeterministically(
           );
         };
 
+        // ── Strategy 0: REACT-DATEPICKER (Boyne "brwf" engine — Inn at Bay
+        // Harbor — and MANY React hotel sites). Day cells are
+        // <div class="react-datepicker__day" role="gridcell"
+        //   aria-label="Choose Saturday, August 1st, 2026">. Two gotchas this
+        // handles: (1) it's a RANGE picker (click arrival, THEN departure), and
+        // (2) the calendar lives inside a SHADOW ROOT that document.querySelector
+        // can't see — so we PIERCE shadow DOM. This stranded Inn at Bay Harbor on
+        // a half-set "Jul 10" range (out=PENDING) for the full 9 minutes.
+        const deepEach = (sel: string, fn: (el: HTMLElement) => void) => {
+          const walk = (root: Document | ShadowRoot) => {
+            root.querySelectorAll<HTMLElement>(sel).forEach(fn);
+            root.querySelectorAll<HTMLElement>("*").forEach((el) => {
+              if (el.shadowRoot) walk(el.shadowRoot);
+            });
+          };
+          walk(document);
+        };
+        const rdpDayCells = (): HTMLElement[] => {
+          const acc: HTMLElement[] = [];
+          deepEach(".react-datepicker__day[aria-label]", (c) => acc.push(c));
+          return acc;
+        };
+        if (rdpDayCells().length > 0) {
+          const ord = (d: number): string =>
+            d % 100 >= 11 && d % 100 <= 13
+              ? `${d}th`
+              : `${d}${["th", "st", "nd", "rd"][d % 10] || "th"}`;
+          // aria-label includes "<Month> <Day><ord>, <Year>" → "august 10th, 2026".
+          const wantLabel = (iso: string): string => {
+            const [y, mo, d] = iso.split("-").map((n) => parseInt(n, 10));
+            return `${MONTHS[mo - 1]} ${ord(d)}, ${y}`.toLowerCase();
+          };
+          const fireClick = (el: HTMLElement) => {
+            for (const t of ["mousedown", "mouseup", "click"]) {
+              el.dispatchEvent(
+                new MouseEvent(t, { bubbles: true, cancelable: true, view: window }),
+              );
+            }
+          };
+          const clickDay = (iso: string): boolean => {
+            const w = wantLabel(iso);
+            const cell = rdpDayCells().find(
+              (c) =>
+                (c.getAttribute("aria-label") || "").toLowerCase().includes(w) &&
+                c.getAttribute("aria-disabled") !== "true" &&
+                !/--disabled/.test(c.className) &&
+                // skip faded prev/next-month duplicates of the same date
+                !/--outside-month/.test(c.className),
+            );
+            if (!cell) return false;
+            fireClick(cell);
+            return true;
+          };
+          const advance = (): boolean => {
+            const cands: HTMLElement[] = [];
+            deepEach(
+              ".react-datepicker__navigation--next, button[aria-label*='next month' i]",
+              (el) => cands.push(el),
+            );
+            const next = cands[0];
+            if (next) {
+              fireClick(next);
+              return true;
+            }
+            return false;
+          };
+          // Checkout-only pass (finish a range after the arrival armed it).
+          if (ci == null && co != null) {
+            if (clickDay(co)) return `out=${co}`;
+            if (advance()) return "ADVANCING";
+            return null;
+          }
+          if (ci != null) {
+            if (!clickDay(ci)) {
+              if (advance()) return "ADVANCING";
+              return null;
+            }
+            if (co == null) return `in=${ci}`;
+            // Range pickers enable the end only AFTER the start. The synchronous
+            // second click usually sticks; if not, the caller's checkout-only
+            // passes (700ms apart) finish the departure.
+            const outOk = clickDay(co);
+            return `in=${ci}${outOk ? ` out=${co}` : " out=PENDING"}`;
+          }
+        }
+
         // ── Strategy 0: PIKADAY (one of the most common hotel pickers — The
         // Pearl and countless others). CRUCIAL: Pikaday changes month / selects
         // a day on a real MOUSEDOWN of .pika-next / .pika-prev / .pika-button —
