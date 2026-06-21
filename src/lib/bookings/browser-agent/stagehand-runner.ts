@@ -4464,6 +4464,31 @@ async function clickThroughUpsellDeterministically(
         return /cc-?number|card.?number|cardnumber/.test(m);
       });
       if (hasCard) return null;
+      // NEGATIVE GUARD — are we actually still on the ROOM / RATE step? Several
+      // engines (Boyne "brwf", many SynXis themes) render a PERMANENT step nav
+      // like "1 Accommodations · 2 Add-ons · 3 Reserve" that shows the word
+      // "Add-ons" on EVERY step. That used to false-match the upsell heading
+      // below WHILE STILL ON THE ROOM STEP, so the skip clicked the room-list
+      // "Next" pager ~25× and burned the whole 9-min budget (Inn at Bay Harbor).
+      // A real enhancements/extras page has NO room-rate controls, so if any are
+      // visible we are NOT on an upsell page — bail. General: every room/rate
+      // step shows a "Show/Hide Rates" / "View Rooms" toggle or nightly pricing;
+      // an add-ons/protection page shows neither.
+      const onRoomOrRateStep =
+        Array.from(
+          document.querySelectorAll<HTMLElement>("a,button,[role=button]"),
+        ).some((el) => {
+          if (!isVisible(el)) return false;
+          const t = (el.innerText || el.textContent || "")
+            .trim()
+            .toLowerCase();
+          return /show rates|hide rates|view rooms?|view rates?|unit details/.test(
+            t,
+          );
+        }) || /\/\s?night\b|per\s+night\b|\bnightly\b/i.test(
+          document.body?.innerText || "",
+        );
+      if (onRoomOrRateStep) return null;
       // Are we actually on an enhancements/upsell step? Look for its heading
       // or an active step-indicator — short, unmistakable text only.
       const UPSELL =
@@ -4896,7 +4921,8 @@ async function clickCheapestRoomDeterministically(
         const t = labelOf(el);
         return t.length <= 24 && (BOOK_CTA.test(t) || INFO_CTA.test(t));
       });
-      if (ctaEls.length === 0) return null;
+      // (No early-out when ctaEls is empty — fall through to the EXPANDER
+      // fallback below, which reveals a collapsed card's Select button.)
       // Climb to the room CARD (nearest ancestor that mentions a room word or
       // shows a price, and isn't the whole page).
       const cardOf = (el: HTMLElement): HTMLElement => {
@@ -4955,7 +4981,41 @@ async function clickCheapestRoomDeterministically(
       // the "room=first" phantom that clicked the wrong thing on Aman. A real
       // room list shows "from $X/night", so demand one.
       const priced = rooms.filter((r) => r.price != null);
-      if (priced.length === 0) return null;
+      if (priced.length === 0) {
+        // EXPANDER FALLBACK — some engines (Boyne "brwf", a few SynXis themes)
+        // collapse the rate + Select button behind a per-card "Show Rates &
+        // Unit Details" / "View Rates" toggle, so NO booking CTA is visible
+        // until a card is expanded (Inn at Bay Harbor sat on this all 9 min).
+        // When we find no direct book CTA but DO see priced room cards with such
+        // a toggle, click the CHEAPEST card's toggle; the Select button it
+        // reveals is picked next tick by the logic above. Only runs where the
+        // picker would otherwise give up, so it can't regress engines that
+        // already expose a book CTA.
+        const EXPAND =
+          /show rates?|view rates?|see rates?|unit details|view room details?|show details/i;
+        const exps = Array.from(
+          document.querySelectorAll<HTMLElement>("a,button,[role=button]"),
+        ).filter(
+          (el) =>
+            isVisible(el) &&
+            EXPAND.test(labelOf(el)) &&
+            !/hide/i.test(labelOf(el)),
+        );
+        const cards = new Map<
+          HTMLElement,
+          { exp: HTMLElement; price: number | null }
+        >();
+        for (const e of exps) {
+          const card = cardOf(e);
+          if (!cards.has(card))
+            cards.set(card, { exp: e, price: priceOf(card.textContent || "") });
+        }
+        const list = Array.from(cards.values()).filter((c) => c.price != null);
+        if (list.length === 0) return null;
+        list.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+        list[0].exp.click();
+        return `expand room $${list[0].price}`;
+      }
       priced.sort((a, b) => {
         // UNRESTRICTED rates first (a resident/AAA/military rate the customer
         // can't redeem is worse than a pricier rate they can actually book)…
