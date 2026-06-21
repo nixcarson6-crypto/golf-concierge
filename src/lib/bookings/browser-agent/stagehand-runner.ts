@@ -792,9 +792,13 @@ export async function runStagehandBooking(
     let cardStepFilled = false;
     // One-shot guard so the calendar diagnostic dumps at most once per run.
     let calendarDiagnosed = false;
-    // One-shot: dump the guest/checkout form's real field structure so a SynXis
-    // engine driver can be built from the actual DOM, not screenshots.
+    // One-shot PER HOST: dump the guest/checkout form's real field structure so
+    // a driver can be built from the actual DOM, not screenshots. Re-fires when
+    // the booking moves to a new host (e.g. streamsongresort.com → the embedded
+    // spend.onagilysys.com engine) so we capture the REAL checkout form, not an
+    // earlier inquiry form on the marketing site.
     let guestFormDiagnosed = false;
+    let lastGuestDiagHost = "";
     // Cap on next-month hops, so an unreachable date can't spin forever.
     let monthAdvances = 0;
     // Anti-spam for the Advance ("Next"/"Continue") click: a real multi-step
@@ -1859,28 +1863,49 @@ export async function runStagehandBooking(
           } catch {
             /* best-effort */
           }
-          // INSTANT GUEST AUTOFILL: zero-LLM pass on the active page after
-          // every step. When a guest/checkout form appears, every recognised
-          // empty field (names, email, phone, address, title) is filled in
-          // ~100ms — the agent then verifies and clicks Continue instead of
-          // typing field-by-field at ~10s a step (a Belmond run burned
-          // minutes transcribing data we already had).
+          // INSTANT GUEST AUTOFILL: zero-LLM pass after every step. When a
+          // guest/checkout form appears, every recognised empty field (names,
+          // email, phone, address, title) is filled in ~100ms — the agent then
+          // verifies and clicks Continue instead of typing field-by-field at
+          // ~10s a step (a Belmond run burned minutes transcribing data we
+          // already had).
           if (opts.autofill) {
             try {
               const active = stagehand.context.activePage();
               if (active) {
-                if (!guestFormDiagnosed) {
-                  const gdiag = await diagnoseGuestForm(active).catch(() => "");
+                // Run the guest recognizers against the BOOKING FRAME, not just
+                // the outer page. Many hotel engines (Agilysys — Streamsong's
+                // spend.onagilysys.com — plus SynXis / iHotelier) load the whole
+                // checkout, INCLUDING the guest form, inside an iframe; filling
+                // the outer page found nothing and left the form empty
+                // (Streamsong sat ~7 min on an empty contact form). bookingFrame
+                // resolves the child frame holding booking content and falls
+                // back to the page for non-iframe SPAs, so it's safe everywhere.
+                const target =
+                  (await bookingFrame(active).catch(() => active)) ?? active;
+                // Re-diagnose when the booking moves to a NEW host — the first
+                // diag often captures the marketing site's inquiry form; we want
+                // the real checkout engine's DOM (e.g. onagilysys.com).
+                let host = "";
+                try {
+                  host = new URL(
+                    (target as { url?: () => string }).url?.() ?? "",
+                  ).host;
+                } catch {
+                  /* frame URL unavailable */
+                }
+                if (!guestFormDiagnosed || (host && host !== lastGuestDiagHost)) {
+                  const gdiag = await diagnoseGuestForm(target).catch(() => "");
                   if (gdiag) {
                     guestFormDiagnosed = true;
+                    if (host) lastGuestDiagHost = host;
                     console.log(`[stagehand] 🔬 guest-form diag :: ${gdiag}`);
                   }
                 }
                 // Reveal a collapsed guest form first (Agilysys "Add Guest")
                 // so the First/Last/Email fields exist before we autofill.
-                // One-shot via the shared flag so it can't add guest rows.
                 if (!guestFormRevealed) {
-                  const revealed = await clickAddGuestDeterministically(active).catch(
+                  const revealed = await clickAddGuestDeterministically(target).catch(
                     () => null,
                   );
                   if (revealed) {
@@ -1890,7 +1915,7 @@ export async function runStagehandBooking(
                     );
                   }
                 }
-                const filled = await deterministicGuestFill(active, opts.autofill);
+                const filled = await deterministicGuestFill(target, opts.autofill);
                 if (filled > 0)
                   console.log(
                     `[stagehand] ⚡ autofill completed ${filled} guest fields (${elapsed()})`,

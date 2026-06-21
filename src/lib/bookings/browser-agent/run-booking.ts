@@ -642,22 +642,15 @@ async function runBrowserBookingInner(args: {
       }
       console.log(`[book] ${p.name} didn't book ${item.title} (${api.reason}).`);
     }
-    console.log(`[book] No API carried ${item.title} — hotel agent path.`);
-    // LAUNCH DEFAULT (reliability): hotels no bedbank carries are resort-direct
-    // (Streamsong, Pinehurst, Pebble, Aman) and ride slow engines like
-    // Agilysys that the agent can't finish in a decent time — Streamsong's
-    // Agilysys flow took ~4.5 min JUST to pick a room before the contact form.
-    // So instead of grinding the agent on them, we hand the customer a clean
-    // direct-booking link (concierge confirms). API-covered hotels still book
-    // above (API-first); only the UNCOVERED ones land here. Opt the hotel
-    // agent back ON once it's reliable on these engines with
-    // HOTEL_AGENT_ENABLED=true (HOTEL_AGENT_DISABLED=true forces it off).
-    const hotelAgentOn =
-      (process.env.HOTEL_AGENT_ENABLED ?? "").trim().toLowerCase() === "true" &&
-      process.env.HOTEL_AGENT_DISABLED !== "true";
-    if (!hotelAgentOn) {
+    console.log(`[book] No API carried ${item.title} — using browser agent.`);
+    // HOTEL AGENT KILL SWITCH: hotels LiteAPI/Hotelbeds cover book API-first
+    // above; only the UNCOVERED resort-direct ones land here. The agent runs
+    // by default (Carson wants it to complete these); set
+    // HOTEL_AGENT_DISABLED=true to LINK them for direct/concierge booking
+    // instead of running the agent.
+    if (process.env.HOTEL_AGENT_DISABLED === "true") {
       console.log(
-        `[book] hotel agent off (launch default) — linking ${item.title} for direct/concierge booking instead of grinding the agent.`,
+        `[book] HOTEL_AGENT_DISABLED — linking ${item.title} instead of the agent.`,
       );
       await markBookingFailed({
         booking,
