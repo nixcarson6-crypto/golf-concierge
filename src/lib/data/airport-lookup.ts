@@ -110,6 +110,20 @@ const FALLBACKS: Record<string, string> = {
   kapalua: "OGG",
   maui: "OGG",
   "reynolds lake oconee": "ATL",
+  // Northern Michigan golf cluster (Boyne resorts: Inn at Bay Harbor, Bay
+  // Harbor GC, Boyne Highlands/Mountain, Arcadia Bluffs, Crooked Tree). Haiku
+  // misread "The Inn at Bay Harbor" as a foreign "Bay Harbor" → LCC (Italy),
+  // so flights never loaded and the result page kept nagging "set your home
+  // airport." TVC (Traverse City) is the area's year-round jet gateway —
+  // Duffel returns real DFW connections; tiny Pellston (PLN) risks 0 offers
+  // and the nag returns.
+  "bay harbor": "TVC",
+  petoskey: "TVC",
+  "harbor springs": "TVC",
+  boyne: "TVC",
+  charlevoix: "TVC",
+  "arcadia bluffs": "TVC",
+  traverse: "TVC",
 };
 
 // Tight IATA regex — exactly three uppercase letters.
@@ -139,7 +153,7 @@ async function fromHaiku(destination: string): Promise<string | null> {
       model: modelFor("fast"),
       max_tokens: 12,
       system:
-        "You return ONE 3-letter IATA airport code for the nearest major airport to the destination, for a present-day LUXURY GOLF TRIP. The destination is often a HOTEL or RESORT NAME — resolve the airport nearest that PROPERTY. NEVER confuse a resort name with an ancient civilization or a same-sounding foreign place: 'The Phoenician' is a resort in Scottsdale, Arizona → PHX (it is NOT ancient Phoenicia/Tunis). 'The Broadmoor' → COS. 'Pebble Beach' → MRY. 'Lake Como' → MXP. 'Rome' → FCO. NO prose, NO punctuation — just the 3-letter code.",
+        "You return ONE 3-letter IATA airport code for the nearest major airport to the destination, for a present-day LUXURY GOLF TRIP. The destination is often a HOTEL or RESORT NAME — resolve the airport nearest that PROPERTY. NEVER confuse a resort name with an ancient civilization or a same-sounding foreign place, and if the property is in the UNITED STATES you must return a US airport — never one an ocean away: 'The Phoenician' is a resort in Scottsdale, Arizona → PHX (NOT ancient Phoenicia/Tunis). 'The Inn at Bay Harbor' is a Boyne resort in northern Michigan → TVC (NOT a foreign 'Bay Harbor' → never LCC/Italy). 'The Broadmoor' → COS. 'Pebble Beach' → MRY. 'Lake Como' → MXP. 'Rome' → FCO. NO prose, NO punctuation — just the 3-letter code.",
       messages: [{ role: "user", content: destination }],
     });
     const text = res.content
