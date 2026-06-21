@@ -642,15 +642,22 @@ async function runBrowserBookingInner(args: {
       }
       console.log(`[book] ${p.name} didn't book ${item.title} (${api.reason}).`);
     }
-    console.log(`[book] No API carried ${item.title} — using browser agent.`);
-    // HOTEL AGENT KILL SWITCH: hotels LiteAPI/Hotelbeds cover book API-first
-    // above; only the UNCOVERED resort-direct ones land here. The agent runs
-    // by default (Carson wants it to complete these); set
-    // HOTEL_AGENT_DISABLED=true to LINK them for direct/concierge booking
-    // instead of running the agent.
-    if (process.env.HOTEL_AGENT_DISABLED === "true") {
+    console.log(`[book] No API carried ${item.title} — checking hotel agent policy.`);
+    // HOTEL AGENT — LAUNCH DEFAULT IS OFF (Carson's call, June 2026). Hotels
+    // that LiteAPI/Hotelbeds cover book API-first above and never reach here;
+    // the UNCOVERED resort-direct ones (Big Cedar, Bay Harbor, Aman, Pebble)
+    // are the hardest/slowest engines AND a Browserbase crash kills ~15% of
+    // runs regardless of our code — so we LINK them for direct/concierge
+    // booking instead of grinding the agent in front of a paying customer
+    // (the same call we made for golf). Ship the reliable lane; the agent stays
+    // a background bonus. Set HOTEL_AGENT_ENABLED=true to run it for testing;
+    // HOTEL_AGENT_DISABLED=true hard-forces off even if ENABLED is set.
+    const hotelAgentOn =
+      process.env.HOTEL_AGENT_ENABLED === "true" &&
+      process.env.HOTEL_AGENT_DISABLED !== "true";
+    if (!hotelAgentOn) {
       console.log(
-        `[book] HOTEL_AGENT_DISABLED — linking ${item.title} instead of the agent.`,
+        `[book] hotel agent off (launch default) — linking ${item.title} for direct/concierge booking.`,
       );
       await markBookingFailed({
         booking,
@@ -663,6 +670,7 @@ async function runBrowserBookingInner(args: {
       });
       return;
     }
+    console.log(`[book] HOTEL_AGENT_ENABLED — running the browser agent for ${item.title}.`);
   }
 
   const cardProvider = buildCardProviderForBooking({

@@ -716,6 +716,17 @@ export function BookingStatusPanel({
                     kind === "failed" &&
                     failureReason === "form_not_found" &&
                     !agentBookable;
+                  // RESORT-DIRECT hotel (launch default): LiteAPI/Hotelbeds
+                  // didn't carry it, so the hotel agent is off and we link it
+                  // for direct/concierge booking. agentBookable stays true (the
+                  // API path must still run at book time), so a failed
+                  // form_not_found LODGING is the signal it fell through to a
+                  // link — present "reserve directly", never a "Tap to book"
+                  // that would just re-link.
+                  const isResortDirectHotel =
+                    item.type === "LODGING" &&
+                    kind === "failed" &&
+                    failureReason === "form_not_found";
                   // Sold out for the trip's dates. The venue exists and is
                   // bookable — there's just no inventory — so the concierge
                   // move is to offer a comparable alternative, not a dead end.
@@ -751,6 +762,7 @@ export function BookingStatusPanel({
                     agentBookable &&
                     !isWalkIn &&
                     !isPhoneOnly &&
+                    !isResortDirectHotel &&
                     (kind === "pending" || kind === "failed");
                   // Contact links (Call + Website) show for any suggestion
                   // venue that takes reservations, and as a fallback on a
@@ -784,8 +796,10 @@ export function BookingStatusPanel({
                           ? "Reserve directly with the venue"
                           : isPhoneOnly
                             ? "Reservations by phone"
-                            : canBook
-                              ? "Tap to book"
+                            : isResortDirectHotel
+                              ? "Reserve directly with the resort"
+                              : canBook
+                                ? "Tap to book"
                               : // While booking, show the live step ("Checking
                                 // availability…") instead of a flat "Booking…".
                                 kind === "booking"
