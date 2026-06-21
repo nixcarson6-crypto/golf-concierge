@@ -1589,6 +1589,14 @@ export async function runStagehandBooking(
     // screen never eats the full 11 min. Override or disable via env.
     const STALL_BAIL_MS =
       Number(process.env.BROWSER_AGENT_STALL_BAIL_MS) || 90_000;
+    // HARD cap: bail on no-new-screen after this long EVEN IF the page claims
+    // it's "still rendering" (a perpetual spinner / looping video is a dead
+    // booking, not progress). Guarantees the agent can NEVER sit on one screen
+    // near the 11-min ceiling — that ceiling is reachable ONLY by continuously
+    // reaching NEW screens. 3 min: comfortably past any real single-screen
+    // render, nowhere near the ceiling.
+    const STALL_HARD_BAIL_MS =
+      Number(process.env.BROWSER_AGENT_STALL_HARD_BAIL_MS) || 180_000;
     const stallBailOn = process.env.BROWSER_AGENT_STALL_BAIL_OFF !== "true";
     const STALL_NUDGE_FLOOR_MS = 22_000; // never call it frozen sooner than this
     const STALL_NUDGE_CEIL_MS = 55_000; // …and never wait longer than this to step in
@@ -1752,23 +1760,39 @@ export async function runStagehandBooking(
               if (fp && !seenFps.has(fp)) {
                 seenFps.add(fp); // a NEW screen — real progress
                 lastNewFpAt = Date.now();
-              } else if (Date.now() - lastNewFpAt > STALL_BAIL_MS) {
-                // No new state for STALL_BAIL_MS. Only bail if the page is
-                // SETTLED (not mid-render) and we're NOT at the card step (that
-                // would be a real finish handled by the payment phase).
-                const settling = await pageStillSettling(f).catch(() => false);
-                const atCard = await detectCardFieldPresent(f).catch(() => false);
-                if (!settling && !atCard) {
-                  stallAbort = true;
-                  console.warn(
-                    `[stagehand] ✗ no forward progress for ${Math.round(
-                      (Date.now() - lastNewFpAt) / 1000,
-                    )}s — agent is staring, bailing to fallback (${elapsed()})`,
+              } else {
+                const idleMs = Date.now() - lastNewFpAt;
+                if (idleMs > STALL_BAIL_MS) {
+                  const atCard = await detectCardFieldPresent(f).catch(
+                    () => false,
                   );
-                  controller.abort();
-                  return;
+                  if (atCard) {
+                    // The card step IS the finish (the payment phase owns it),
+                    // not a stall — reset so we never bail here.
+                    lastNewFpAt = Date.now();
+                  } else {
+                    const settling = await pageStillSettling(f).catch(
+                      () => false,
+                    );
+                    // Bail when the page is SETTLED (clearly stuck), OR when
+                    // it's been stuck so long that even a "still rendering" read
+                    // is a dead booking (the hard cap). Critically we do NOT
+                    // reset lastNewFpAt while it "renders" — so idleMs keeps
+                    // climbing toward the hard cap and a perpetual spinner can't
+                    // park us near the ceiling.
+                    if (!settling || idleMs > STALL_HARD_BAIL_MS) {
+                      stallAbort = true;
+                      console.warn(
+                        `[stagehand] ✗ no forward progress for ${Math.round(
+                          idleMs / 1000,
+                        )}s${settling ? " (page claims rendering — hard cap)" : ""} — bailing to fallback (${elapsed()})`,
+                      );
+                      controller.abort();
+                      return;
+                    }
+                    // still rendering AND under the hard cap → wait it out.
+                  }
                 }
-                lastNewFpAt = Date.now(); // rendering / card step → not a stall
               }
             }
           } catch {
