@@ -805,6 +805,22 @@ export function BookingStatusPanel({
                                 kind === "booking"
                                 ? agentProgress || statusLabel(kind)
                                 : statusLabel(kind);
+                  // WHY a booking couldn't be completed — shown to the customer
+                  // above the direct-booking links so a miss is never a bare
+                  // "tap to book" caution with no explanation (Carson's ask).
+                  // The sold-out / members-only / golf cases have their own
+                  // reason blocks already, so this covers hotels + the rest.
+                  const failedExplanation = isResortDirectHotel
+                    ? "No travel partner carries this resort, so we can't auto-book it — it only books on its own site. Reserve it directly below, or our concierge will lock it in for you."
+                    : item.type === "LODGING"
+                      ? failureReason === "captcha_blocked"
+                        ? "The hotel's site blocked automated booking, so we couldn't finish it. Reserve it directly below, or our concierge will handle it."
+                        : failureReason === "declined_card"
+                          ? "Your card was declined at the hotel's checkout. Update your card and retry, or reserve directly below."
+                          : "We couldn't complete this hotel automatically. Reserve it directly below, or our concierge will finish it for you."
+                      : failureReason === "declined_card"
+                        ? "Your card was declined at checkout. Update your card and try again, or reserve directly below."
+                        : "We couldn't complete this one automatically — reach the venue directly below, or our concierge will help.";
                   const rowInner = (
                     <>
                       {(isSuggestion || isSelfGolf) && !isThisBooking ? (
@@ -1144,6 +1160,13 @@ export function BookingStatusPanel({
                               caption="Tap to see the venue's confirmation"
                             />
                           )}
+                        </div>
+                      )}
+                      {kind === "failed" && !needsAlternative && !isSelfGolf && (
+                        <div className="pl-9 pr-2.5 pb-1.5 -mt-0.5">
+                          <p className="text-[11px] text-muted-foreground leading-snug">
+                            {failedExplanation}
+                          </p>
                         </div>
                       )}
                       {showContacts && (
