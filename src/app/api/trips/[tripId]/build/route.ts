@@ -29,6 +29,53 @@ import {
 import { airportForDestination } from "@/lib/data/airport-lookup";
 import { rewriteFlightItemsFromOffer } from "@/lib/flights/rewrite-items";
 import { stripLocationSuffix, tripDisplayLabel } from "@/lib/trip-display";
+import type { ItineraryAI } from "@/lib/ai/schemas";
+
+/**
+ * SAFETY NET — when the customer typed a SPECIFIC hotel as their destination
+ * ("Bay Harbor Inn", "stay at the Aman"), that property is the ONE thing they
+ * explicitly asked for. The itinerary prompt already says to make it the
+ * required lodging, but the LLM sometimes emits flights + golf and forgets the
+ * hotel entirely (a real "Bay Harbor Inn" build came back with ZERO lodging).
+ * If there's no LODGING item at all AND the destination names a property,
+ * inject a LODGING bookend anchored to the trip dates so the customer's hotel
+ * is always in the trip. Reuses a sibling item's location/timezone so the
+ * stay shows the same locale as the golf.
+ */
+const NAMED_HOTEL_RE =
+  /\b(inn|hotel|resort|lodge|suites?|manor|chateau|château|villa|ritz|carlton|four seasons|st\.?\s*regis|waldorf|fairmont|peninsula|mandarin|rosewood|belmond|auberge|aman|montage|nobu|raffles|shangri-?la|conrad|kempinski|sofitel|pendry|broadmoor|greenbrier|sanctuary)\b/i;
+
+function ensureNamedHotelLodging(
+  output: ItineraryAI,
+  primaryName: string | null,
+  rawTyped: string | null,
+  dates: { startDate?: string | null; endDate?: string | null },
+): void {
+  if (output.items.some((i) => i.type === "LODGING")) return;
+  const name =
+    (primaryName && NAMED_HOTEL_RE.test(primaryName) && primaryName.trim()) ||
+    (rawTyped && NAMED_HOTEL_RE.test(rawTyped) && rawTyped.trim()) ||
+    null;
+  if (!name) return;
+  const sibling = output.items.find((i) => i.location);
+  output.items.unshift({
+    type: "LODGING",
+    title: name,
+    description: `Your stay at ${name}.`,
+    location: sibling?.location ?? name,
+    address: null,
+    startTime: dates.startDate ? `${dates.startDate}T15:00:00` : null,
+    endTime: dates.endDate ? `${dates.endDate}T11:00:00` : null,
+    timeZone: output.items.find((i) => i.timeZone)?.timeZone ?? null,
+    cost: null,
+    aiRationale:
+      "You named this property as your destination, so we set it as your stay.",
+    metadata: { injected: "named-hotel-lodging" },
+  });
+  console.warn(
+    `[build] itinerary had NO lodging — injected the named hotel "${name}" as the stay.`,
+  );
+}
 
 const bodySchema = z.object({
   answers: z.record(z.string(), z.unknown()),
@@ -542,6 +589,10 @@ export async function POST(
           `[build] multi-leg partial: failed legs = ${partialLegFailures.join(", ")}`,
         );
       }
+      ensureNamedHotelLodging(itineraryOutput, chosenDestination, rawDest, {
+        startDate: constraints.startDate,
+        endDate: constraints.endDate,
+      });
       await persistItinerary(tripId, itineraryOutput);
       nudge(tripId);
     } else {
@@ -556,6 +607,10 @@ export async function POST(
       ]);
       itineraryOutput = run.output;
       preSearch = ps;
+      ensureNamedHotelLodging(itineraryOutput, chosenDestination, rawDest, {
+        startDate: constraints.startDate,
+        endDate: constraints.endDate,
+      });
       await persistItinerary(tripId, itineraryOutput);
       nudge(tripId);
     }
