@@ -1928,18 +1928,67 @@ export async function runStagehandBooking(
           // INSTANT DATE-SET (per step): the calendar often appears only after
           // the agent navigates a page or two (Pebble Beach's inquiry form, a
           // hotel's "check availability" step). Re-run the deterministic date
-          // setter on the active page until it lands ONCE — so code sets the
-          // dates the moment the widget shows, instead of the agent grinding it.
+          // setter the moment the widget shows, instead of the agent grinding it.
           if (opts.checkinISO && !datesAlreadySet) {
             try {
               const active = stagehand.context.activePage();
               if (active) {
-                const r = await clickStayDatesDeterministically(
-                  active,
+                // Drive against the booking FRAME — engines like Boyne ("brwf"
+                // widget on Inn at Bay Harbor) load the date picker in an iframe.
+                const dctx =
+                  (await bookingFrame(active).catch(() => active)) ?? active;
+                let r = await clickStayDatesDeterministically(
+                  dctx,
                   opts.checkinISO ?? null,
                   opts.checkoutISO ?? null,
                 );
-                if (r && r !== "OPENED" && r.startsWith("in=")) {
+                // Arrival landed but check-OUT is still pending — range pickers
+                // only enable departure AFTER arrival is chosen. Run dedicated
+                // checkout-only passes to FINISH the range. (The old code marked
+                // dates "done" on the first `in=…` even when it was
+                // `out=PENDING`, so the departure never got set — Bay Harbor sat
+                // on a half-set "Jul 10" range forever.)
+                if (opts.checkoutISO && r != null && r.includes("out=PENDING")) {
+                  for (let i = 0; i < 3; i++) {
+                    await new Promise((res) => setTimeout(res, 700));
+                    const od =
+                      (await bookingFrame(active).catch(() => active)) ?? active;
+                    const outRes = await clickStayDatesDeterministically(
+                      od,
+                      null,
+                      opts.checkoutISO ?? null,
+                    );
+                    if (outRes && outRes.startsWith("out=")) {
+                      r = `in=${opts.checkinISO} out=${opts.checkoutISO}`;
+                      break;
+                    }
+                  }
+                }
+                // Check-out STILL won't resolve → dump the calendar DOM once so
+                // the cell selector can be built from the real markup next run.
+                if (
+                  opts.checkoutISO &&
+                  r != null &&
+                  r.includes("out=PENDING") &&
+                  !calendarDiagnosed
+                ) {
+                  calendarDiagnosed = true;
+                  const cdiag = await diagnoseCalendar(dctx).catch(
+                    () => "(diag failed)",
+                  );
+                  console.log(
+                    `[stagehand] 🔬 calendar diag (out=PENDING) :: ${cdiag}`,
+                  );
+                }
+                // Mark DONE only when the range is COMPLETE — never on
+                // out=PENDING, so the next step keeps chasing the departure.
+                const complete =
+                  r != null &&
+                  r !== "OPENED" &&
+                  r !== "ADVANCING" &&
+                  r.startsWith("in=") &&
+                  !(opts.checkoutISO && r.includes("out=PENDING"));
+                if (complete) {
                   datesAlreadySet = true;
                   datesConfirmed = true;
                   console.log(
