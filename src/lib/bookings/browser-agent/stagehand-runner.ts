@@ -5022,11 +5022,25 @@ async function clickCheapestRoomDeterministically(
           if (!cards.has(card))
             cards.set(card, { exp: e, price: priceOf(card.textContent || "") });
         }
-        const list = Array.from(cards.values()).filter((c) => c.price != null);
-        if (list.length === 0) return null;
-        list.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
-        list[0].exp.click();
-        return `expand room $${list[0].price}`;
+        const list = Array.from(cards.values());
+        const pricedExp = list.filter((c) => c.price != null);
+        if (pricedExp.length > 0) {
+          pricedExp.sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+          pricedExp[0].exp.click();
+          return `expand room $${pricedExp[0].price}`;
+        }
+        // brwf (Inn at Bay Harbor) hides BOTH the price AND the Select button
+        // until a room is expanded, so collapsed cards carry no price to rank
+        // by. Open the FIRST room so its rate + Select surface; the rate-plan
+        // picker grabs the cheapest rate next tick. Reaching the card step beats
+        // the agent grinding the room list for 9 minutes (it timed out doing
+        // exactly that). Gated to where ≥2 room toggles exist so it can't fire
+        // on a stray "show details" link elsewhere.
+        if (list.length >= 2 && list[0]) {
+          list[0].exp.click();
+          return "expand room (price hidden — opened first)";
+        }
+        return null;
       }
       priced.sort((a, b) => {
         // UNRESTRICTED rates first (a resident/AAA/military rate the customer
