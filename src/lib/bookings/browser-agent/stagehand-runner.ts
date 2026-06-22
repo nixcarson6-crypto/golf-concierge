@@ -1968,6 +1968,34 @@ export async function runStagehandBooking(
           } catch {
             /* best-effort */
           }
+          // BOOKING-TYPE CHOOSER (per step): the "What would you like to book?"
+          // chooser can render a beat AFTER the conductor handed off, and the
+          // conductor's chooser check no longer runs by then — so click the
+          // rooms/stay option here too. Scans the page + every frame; one-shot
+          // via bookingTypeChosen and self-guarded to a real chooser, so it
+          // can't loop or mis-fire. (Won't help if the chooser is in a frame we
+          // can't read into — a cross-origin iframe / shadow DOM — but catches
+          // the common late-render case.)
+          if (!bookingTypeChosen) {
+            try {
+              const active = stagehand.context.activePage();
+              if (active) {
+                for (const ctx of await allFrameContexts(active)) {
+                  const choice =
+                    await clickBookingTypeChooserDeterministically(ctx);
+                  if (choice) {
+                    bookingTypeChosen = true;
+                    console.log(
+                      `[stagehand] ⚡ booking-type chosen mid-run ("${choice}") (${elapsed()})`,
+                    );
+                    break;
+                  }
+                }
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
           // INSTANT GUEST AUTOFILL: zero-LLM pass after every step. When a
           // guest/checkout form appears, every recognised empty field (names,
           // email, phone, address, title) is filled in ~100ms — the agent then
