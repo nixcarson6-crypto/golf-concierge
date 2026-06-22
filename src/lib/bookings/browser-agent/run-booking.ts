@@ -613,36 +613,50 @@ async function runBrowserBookingInner(args: {
   // finally the agent. The itinerary AI already picked the best hotel with
   // no knowledge of API coverage — this only changes HOW we book it.
   if (item.type === "LODGING") {
-    const hotelArgs = {
-      bookingId: booking.id,
-      itineraryItemId: item.id,
-      hotelName: item.title,
-      location: item.address ?? item.location,
-      checkin: task.isoDate,
-      checkout: task.isoCheckOut,
-      adults: task.traveler.partySize,
-      traveler,
-    };
-    const { tryLiteApiHotelBooking } = await import("../liteapi-hotel");
-    const { tryHotelbedsHotelBooking } = await import("../hotelbeds-hotel");
-    const { tryRateHawkHotelBooking } = await import("../ratehawk-hotel");
-    const providers = [
-      { name: "LiteAPI", fn: tryLiteApiHotelBooking },
-      { name: "Hotelbeds", fn: tryHotelbedsHotelBooking },
-      { name: "RateHawk", fn: tryRateHawkHotelBooking },
-    ];
-    for (const p of providers) {
-      const api = await p.fn(hotelArgs);
-      if (api.booked) {
-        console.log(`[book] ${item.title} booked via ${p.name} — skipping agent.`);
-        try {
-          await postInternalNudge({ tripId: args.tripId });
-        } catch {}
-        return;
+    // TEST ESCAPE HATCH (HOTEL_FORCE_AGENT=true): skip the bedbank APIs and send
+    // the booking STRAIGHT to the browser agent. Normally the APIs grab the
+    // clean mainstream-engine hotels (Gleneagles via LiteAPI) before the agent
+    // ever runs, so the agent only sees the hard resort-direct misses — which
+    // makes it impossible to watch it work on an EASY hotel. With this on you
+    // can point it at a hotel you choose (a One&Only / other SynXis property)
+    // and watch it drive the form to the card step. Off by default; never prod.
+    const forceAgent = process.env.HOTEL_FORCE_AGENT === "true";
+    if (forceAgent) {
+      console.log(
+        `[book] HOTEL_FORCE_AGENT — skipping bedbank APIs; sending ${item.title} straight to the browser agent.`,
+      );
+    } else {
+      const hotelArgs = {
+        bookingId: booking.id,
+        itineraryItemId: item.id,
+        hotelName: item.title,
+        location: item.address ?? item.location,
+        checkin: task.isoDate,
+        checkout: task.isoCheckOut,
+        adults: task.traveler.partySize,
+        traveler,
+      };
+      const { tryLiteApiHotelBooking } = await import("../liteapi-hotel");
+      const { tryHotelbedsHotelBooking } = await import("../hotelbeds-hotel");
+      const { tryRateHawkHotelBooking } = await import("../ratehawk-hotel");
+      const providers = [
+        { name: "LiteAPI", fn: tryLiteApiHotelBooking },
+        { name: "Hotelbeds", fn: tryHotelbedsHotelBooking },
+        { name: "RateHawk", fn: tryRateHawkHotelBooking },
+      ];
+      for (const p of providers) {
+        const api = await p.fn(hotelArgs);
+        if (api.booked) {
+          console.log(`[book] ${item.title} booked via ${p.name} — skipping agent.`);
+          try {
+            await postInternalNudge({ tripId: args.tripId });
+          } catch {}
+          return;
+        }
+        console.log(`[book] ${p.name} didn't book ${item.title} (${api.reason}).`);
       }
-      console.log(`[book] ${p.name} didn't book ${item.title} (${api.reason}).`);
+      console.log(`[book] No API carried ${item.title} — trying the browser agent.`);
     }
-    console.log(`[book] No API carried ${item.title} — trying the browser agent.`);
     // HOTEL AGENT — TRY EVERY TIME (Carson's flow, June 2026). Hotels
     // LiteAPI/Hotelbeds cover book API-first above; the uncovered resort-direct
     // ones reach here and we ALWAYS give the agent a shot. The safety is in the
