@@ -2105,6 +2105,34 @@ export async function runStagehandBooking(
               /* best-effort */
             }
           }
+          // SYNXIS DATE FIX (per step) — runs EVEN AFTER datesAlreadySet, because
+          // the resort → *.synxis.com hand-off RESETS the stay to today/1-night
+          // ("You selected a restricted date") long after we set the dates on the
+          // resort's own calendar. SynXis carries dates in the URL, so rewrite
+          // them straight to the trip dates. Idempotent — no-ops once correct.
+          if (opts.checkinISO) {
+            try {
+              const active = stagehand.context.activePage();
+              const sctx = active
+                ? ((await bookingFrame(active).catch(() => active)) ?? active)
+                : null;
+              if (
+                sctx &&
+                (await fixSynxisDatesViaUrl(
+                  sctx,
+                  opts.checkinISO ?? null,
+                  opts.checkoutISO ?? null,
+                ))
+              ) {
+                datesConfirmed = true;
+                console.log(
+                  `[stagehand] ⚡ corrected SynXis stay dates via URL (${opts.checkinISO} → ${opts.checkoutISO ?? opts.checkinISO}) (${elapsed()})`,
+                );
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
           // INSTANT TEE-SLOT (per step): same idea for golf — the slot list can
           // render a step or two in. Click the nearest slot the moment it shows.
           if (opts.selectTeeSlot && !slotAlreadyPicked) {
@@ -4501,6 +4529,55 @@ async function allFrameContexts(page: unknown): Promise<unknown[]> {
     /* a frame list that throws mid-navigation → just drive the page */
   }
   return out;
+}
+
+/**
+ * SynXis (Sabre) — the booking engine behind a huge share of luxury hotels
+ * (One&Only, Villa d'Este, Gleneagles, much of LHW) — reads the stay dates
+ * straight from the URL query (`arrive=YYYY-MM-DD&depart=YYYY-MM-DD`). When a
+ * resort site hands off to *.synxis.com it opens on TODAY for ONE night, which
+ * luxury properties reject as "You selected a restricted date" — and the agent
+ * then sits on an unbookable screen (a real Villa d'Este run reached the room
+ * list at be.synxis.com but with arrive=today / depart=tomorrow and stalled).
+ * Rewriting the dates IN THE URL is bulletproof — no calendar clicking — and
+ * general to every SynXis property. Runs in-page so it works whether SynXis is
+ * the top page or an iframe. Idempotent: no-ops (returns false) once the URL
+ * already carries the right dates, so it can never loop-navigate. Returns true
+ * only when it corrected wrong dates and navigated.
+ */
+async function fixSynxisDatesViaUrl(
+  ctx: unknown,
+  checkinISO: string | null,
+  checkoutISO: string | null,
+): Promise<boolean> {
+  const cdp = ctx as CdpPage;
+  if (!checkinISO || typeof cdp?.evaluate !== "function") return false;
+  try {
+    return await cdp.evaluate<boolean>(
+      (arg: unknown) => {
+        const { wantArrive, wantDepart } = arg as {
+          wantArrive: string;
+          wantDepart: string;
+        };
+        if (!/synxis\.com/i.test(location.host)) return false;
+        const u = new URL(location.href);
+        if (!u.searchParams.has("arrive") && !u.searchParams.has("depart"))
+          return false;
+        if (
+          u.searchParams.get("arrive") === wantArrive &&
+          u.searchParams.get("depart") === wantDepart
+        )
+          return false; // already correct — never loop-navigate
+        u.searchParams.set("arrive", wantArrive);
+        u.searchParams.set("depart", wantDepart);
+        window.location.href = u.toString();
+        return true;
+      },
+      { wantArrive: checkinISO, wantDepart: checkoutISO ?? checkinISO },
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function pageStillSettling(page: unknown): Promise<boolean> {
