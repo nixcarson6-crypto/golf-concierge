@@ -78,8 +78,8 @@ export default async function LandingPage() {
               Launching soon · invite-only
             </p>
             <h1 className="rise rise-2 mt-8 text-display text-[2.85rem] leading-[1.03] tracking-[-0.035em] sm:text-6xl lg:text-[4.4rem]">
-              The trip you&apos;d ask a private concierge to plan —
-              <em className="text-accent font-light"> built in minutes.</em>
+              The golf trip you keep talking about —
+              <em className="text-accent font-light"> planned in minutes.</em>
             </h1>
             <p className="rise rise-3 mt-7 max-w-xl text-base sm:text-lg text-muted-foreground leading-relaxed">
               Answer a few questions and Pyltrix&apos;s AI designs your
@@ -156,8 +156,8 @@ export default async function LandingPage() {
             <p className="mt-6 max-w-md text-base leading-relaxed text-[#b5b8ae]">
               For your hotel, Pyltrix doesn&apos;t just hand you a link. Its
               booking agent works the property&apos;s own site — dates, room,
-              your details — and a concierge stands behind every reservation
-              until it&apos;s confirmed under your name.
+              your details — and we stand behind every reservation until
+              it&apos;s confirmed under your name.
             </p>
           </div>
           <div className="rounded-xl border border-[#2a2e28] bg-[#0c0f0b] shadow-[0_40px_80px_-40px_rgb(0_0_0/0.6)] overflow-hidden">
@@ -499,7 +499,7 @@ const STEPS = [
   {
     icon: CalendarCheck2,
     title: "Book the big pieces",
-    body: "One tap books your flights and your stay. You pick your tee times, and our concierge lines up dining and transfers — the logistics, handled.",
+    body: "One tap books your flights and your stay. You pick your tee times, and we line up dining and transfers — the logistics, handled.",
   },
 ];
 
