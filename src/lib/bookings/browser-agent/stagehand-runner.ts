@@ -3741,6 +3741,23 @@ async function clickStayDatesDeterministically(
           const inputs = Array.from(
             document.querySelectorAll<HTMLInputElement>("input"),
           );
+          // Detect the date FORMAT the site actually uses, from any already-
+          // populated date field. Bulgari's departure field auto-fills
+          // "2026-08-12" (ISO) before we ever touch it, so we can type BOTH
+          // dates in ISO — the format the widget accepts — instead of the old
+          // hardcoded MM/DD/YYYY it silently rejected (which left the departure
+          // stuck at the 1-night default). When no populated date field is
+          // found we keep MM/DD/YYYY, i.e. UNCHANGED behavior for every site
+          // that worked before.
+          let fmt: "iso" | "mdyDash" | "mdy" = "mdy";
+          for (const e of inputs) {
+            const v = (e.value || "").trim();
+            const tag = `${e.name} ${e.id} ${e.getAttribute("aria-label") || ""}`;
+            if (!/date|arriv|depart|check|from|\bto\b/i.test(tag)) continue;
+            if (/\b20\d{2}-\d{1,2}-\d{1,2}\b/.test(v)) { fmt = "iso"; break; }
+            if (/\b\d{1,2}-\d{1,2}-20\d{2}\b/.test(v)) { fmt = "mdyDash"; break; }
+            if (/\b\d{1,2}\/\d{1,2}\/20\d{2}\b/.test(v)) { fmt = "mdy"; break; }
+          }
           for (const el of inputs) {
             if (!isVisible(el)) continue;
             if (el.readOnly || el.disabled) continue;
@@ -3748,8 +3765,16 @@ async function clickStayDatesDeterministically(
             if (!["text", "date", "tel", "search", ""].includes(type)) continue;
             const hay = fieldHay(el);
             if (!want.some((w) => hay.includes(w))) continue;
-            // Respect the input's own format if it's a native date input.
-            const val = type === "date" ? iso : `${mm}/${dd}/${y}`;
+            // Native date inputs are always ISO; text inputs use the detected
+            // site format (defaulting to US MM/DD/YYYY).
+            const val =
+              type === "date"
+                ? iso
+                : fmt === "iso"
+                  ? `${y}-${mm}-${dd}`
+                  : fmt === "mdyDash"
+                    ? `${mm}-${dd}-${y}`
+                    : `${mm}/${dd}/${y}`;
             setNative(el, val);
             return true;
           }
