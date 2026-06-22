@@ -79,13 +79,13 @@ export default async function LandingPage() {
             </p>
             <h1 className="rise rise-2 mt-8 text-display text-[2.85rem] leading-[1.03] tracking-[-0.035em] sm:text-6xl lg:text-[4.4rem]">
               The trip you&apos;d ask a private concierge to plan —
-              <em className="text-accent font-light"> booked end to end.</em>
+              <em className="text-accent font-light"> built in minutes.</em>
             </h1>
             <p className="rise rise-3 mt-7 max-w-xl text-base sm:text-lg text-muted-foreground leading-relaxed">
-              Answer a few questions. Pyltrix&apos;s AI builds a complete
-              luxury golf trip — flights, lodging, tee times, dining,
-              transport — then books the whole thing for you. You just show
-              up.
+              Answer a few questions and Pyltrix&apos;s AI designs your
+              complete luxury golf trip — flights, lodging, tee times, dining,
+              and transport — at real, current prices. We book your flights and
+              your stay, you pick your tee times, and we line up the rest.
             </p>
             <div className="rise rise-4 mt-10 flex flex-wrap items-center gap-3">
               <Button asChild size="lg" className="h-12 px-7">
@@ -117,8 +117,8 @@ export default async function LandingPage() {
               <TripCard />
             </div>
             <p className="mt-4 text-center text-xs text-muted-foreground">
-              A trip Pyltrix built and booked — every line is a real
-              reservation.
+              A complete trip Pyltrix planned in one pass — real flights, real
+              rates, ready to book.
             </p>
           </div>
         </div>
@@ -148,15 +148,16 @@ export default async function LandingPage() {
         <div className="container grid items-center gap-16 py-24 sm:py-28 lg:grid-cols-2">
           <div>
             <p className="text-[11px] uppercase tracking-[0.3em] text-[#7f8378]">
-              The booking engine
+              Booking your stay
             </p>
             <h2 className="mt-4 text-display text-3xl sm:text-5xl tracking-tight leading-[1.06]">
-              Watch it book, line by line.
+              We book it, line by line.
             </h2>
             <p className="mt-6 max-w-md text-base leading-relaxed text-[#b5b8ae]">
-              Pyltrix doesn&apos;t hand you links. Its booking agent works the
-              venue&apos;s own website — dates, party, room, your details — and
-              you can watch every step live until the reservation is real.
+              For your hotel, Pyltrix doesn&apos;t just hand you a link. Its
+              booking agent works the property&apos;s own site — dates, room,
+              your details — and a concierge stands behind every reservation
+              until it&apos;s confirmed under your name.
             </p>
           </div>
           <div className="rounded-xl border border-[#2a2e28] bg-[#0c0f0b] shadow-[0_40px_80px_-40px_rgb(0_0_0/0.6)] overflow-hidden">
@@ -297,7 +298,7 @@ export default async function LandingPage() {
             className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(to_right,currentColor_1px,transparent_1px),linear-gradient(to_bottom,currentColor_1px,transparent_1px)] [background-size:64px_64px]"
           />
           <h2 className="relative mx-auto max-w-3xl text-display text-3xl sm:text-5xl tracking-tight leading-[1.08]">
-            Tell us where you want to play. We&apos;ll handle the rest.
+            Tell us where you want to play. We&apos;ll build the whole trip.
           </h2>
           <div className="relative mt-10">
             <Button
@@ -424,25 +425,25 @@ function ConfirmationCard() {
           </span>
           <div>
             <p className="text-sm font-semibold tracking-tight">
-              Booked — Pinehurst No. 2
+              Booked — The Carolina Hotel
             </p>
             <p className="text-xs text-muted-foreground">
-              Confirmed directly on the course&apos;s tee sheet
+              Confirmed in the resort&apos;s own system
             </p>
           </div>
         </div>
         <dl className="mt-6 divide-y divide-border border-y border-border text-sm">
           <div className="flex items-center justify-between py-3">
             <dt className="text-muted-foreground">Confirmation</dt>
-            <dd className="font-mono text-[13px] tracking-wide text-accent">PH2-88341</dd>
+            <dd className="font-mono text-[13px] tracking-wide text-accent">CRH-40192</dd>
           </div>
           <div className="flex items-center justify-between py-3">
-            <dt className="text-muted-foreground">Amount charged</dt>
-            <dd className="tabular-nums">$1,720.00</dd>
+            <dt className="text-muted-foreground">Total stay</dt>
+            <dd className="tabular-nums">$3,640.00</dd>
           </div>
           <div className="flex items-center justify-between py-3">
             <dt className="text-muted-foreground">Under name</dt>
-            <dd>Party of 4 · lead golfer</dd>
+            <dd>4 nights · suite</dd>
           </div>
         </dl>
         <p className="mt-5 flex items-start gap-2 text-xs text-muted-foreground leading-relaxed">
@@ -466,7 +467,7 @@ const BOOKING_LOG = [
   { t: "00:58", msg: "dates set · Aug 11 → 20 · 2 adults" },
   { t: "01:31", msg: "12 rooms found · cheapest selected" },
   { t: "02:14", msg: "guest details filled" },
-  { t: "02:49", msg: "payment secured · reservation confirmed" },
+  { t: "02:49", msg: "reservation confirmed · under your name" },
 ];
 
 const ASSURANCES = [
@@ -497,8 +498,8 @@ const STEPS = [
   },
   {
     icon: CalendarCheck2,
-    title: "We book it all",
-    body: "One tap. Our concierge agent reserves everything on your behalf and hands you the confirmations. You just show up.",
+    title: "Book the big pieces",
+    body: "One tap books your flights and your stay. You pick your tee times, and our concierge lines up dining and transfers — the logistics, handled.",
   },
 ];
 
@@ -515,18 +516,18 @@ const FEATURES = [
   },
   {
     icon: Sparkles,
-    title: "Books the long tail",
-    body: "Independent courses, beach clubs, spas, boat tours — anything with a booking page, our agent reserves directly on the venue's own site.",
+    title: "Your stay, booked direct",
+    body: "Even at independent resorts no travel site carries, our agent reserves your room on the property's own site — with a concierge to finish anything it can't.",
   },
   {
     icon: UtensilsCrossed,
-    title: "Marquee dining, handled",
-    body: "The restaurants you actually want, reserved or one tap away — no phone tag, no guesswork.",
+    title: "Tee times & tables, lined up",
+    body: "You pick your tee times so the round is yours, and the restaurants you actually want are ready to reserve in a tap — no phone tag, no guesswork.",
   },
   {
     icon: ShieldCheck,
     title: "Proof you can see",
-    body: "Every booking comes back with a real confirmation number and the venue's own confirmation page. Zero-click peace of mind.",
+    body: "Every booking we complete comes back with the venue's own confirmation number and page — so you know it's real, not a maybe.",
   },
   {
     icon: RefreshCcw,
