@@ -824,6 +824,9 @@ export async function runStagehandBooking(
     // true ONLY when the date setter confirmed "in=…". Gates the room picker
     // (in the conductor AND the per-step pass) so it can't fire on a calendar.
     let datesConfirmed = false;
+    // One-shot guard: the per-step stay-date drift check warns only the FIRST
+    // time the on-page dates diverge from what we asked for, so it can't spam.
+    let dateMismatchWarned = false;
     let verifyWallHits = 0;
     let verifyWallBlocked = false;
 
@@ -2127,23 +2130,36 @@ export async function runStagehandBooking(
                   console.log(
                     `[stagehand] ⚡ dates set mid-run (${r}) (${elapsed()})`,
                   );
-                  // VERIFY the engine actually shows the dates we asked for. The
-                  // setter echoes the REQUESTED date, so a mis-clicked arrival
-                  // still reports success and only surfaces at the review page (a
-                  // real Bulgari run showed Jul 31 → Aug 20 instead of Aug 11 →
-                  // Aug 20). Log-only — nothing auto-commits yet, so this can't
-                  // regress a working calendar; it just makes the bug visible (and
-                  // points at the exact calendar to fix the cell match on).
-                  const verdict = await verifyStayDatesOnPage(
-                    dctx,
-                    opts.checkinISO ?? null,
-                    opts.checkoutISO ?? null,
-                  ).catch(() => "unknown");
-                  if (verdict.startsWith("mismatch")) {
-                    console.warn(
-                      `[stagehand] ⚠ stay-date MISMATCH — setter reported ${r} but the page shows ${verdict}. The arrival cell was mis-clicked; capture this calendar's DOM to fix the cell match. (${elapsed()})`,
-                    );
-                  }
+                }
+              }
+            } catch {
+              /* best-effort */
+            }
+          }
+          // STAY-DATE DRIFT CHECK (per step, EVERY step) — the engine can change
+          // the stay AFTER we set it (Bulgari/Marriott showed Jul 31 → Aug 20 at
+          // the review page even though the setter set Aug 11 → Aug 20 earlier),
+          // and a one-shot check at set-time misses that later drift. Read the
+          // arrival/departure inputs back each step and warn the FIRST time they
+          // diverge, capturing the field name + raw value so the exact cause is
+          // fixable from one run. Log-only — no behavior change, no regression.
+          if (opts.checkinISO && !dateMismatchWarned) {
+            try {
+              const active = stagehand.context.activePage();
+              const vctx = active
+                ? ((await bookingFrame(active).catch(() => active)) ?? active)
+                : null;
+              if (vctx) {
+                const verdict = await verifyStayDatesOnPage(
+                  vctx,
+                  opts.checkinISO ?? null,
+                  opts.checkoutISO ?? null,
+                ).catch(() => "unknown");
+                if (verdict.startsWith("mismatch")) {
+                  dateMismatchWarned = true;
+                  console.warn(
+                    `[stagehand] ⚠ stay-date MISMATCH — wanted in=${opts.checkinISO} out=${opts.checkoutISO ?? "—"}, but the page shows ${verdict} (${elapsed()})`,
+                  );
                 }
               }
             } catch {
@@ -3288,12 +3304,18 @@ async function verifyStayDatesOnPage(
         let confirmed = false;
         if (arrEl) {
           const got = parse(arrEl.value);
-          if (got && got !== ci) bad.push(`arrive=${got}≠${ci}`);
+          if (got && got !== ci)
+            bad.push(
+              `arrive=${got}≠${ci} [field "${arrEl.name || arrEl.id}" shows "${arrEl.value.trim().slice(0, 30)}"]`,
+            );
           else if (got === ci) confirmed = true;
         }
         if (co && depEl) {
           const got = parse(depEl.value);
-          if (got && got !== co) bad.push(`depart=${got}≠${co}`);
+          if (got && got !== co)
+            bad.push(
+              `depart=${got}≠${co} [field "${depEl.name || depEl.id}" shows "${depEl.value.trim().slice(0, 30)}"]`,
+            );
         }
         if (bad.length) return "mismatch " + bad.join(" ");
         return confirmed ? "ok" : "unknown";
