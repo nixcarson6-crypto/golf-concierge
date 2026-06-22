@@ -1758,7 +1758,7 @@ export async function runStagehandBooking(
     let lastNewFpAt = Date.now();
     stallWatch = setInterval(() => {
       void (async () => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || stallAbort) return;
         // ── PROGRESS-STALL BAIL ── runs regardless of step activity, so it
         // catches a "staring" agent (firing steps, page never advancing) that
         // the frozen-agent check below would miss.
@@ -2127,6 +2127,23 @@ export async function runStagehandBooking(
                   console.log(
                     `[stagehand] ⚡ dates set mid-run (${r}) (${elapsed()})`,
                   );
+                  // VERIFY the engine actually shows the dates we asked for. The
+                  // setter echoes the REQUESTED date, so a mis-clicked arrival
+                  // still reports success and only surfaces at the review page (a
+                  // real Bulgari run showed Jul 31 → Aug 20 instead of Aug 11 →
+                  // Aug 20). Log-only — nothing auto-commits yet, so this can't
+                  // regress a working calendar; it just makes the bug visible (and
+                  // points at the exact calendar to fix the cell match on).
+                  const verdict = await verifyStayDatesOnPage(
+                    dctx,
+                    opts.checkinISO ?? null,
+                    opts.checkoutISO ?? null,
+                  ).catch(() => "unknown");
+                  if (verdict.startsWith("mismatch")) {
+                    console.warn(
+                      `[stagehand] ⚠ stay-date MISMATCH — setter reported ${r} but the page shows ${verdict}. The arrival cell was mis-clicked; capture this calendar's DOM to fix the cell match. (${elapsed()})`,
+                    );
+                  }
                 }
               }
             } catch {
@@ -3184,6 +3201,110 @@ async function captureProofScreenshot(
  *   null            nothing matched — let the agent do it
  * Best-effort — never throws.
  */
+/**
+ * Read the arrival/departure date INPUTS the engine actually shows and compare
+ * them to the dates we asked for. clickStayDatesDeterministically echoes the
+ * REQUESTED date in its return ("in=2026-08-11"), so a wrong-cell click still
+ * reports success and the bad dates only surface at the review screen — a real
+ * Bulgari Dubai run booked Jul 31 → Aug 20 instead of Aug 11 → Aug 20. This
+ * surfaces the mismatch in the logs the instant it happens. Conservative: only
+ * returns "mismatch" when it can POSITIVELY parse an on-page date that differs;
+ * an unreadable/empty field returns "unknown", so it never false-alarms a
+ * calendar we can't read. Returns "ok" | "unknown" | "mismatch …".
+ */
+async function verifyStayDatesOnPage(
+  ctx: unknown,
+  checkinISO: string | null,
+  checkoutISO: string | null,
+): Promise<string> {
+  const cdp = ctx as CdpPage;
+  if (!checkinISO || typeof cdp?.evaluate !== "function") return "unknown";
+  try {
+    return await cdp.evaluate<string>(
+      (arg: unknown) => {
+        const { ci, co } = arg as { ci: string; co: string | null };
+        const MONTHS = [
+          "jan", "feb", "mar", "apr", "may", "jun",
+          "jul", "aug", "sep", "oct", "nov", "dec",
+        ];
+        // Free-form date string → YYYY-MM-DD, or "" when not confident.
+        const parse = (raw: string): string => {
+          const s = (raw || "").trim().toLowerCase();
+          const y = s.match(/\b(20\d{2})\b/);
+          if (!y) return "";
+          const year = y[1];
+          const iso = s.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+          if (iso)
+            return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+          let mon = 0;
+          for (let i = 0; i < 12; i++)
+            if (s.includes(MONTHS[i])) {
+              mon = i + 1;
+              break;
+            }
+          if (mon > 0) {
+            const d = s.match(/\b(\d{1,2})\b/);
+            if (d) {
+              const day = parseInt(d[1], 10);
+              if (day >= 1 && day <= 31)
+                return `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+            }
+          }
+          const mdy = s.match(/\b(\d{1,2})\/(\d{1,2})\/(20\d{2})\b/);
+          if (mdy) {
+            let mm = parseInt(mdy[1], 10);
+            let dd = parseInt(mdy[2], 10);
+            if (mm > 12 && dd <= 12) {
+              const t = mm;
+              mm = dd;
+              dd = t;
+            }
+            if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)
+              return `${mdy[3]}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+          }
+          return "";
+        };
+        const isVisible = (el: Element): boolean => {
+          const r = (el as HTMLElement).getClientRects();
+          return !!r && r.length > 0;
+        };
+        const inputs = Array.from(
+          document.querySelectorAll<HTMLInputElement>("input"),
+        ).filter((el) => isVisible(el) && el.value.trim());
+        const labelText = (el: HTMLInputElement): string => {
+          const lby = el.getAttribute("aria-labelledby");
+          let lbl = "";
+          if (lby) {
+            const n = document.getElementById(lby);
+            if (n) lbl = n.textContent || "";
+          }
+          return `${el.name} ${el.id} ${el.getAttribute("aria-label") || ""} ${el.placeholder || ""} ${lbl}`.toLowerCase();
+        };
+        const ARR = /arriv|check.?in|start.?date|\bfrom\b/;
+        const DEP = /depart|check.?out|end.?date|\buntil\b/;
+        const arrEl = inputs.find((el) => ARR.test(labelText(el)));
+        const depEl = inputs.find((el) => DEP.test(labelText(el)));
+        const bad: string[] = [];
+        let confirmed = false;
+        if (arrEl) {
+          const got = parse(arrEl.value);
+          if (got && got !== ci) bad.push(`arrive=${got}≠${ci}`);
+          else if (got === ci) confirmed = true;
+        }
+        if (co && depEl) {
+          const got = parse(depEl.value);
+          if (got && got !== co) bad.push(`depart=${got}≠${co}`);
+        }
+        if (bad.length) return "mismatch " + bad.join(" ");
+        return confirmed ? "ok" : "unknown";
+      },
+      { ci: checkinISO, co: checkoutISO ?? null },
+    );
+  } catch {
+    return "unknown";
+  }
+}
+
 async function clickStayDatesDeterministically(
   page: unknown,
   checkinISO: string | null,
