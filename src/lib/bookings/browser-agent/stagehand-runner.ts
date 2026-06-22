@@ -6280,7 +6280,7 @@ async function clickBookingTypeChooserDeterministically(
         );
       };
       const labelOf = (el: HTMLElement): string =>
-        (el.innerText || el.textContent || el.getAttribute("aria-label") || "")
+        (el.textContent || el.getAttribute("aria-label") || "")
           .trim()
           .replace(/\s+/g, " ");
       // A bookable NOUN (what you can book) and a BOOK verb. An option needs
@@ -6290,14 +6290,18 @@ async function clickBookingTypeChooserDeterministically(
         /\b(stay|room|rooms|suite|suites|accommodation|overnight|hotel)\b/i;
       const OTHER =
         /\b(table|dining|restaurant|breakfast|lunch|dinner|treatment|spa|massage|wellness|event|meeting|wedding|conference|gift|voucher|experience|tour|excursion|class|villa)\b/i;
-      const nodes = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          "a, button, [role=button], [role=option], [role=menuitem], li, [class*=option i], [class*=choice i], [class*=tile i], [class*=card i]",
-        ),
-      );
+      // TAG-AGNOSTIC. Villa d'Este renders each chooser option as plain text,
+      // NOT an <a>/<button> — so the old tag whitelist matched nothing and the
+      // run sat on the chooser. Scan EVERY element but only accept a short,
+      // leaf-ish node (≤3 child elements) whose own text reads "book a <noun>":
+      // a wrapper holding all five options has text >48 chars and is skipped,
+      // so we can't grab the modal container by mistake. textContent (not
+      // innerText) keeps this cheap — no layout thrash on a big page.
+      const nodes = Array.from(document.querySelectorAll<HTMLElement>("*"));
       const seen = new Set<string>();
       const options: { el: HTMLElement; txt: string }[] = [];
       for (const el of nodes) {
+        if (el.childElementCount > 3) continue; // not a leaf-ish option
         const txt = labelOf(el);
         if (!txt || txt.length > 48) continue;
         const low = txt.toLowerCase();
@@ -6328,11 +6332,21 @@ async function clickBookingTypeChooserDeterministically(
         }
       }
       if (!best || bestScore <= 0) return null;
-      // The matched node may be a wrapper (a <li>/card) around the real link —
-      // click the inner anchor/button so the navigation actually fires.
-      const target: HTMLElement = best.el.matches("a, button")
-        ? best.el
-        : ((best.el.querySelector("a, button") as HTMLElement | null) ?? best.el);
+      // The text node usually isn't itself clickable — the handler is on an
+      // ancestor (or it IS clickable). Click the nearest clickable target:
+      // self → closest clickable ancestor → a clickable descendant → the node
+      // itself (a plain div with an onclick still responds to .click()).
+      const CLICKABLE =
+        "a, button, [role=button], [role=link], [role=option], [role=menuitem], [onclick], [tabindex]";
+      const clickTarget = (el: HTMLElement): HTMLElement => {
+        if (el.matches(CLICKABLE)) return el;
+        let n: HTMLElement | null = el.parentElement;
+        for (let i = 0; i < 5 && n; i++, n = n.parentElement) {
+          if (n.matches?.(CLICKABLE)) return n;
+        }
+        return el.querySelector<HTMLElement>(CLICKABLE) ?? el;
+      };
+      const target = clickTarget(best.el);
       if (target instanceof HTMLAnchorElement) target.target = "_self";
       target.click();
       return best.txt;
