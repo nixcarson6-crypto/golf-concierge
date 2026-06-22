@@ -78,8 +78,8 @@ export default async function LandingPage() {
               Launching soon · invite-only
             </p>
             <h1 className="rise rise-2 mt-8 text-display text-[2.85rem] leading-[1.03] tracking-[-0.035em] sm:text-6xl lg:text-[4.4rem]">
-              The golf trip you keep talking about —
-              <em className="text-accent font-light"> planned in minutes.</em>
+              Your dream golf trip, planned to the last detail —
+              <em className="text-accent font-light"> in minutes.</em>
             </h1>
             <p className="rise rise-3 mt-7 max-w-xl text-base sm:text-lg text-muted-foreground leading-relaxed">
               Answer a few questions and Pyltrix&apos;s AI designs your
