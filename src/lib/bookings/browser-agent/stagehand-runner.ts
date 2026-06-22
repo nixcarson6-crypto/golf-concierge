@@ -1063,10 +1063,17 @@ export async function runStagehandBooking(
         // the conductor re-clicking "Book now" and stalling. Self-guards to a
         // REAL chooser (≥2 booking-type options), so it can't mis-fire.
         if (!bookingTypeChosen) {
-          const choice = await clickBookingTypeChooserDeterministically(bf);
-          if (choice) {
-            bookingTypeChosen = true;
-            return `booking-type "${choice}"`;
+          // Scan the page AND every child frame — the chooser usually renders in
+          // an iframe that bookingFrame() can't score (it has no calendar/room/
+          // rate signals), so driving only `bf` misses it (Villa d'Este sat
+          // ~3 min on the visible chooser because the recognizer read the outer
+          // homepage). First matching frame wins; the click is self-guarded.
+          for (const ctx of await allFrameContexts(pageCtx)) {
+            const choice = await clickBookingTypeChooserDeterministically(ctx);
+            if (choice) {
+              bookingTypeChosen = true;
+              return `booking-type "${choice}"`;
+            }
           }
         }
         // VISITOR/GUEST tab (ChronoGolf "Visitors | Members") — the customer is
@@ -1339,13 +1346,23 @@ export async function runStagehandBooking(
       console.log(
         `[stagehand] conductor ${conductorReachedCard ? "reached card step — skipping agent" : "handed off to agent"} (${elapsed()})`,
       );
-      // Handing off STUCK (not at the card step) → dump the booking frame's
-      // current step so a step we couldn't drive reveals its real DOM.
+      // Handing off STUCK (not at the card step) → dump the current step so a
+      // step we couldn't drive reveals its real DOM. Walk the page AND every
+      // child frame: the step is often INSIDE an iframe the frame-scorer didn't
+      // pick (no calendar/room signals to score), so a page-only diag shows the
+      // outer marketing site and HIDES the real step — that's exactly why the
+      // Villa d'Este miss logged the homepage and was hard to diagnose. Skip
+      // empty frames so ad/tracking iframes don't spam the log.
       if (!conductorReachedCard) {
         try {
-          const sctx = await bookingFrame(stagehand.context.activePage() ?? page);
-          const sdiag = await diagnoseBookingStep(sctx);
-          if (sdiag) console.log(`[stagehand] 🔬 booking-step diag :: ${sdiag}`);
+          const EMPTY = /"headings":\[\],"buttons":\[\],"priced":\[\],"inputs":\[\]/;
+          for (const ctx of await allFrameContexts(
+            stagehand.context.activePage() ?? page,
+          )) {
+            const sdiag = await diagnoseBookingStep(ctx).catch(() => "");
+            if (sdiag && !EMPTY.test(sdiag))
+              console.log(`[stagehand] 🔬 booking-step diag :: ${sdiag}`);
+          }
         } catch {
           /* best-effort */
         }
@@ -4431,6 +4448,37 @@ async function bookingFrame(page: unknown): Promise<unknown> {
   } catch {
     return page;
   }
+}
+
+/**
+ * Every drivable context for a page: the page itself, then each child frame.
+ * Some steps render in an IFRAME that carries NONE of the calendar/room/rate/
+ * name signals `bookingFrame()` scores on — so the single best-frame pick
+ * misses them entirely. Real failure: Villa d'Este opens a "What would you like
+ * to book?" chooser (hotel / villa / table / treatment / event) inside an
+ * iframe; the conductor read the OUTER homepage every tick, never saw the 5
+ * options, and sat ~3 min. Recognizers that can appear BEFORE the calendar (the
+ * booking-type chooser) run across all of these so a chooser/engine in any frame
+ * gets driven. Page first (most common + cheapest), then frames; main frame
+ * de-duped against the page. GENERAL — every multi-service SynXis/luxury site.
+ */
+async function allFrameContexts(page: unknown): Promise<unknown[]> {
+  const out: unknown[] = [page];
+  try {
+    const p = page as { frames?: () => unknown[]; mainFrame?: () => unknown };
+    if (typeof p.frames !== "function") return out;
+    const frames = p.frames();
+    if (!Array.isArray(frames)) return out;
+    const main = typeof p.mainFrame === "function" ? p.mainFrame() : null;
+    for (const f of frames) {
+      if (f === main) continue; // ≈ the page, already first
+      const fr = f as { evaluate?: unknown };
+      if (typeof fr?.evaluate === "function") out.push(f);
+    }
+  } catch {
+    /* a frame list that throws mid-navigation → just drive the page */
+  }
+  return out;
 }
 
 async function pageStillSettling(page: unknown): Promise<boolean> {
