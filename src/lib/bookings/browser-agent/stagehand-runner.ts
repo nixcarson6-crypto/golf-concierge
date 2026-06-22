@@ -4300,11 +4300,19 @@ async function diagnoseCalendar(page: unknown): Promise<string> {
 /**
  * Coarse, cheap fingerprint of the current page/frame, used by the
  * progress-stall watchdog to tell "the booking advanced" from "the agent is
- * staring." Captures the things that change a LOT between booking screens
- * (calendar → rooms → guest → card) but stay stable on a frozen/looping one:
- * the visible interactive-element count, the form-field count, the first
- * heading, and the SPA hash route. A new fingerprint = real progress; the same
- * (or a previously-seen) one = no progress. Never throws.
+ * staring." A new fingerprint = real progress; a repeated one = no progress.
+ *
+ * CAROUSEL-IMMUNE BY DESIGN. The earlier version hashed the first heading and
+ * the raw link count — both of which a rotating homepage hero (Villa d'Este
+ * cycles its hero heading + carousel slides every few seconds) changes
+ * constantly, so a STUCK agent on such a page produced an endlessly "new"
+ * fingerprint and the bail timer never ran down → it ground to the 9-min
+ * ceiling instead of bailing at ~90s. So we now key ONLY on signals that move
+ * between booking STEPS (calendar → rooms → guest → card) but stay stable on a
+ * looping marketing page: the SPA route, the form-field count (a carousel never
+ * adds inputs), which booking widget is on screen, and a COARSELY bucketed
+ * control count (anchors excluded — they're the most carousel/nav-volatile, and
+ * the bucket absorbs a few links flickering in and out). Never throws.
  */
 async function pageFingerprint(page: unknown): Promise<string> {
   const cdp = page as CdpPage;
@@ -4315,18 +4323,32 @@ async function pageFingerprint(page: unknown): Promise<string> {
         const r = (el as HTMLElement).getClientRects();
         return !!r && r.length > 0;
       };
+      const has = (sel: string) => !!document.querySelector(sel);
+      // Form-field count: jumps between steps (calendar 0 → guest form many),
+      // but a rotating carousel never adds/removes inputs.
+      const fields = document.querySelectorAll("input,select,textarea").length;
+      // Which BOOKING widget is on screen — flips as the booking advances,
+      // stable on a looping page.
+      const markers =
+        (has(
+          "[role=gridcell],[class*=calendar i],[class*=daypicker i],td[class*=day i]",
+        )
+          ? "C"
+          : "") +
+        (has("[class*=room i],[class*=rate i],[class*=availab i]") ? "R" : "") +
+        (has(
+          "input[autocomplete=cc-number],input[name*=card i],input[id*=card i]",
+        )
+          ? "$"
+          : "");
+      // Control count bucketed (÷8) so a carousel swapping a few visible
+      // buttons in/out can't cross a bucket and fake progress; anchors excluded
+      // for the same reason (they're the noisiest element on a marketing page).
       const interactive = Array.from(
-        document.querySelectorAll("button,[role=button],a,input,select,textarea"),
+        document.querySelectorAll("button,[role=button],input,select,textarea"),
       ).filter(vis).length;
-      const fields = document.querySelectorAll(
-        "input,select,textarea",
-      ).length;
-      const heading = (
-        document.querySelector("h1,h2")?.textContent || ""
-      )
-        .trim()
-        .slice(0, 48);
-      return `${interactive}|${fields}|${heading}|${location.hash}`;
+      const bucket = Math.round(interactive / 8);
+      return `${location.pathname}${location.hash}|${fields}|${markers}|${bucket}`;
     });
   } catch {
     return "";
