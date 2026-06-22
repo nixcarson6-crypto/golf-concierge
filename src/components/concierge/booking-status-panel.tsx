@@ -682,7 +682,6 @@ export function BookingStatusPanel({
                   agentMessage,
                   quotedPriceCents,
                   agentProgress,
-                  liveViewUrl,
                 }) => {
                   // Walk-in venues (casual restaurants/activities Google
                   // says don't take reservations) get a distinct label
@@ -956,30 +955,6 @@ export function BookingStatusPanel({
                             <Flag className="size-3.5" />
                             Book your tee time
                           </a>
-                        </div>
-                      )}
-                      {/* BOOKING — brief note that a real-site booking takes
-                          a bit, so the spinner never feels stuck. */}
-                      {kind === "booking" && !isThisBooking && (
-                        <div className="pl-9 pr-2.5 pb-2 -mt-0.5 space-y-1.5">
-                          <p className="text-[11px] text-muted-foreground leading-snug">
-                            Luxury booking sites have detailed forms — Pyltrix is
-                            filling in your dates, room, and details and taking it
-                            all the way to confirmation. This can take a few
-                            minutes; you can keep using the app and we&apos;ll
-                            email your confirmation.
-                          </p>
-                          {liveViewUrl && (
-                            <a
-                              href={liveViewUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-full border border-foreground/30 bg-foreground/5 px-3 py-1 text-[11px] font-semibold text-foreground hover:bg-foreground/10 transition"
-                            >
-                              <Loader2 className="size-3 animate-spin" />
-                              Watch Pyltrix book it live
-                            </a>
-                          )}
                         </div>
                       )}
                       {/* REVIEW — the agent reached a real page and stopped.
