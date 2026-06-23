@@ -46,55 +46,33 @@ type Trip = {
   items: TripItem[];
 };
 
-// Real bucket-list golf destinations, shown as PLANNED trips (real-shaped
-// itineraries + estimates, ready to book) — never claimed as "booked".
+// Showcase trips are built around hotels in LiteAPI's strong leisure-luxury
+// European golf markets — the properties we can book via the API in seconds,
+// NOT the US resort-direct ones the agent struggles with. Verify the exact
+// hotels with `pnpm check:landing-hotels` before trusting this list.
 const TRIPS: Trip[] = [
   {
-    name: "Pebble Beach",
-    region: "Monterey · California",
+    name: "Algarve",
+    region: "Quinta do Lago · Portugal",
     when: "Oct 4–8 · 4 players",
-    total: 11270,
+    total: 7660,
     items: [
-      { icon: Plane, title: "United · EWR ⇄ MRY", detail: "Nonstop · first class", price: "$3,180" },
-      { icon: Flag, title: "Pebble Beach Golf Links", detail: "Saturday · 9:20 AM", price: "$2,950" },
-      { icon: BedDouble, title: "The Lodge · 4 nights", detail: "Ocean-view suite", price: "$4,720" },
-      { icon: UtensilsCrossed, title: "Stillwater · welcome dinner", detail: "Reserved · 7:30 PM", price: "$420" },
+      { icon: Plane, title: "TAP Air · EWR ⇄ FAO", detail: "Business class", price: "$3,360" },
+      { icon: Flag, title: "Quinta do Lago · South", detail: "Saturday · 9:40 AM", price: "$540" },
+      { icon: BedDouble, title: "Conrad Algarve · 4 nights", detail: "Deluxe pool suite", price: "$3,280" },
+      { icon: UtensilsCrossed, title: "Gusto by Heinz Beck", detail: "Michelin · 8:00 PM", price: "$480" },
     ],
   },
   {
-    name: "St Andrews",
-    region: "Fife · Scotland",
-    when: "Jun 12–17 · 2 players",
-    total: 8980,
+    name: "Marbella",
+    region: "Costa del Sol · Spain",
+    when: "May 18–22 · 4 players",
+    total: 7840,
     items: [
-      { icon: Plane, title: "Delta · JFK ⇄ EDI", detail: "Nonstop · business", price: "$4,260" },
-      { icon: Flag, title: "The Old Course", detail: "Tuesday · 11:40 AM", price: "$1,180" },
-      { icon: BedDouble, title: "Old Course Hotel · 5 nights", detail: "Course-view room", price: "$3,300" },
-      { icon: UtensilsCrossed, title: "The Seafood Ristorante", detail: "Reserved · 8:00 PM", price: "$240" },
-    ],
-  },
-  {
-    name: "Bandon Dunes",
-    region: "Oregon Coast",
-    when: "Sep 8–12 · 4 players",
-    total: 5420,
-    items: [
-      { icon: Plane, title: "Alaska · LAX ⇄ OTH", detail: "First class", price: "$1,840" },
-      { icon: Flag, title: "Bandon + Pacific Dunes", detail: "36 holes · Saturday", price: "$640" },
-      { icon: BedDouble, title: "The Inn · 4 nights", detail: "Lily Pond suite", price: "$2,560" },
-      { icon: UtensilsCrossed, title: "Pacific Grill · dinner", detail: "Reserved · 7:00 PM", price: "$380" },
-    ],
-  },
-  {
-    name: "Adare Manor",
-    region: "Co. Limerick · Ireland",
-    when: "May 20–24 · 4 players",
-    total: 12370,
-    items: [
-      { icon: Plane, title: "Aer Lingus · BOS ⇄ SNN", detail: "Nonstop · business", price: "$5,120" },
-      { icon: Flag, title: "Adare Manor Golf Course", detail: "Ryder Cup '27 host", price: "$1,290" },
-      { icon: BedDouble, title: "Adare Manor · 4 nights", detail: "Manor suite", price: "$5,400" },
-      { icon: UtensilsCrossed, title: "The Oak Room", detail: "Michelin · 8:00 PM", price: "$560" },
+      { icon: Plane, title: "Iberia · JFK ⇄ AGP", detail: "Business class", price: "$3,180" },
+      { icon: Flag, title: "Real Club Valderrama", detail: "Saturday · 10:20 AM", price: "$620" },
+      { icon: BedDouble, title: "Puente Romano · 4 nights", detail: "Beachside suite", price: "$3,520" },
+      { icon: UtensilsCrossed, title: "Dani García · Marbella", detail: "3-Michelin · 8:30 PM", price: "$520" },
     ],
   },
 ];
@@ -185,12 +163,12 @@ const PROOFS = [
 ];
 
 const DESTINATIONS = [
-  "Pebble Beach",
-  "St Andrews",
-  "Bandon Dunes",
-  "Adare Manor",
-  "Cabot",
-  "Portrush",
+  "Algarve",
+  "Marbella",
+  "Sotogrande",
+  "Quinta do Lago",
+  "Mallorca",
+  "Costa del Sol",
 ];
 
 const EASE = [0.16, 1, 0.3, 1] as const;

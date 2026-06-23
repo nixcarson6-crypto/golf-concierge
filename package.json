@@ -22,6 +22,7 @@
     "check:stripe": "dotenv -e .env.local -- tsx scripts/check-stripe.ts",
     "check:email": "dotenv -e .env.local -- tsx scripts/check-email.ts",
     "check:liteapi": "dotenv -e .env.local -- tsx scripts/check-liteapi.ts",
+    "check:landing-hotels": "dotenv -e .env.local -- tsx scripts/check-landing-hotels.ts",
     "check:hotelbeds": "dotenv -e .env.local -- tsx scripts/check-hotelbeds.ts",
     "hotelbeds:coverage": "dotenv -e .env.local -- tsx scripts/hotelbeds-coverage.ts",
     "check:ratehawk": "dotenv -e .env.local -- tsx scripts/check-ratehawk.ts",
