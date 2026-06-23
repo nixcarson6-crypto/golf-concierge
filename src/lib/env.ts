@@ -109,6 +109,13 @@ const definitions = {
   // "false" turns OFF the MVP review-before-charge gate (agent pauses at the
   // card step for one-tap customer approval before any charge). Default ON.
   BOOKING_REQUIRE_PAYMENT_REVIEW: { required: false },
+  // FLIGHTS — money guardrail. OFF by default: flights are SELF-BOOK (the
+  // customer books their own flight, their card pays the airline directly, we
+  // never spend our Duffel balance). Set "true" to auto-book through Duffel —
+  // but even then we charge the CUSTOMER's saved card first (see
+  // flight-payment.ts), so our balance is only ever spent against money already
+  // in hand. Default-off = zero capital required to launch.
+  FLIGHT_AUTOBOOK_ENABLED: { required: false },
   // Skyvern hosted vision agent — only used when BOOKING_ENGINE=skyvern.
   // Additive: Steel/Browserbase + Stagehand stay the default + fallback.
   SKYVERN_API_KEY: { required: false },

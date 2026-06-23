@@ -14,6 +14,7 @@ import {
   bookFlightOffer,
   type BookFlightInput,
 } from "@/lib/bookings/providers/duffel-book";
+import { flightAutoBookEnabled } from "@/lib/bookings/flight-payment";
 import { recordFlightBooking } from "@/lib/bookings/record-flight";
 import {
   bookHotel,
@@ -1083,6 +1084,21 @@ async function executeBookFlight(
       error: "book_flight requires trip context — internal wiring issue.",
     });
   }
+  // Money guardrail: flights are SELF-BOOK by default — we never spend our
+  // Duffel balance for a flight unless the customer's card was charged first.
+  // This (deprecated) chat handler has no user/payment context, so it can't
+  // charge and therefore must never balance-book. Hand it back as self-book.
+  // Flight booking proper lives in Book All, which enforces the full gate
+  // (charge the customer first) — see flight-payment.ts.
+  if (!flightAutoBookEnabled()) {
+    return JSON.stringify({
+      ok: false,
+      selfBook: true,
+      message:
+        "Flights are self-book. The customer reserves their own flight from the trip page (their card pays the airline directly). Do not book the flight here — tell them their flight is ready to book on their trip and Pyltrix handles the rest.",
+    });
+  }
+
   const parsed = input as Partial<BookFlightInput> | null;
   if (
     !parsed ||

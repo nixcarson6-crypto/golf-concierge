@@ -79,6 +79,10 @@ export type WorkspaceTrip = {
      *  [home, leg0, leg1, ..., home]. Undefined for single-leg. */
     airportChain?: string[];
   } | null;
+  /** When false (the default), flights are SELF-BOOK — the customer books
+   *  their own flight (their card pays the airline; we never front it). When
+   *  true, Book All auto-books through Duffel after charging the customer. */
+  flightAutoBook?: boolean;
   /** Multi-destination legs. Single-destination trips have exactly one
    *  leg with index = 0. Empty array for trips created before the
    *  TripLeg model landed. */
@@ -601,6 +605,10 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       tripId={tripId}
       itinerary={snapshot.itinerary}
       hasSavedCard={snapshot.me.hasSavedCard}
+      flightAutoBook={snapshot.trip.flightAutoBook ?? false}
+      suggestedFlights={snapshot.trip.suggestedFlights}
+      tripStartDate={snapshot.trip.startDate}
+      tripEndDate={snapshot.trip.endDate}
     />
   );
 

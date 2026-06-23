@@ -28,7 +28,10 @@ import {
   type ConfirmationLine,
 } from "@/lib/email";
 import { tripDisplayLabel } from "@/lib/trip-display";
-import { bookFlightOffer } from "@/lib/bookings/providers/duffel-book";
+import {
+  bookFlightForCustomer,
+  flightSelfBookLink,
+} from "@/lib/bookings/flight-payment";
 import { recordFlightBooking } from "@/lib/bookings/record-flight";
 import {
   prepareAgentBooking,
@@ -45,11 +48,15 @@ type Outcome = {
   category: "flight" | "hotel" | "golf" | "restaurant" | "transport";
   // "booking" = agent dispatched, running async (real status arrives via the
   // panel's live polling). "booked" = confirmed now (a real flight ticket, or
-  // an item already CONFIRMED on a prior run).
-  status: "booked" | "booking" | "pencilled" | "skipped" | "failed";
+  // an item already CONFIRMED on a prior run). "self_book" = we deliberately
+  // did NOT spend money — the customer books this one themselves (a direct
+  // link is included).
+  status: "booked" | "booking" | "pencilled" | "skipped" | "failed" | "self_book";
   title: string;
   detail?: string;
   confirmationCode?: string;
+  /** Direct booking link for self_book outcomes (e.g. flights). */
+  link?: string;
 };
 
 type SuggestedFlightsBlock = {
@@ -176,18 +183,41 @@ export async function POST(
         });
       } else {
         try {
-          const result = await bookFlightOffer({
+          // Money guardrail: bookFlightForCustomer NEVER spends our Duffel
+          // balance unless the customer's card has been charged first. By
+          // default it returns "self_book" — we hand the customer a direct
+          // link and our balance is never touched. (See flight-payment.ts.)
+          const outcome = await bookFlightForCustomer({
+            userId: user.id,
+            tripId,
             offerId: cheapest.id,
             passengers,
+            ticketCents: cheapest.totalAmount,
           });
-          if (!result.ok) {
+          if (outcome.mode === "self_book") {
+            const link = flightSelfBookLink({
+              origin: suggested!.origin,
+              destination: suggested!.destination,
+              departDate: trip.startDate?.toISOString().slice(0, 10) ?? null,
+              returnDate: trip.endDate?.toISOString().slice(0, 10) ?? null,
+            });
+            outcomes.push({
+              category: "flight",
+              status: "self_book",
+              title: `${cheapest.airlineName} · $${Math.round(cheapest.totalAmount / 100).toLocaleString()}`,
+              detail:
+                "Book your flight directly — your card pays the airline, and Pyltrix handles the rest of your trip.",
+              link,
+            });
+          } else if (outcome.mode === "failed") {
             outcomes.push({
               category: "flight",
               status: "failed",
               title: `${cheapest.airlineName} flight`,
-              detail: result.error,
+              detail: outcome.error,
             });
           } else {
+            const result = outcome.result;
             try {
               await recordFlightBooking({
                 tripId,

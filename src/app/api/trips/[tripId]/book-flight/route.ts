@@ -13,7 +13,10 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { nudge } from "@/lib/events";
-import { bookFlightOffer } from "@/lib/bookings/providers/duffel-book";
+import {
+  bookFlightForCustomer,
+  flightSelfBookLink,
+} from "@/lib/bookings/flight-payment";
 import { recordFlightBooking } from "@/lib/bookings/record-flight";
 
 const passengerSchema = z.object({
@@ -41,7 +44,7 @@ export async function POST(
 
   const trip = await db.trip.findFirst({
     where: { id: tripId, ownerId: user.id },
-    select: { id: true },
+    select: { id: true, startDate: true, endDate: true, constraints: true },
   });
   if (!trip) return new Response("not found", { status: 404 });
 
@@ -55,13 +58,46 @@ export async function POST(
 
   const { offerId, passengers } = parsed.data;
 
-  const result = await bookFlightOffer({ offerId, passengers });
-  if (!result.ok) {
+  // Money guardrail (same gate as Book All): never spend our Duffel balance
+  // unless the customer's card has been charged first. Default ⇒ self-book.
+  const outcome = await bookFlightForCustomer({
+    userId: user.id,
+    tripId,
+    offerId,
+    passengers,
+  });
+  if (outcome.mode === "self_book") {
+    const sf = (trip.constraints as Record<string, unknown> | null)
+      ?.suggestedFlights as
+      | { origin?: string; destination?: string }
+      | undefined;
+    const link =
+      sf?.origin && sf?.destination
+        ? flightSelfBookLink({
+            origin: sf.origin,
+            destination: sf.destination,
+            departDate: trip.startDate?.toISOString().slice(0, 10) ?? null,
+            returnDate: trip.endDate?.toISOString().slice(0, 10) ?? null,
+          })
+        : null;
     return new Response(
-      JSON.stringify({ error: result.error }),
+      JSON.stringify({
+        ok: false,
+        selfBook: true,
+        link,
+        error:
+          "Flights are self-book — reserve your flight directly and Pyltrix handles the rest of your trip.",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  if (outcome.mode === "failed") {
+    return new Response(
+      JSON.stringify({ error: outcome.error }),
       { status: 502, headers: { "Content-Type": "application/json" } },
     );
   }
+  const result = outcome.result;
 
   try {
     await recordFlightBooking({

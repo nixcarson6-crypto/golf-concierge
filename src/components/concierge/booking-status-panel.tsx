@@ -46,6 +46,7 @@ import {
 import type {
   WorkspaceItinerary,
   WorkspaceItineraryItem,
+  WorkspaceTrip,
 } from "./workspace";
 
 // What the browser agent books — hotels, golf, and car rentals — lives
@@ -61,6 +62,24 @@ import { ScreenshotProof } from "./screenshot-proof";
 // auto-booked. Each surfaces Call / Visit-site actions. (Carson's call:
 // "forget booking restaurants — give them the suggestion with the number.")
 const SUGGESTION_TYPES = new Set(["DINING", "NIGHTLIFE", "SPA", "ACTIVITY"]);
+
+/** Direct booking link for a self-book flight — Google Flights resolves a
+ *  plain "flights from X to Y on DATE" query to a real, bookable search, so
+ *  the customer is one tap from buying (their card pays the airline). Kept
+ *  inline so this client component doesn't import the server-only helper. */
+function flightSelfBookHref(
+  origin?: string | null,
+  destination?: string | null,
+  departDate?: string | null,
+  returnDate?: string | null,
+): string {
+  const parts = [`flights from ${origin ?? ""} to ${destination ?? ""}`];
+  if (departDate) parts.push(`on ${departDate.slice(0, 10)}`);
+  if (returnDate) parts.push(`through ${returnDate.slice(0, 10)}`);
+  return `https://www.google.com/travel/flights?q=${encodeURIComponent(
+    parts.join(" "),
+  )}`;
+}
 
 type RowStatus = "confirmed" | "booking" | "review" | "failed" | "pending";
 
@@ -306,12 +325,23 @@ export function BookingStatusPanel({
   tripId,
   itinerary,
   hasSavedCard,
+  flightAutoBook = false,
+  suggestedFlights = null,
+  tripStartDate = null,
+  tripEndDate = null,
 }: {
   tripId: string;
   itinerary: WorkspaceItinerary | null;
   /** When false + there are agent-bookable items, we prompt to save a card
    *  so the agent can complete paid bookings end-to-end. */
   hasSavedCard?: boolean;
+  /** When false (default), flights are SELF-BOOK — the customer books their
+   *  own flight (their card pays the airline; we never front it). Flights then
+   *  render as a self-book row with a direct link, like golf. */
+  flightAutoBook?: boolean;
+  suggestedFlights?: WorkspaceTrip["suggestedFlights"];
+  tripStartDate?: string | null;
+  tripEndDate?: string | null;
 }) {
   const qc = useQueryClient();
   const [bookingId, setBookingId] = React.useState<string | null>(null);
@@ -563,7 +593,11 @@ export function BookingStatusPanel({
       !(
         r.item.type === "TEE_TIME" &&
         !isAgentBookable(r.item.type, r.item.title, r.item.description)
-      ),
+      ) &&
+      // Flights are self-book by default (the customer books their own;
+      // their card pays the airline). Exclude them from the counter too, for
+      // the same reason — otherwise a self-book flight reads as never done.
+      !(r.item.type === "FLIGHT" && !flightAutoBook),
   );
   const total = bookable.length;
   const confirmed = bookable.filter((r) => r.kind === "confirmed").length;
@@ -711,6 +745,10 @@ export function BookingStatusPanel({
                   // themselves so they can pick the round + time with their
                   // group. The row shows a direct "Book your tee time" link.
                   const isSelfGolf = item.type === "TEE_TIME" && !agentBookable;
+                  // FLIGHT self-book (default): we never front a flight, so the
+                  // customer books their own (their card pays the airline). The
+                  // row shows a direct "Book your flight" link, like golf.
+                  const isSelfFlight = item.type === "FLIGHT" && !flightAutoBook;
                   const isPhoneOnly =
                     kind === "failed" &&
                     failureReason === "form_not_found" &&
@@ -789,6 +827,8 @@ export function BookingStatusPanel({
                     ? "Starting…"
                     : isWalkIn
                       ? "Walk-in · no booking needed"
+                      : isSelfFlight
+                        ? "You book this one — your card pays the airline"
                       : isSelfGolf
                         ? "You pick the time — book it yourself"
                         : suggestionNeedsContact
@@ -822,9 +862,10 @@ export function BookingStatusPanel({
                         : "We couldn't complete this one automatically — reach the venue directly below, or our concierge will help.";
                   const rowInner = (
                     <>
-                      {(isSuggestion || isSelfGolf) && !isThisBooking ? (
-                        // Suggestions + self-book golf aren't a Pyltrix booking
-                        // task — show the venue type icon, not a to-do circle
+                      {(isSuggestion || isSelfGolf || isSelfFlight) &&
+                      !isThisBooking ? (
+                        // Suggestions + self-book golf/flights aren't a Pyltrix
+                        // booking task — show the type icon, not a to-do circle
                         // that would read as "unbooked" forever.
                         <span className="grid size-5 place-items-center shrink-0">
                           <TypeIcon type={item.type} />
@@ -933,6 +974,34 @@ export function BookingStatusPanel({
                               </>
                             )}
                           </button>
+                        </div>
+                      )}
+                      {/* FLIGHT SELF-BOOK — we never front a flight, so the
+                          customer books their own. Their card pays the airline
+                          directly; Pyltrix handles the rest of the trip. A
+                          direct Google Flights link (origin ⇄ destination on
+                          the trip dates) lands them one tap from buying. */}
+                      {isSelfFlight && kind === "pending" && (
+                        <div className="pl-9 pr-2.5 pb-2 -mt-0.5 space-y-1.5">
+                          <p className="text-[11px] text-muted-foreground leading-snug">
+                            You book your own flight so your card pays the
+                            airline directly — then Pyltrix handles the rest of
+                            your trip.
+                          </p>
+                          <a
+                            href={flightSelfBookHref(
+                              suggestedFlights?.origin,
+                              suggestedFlights?.destination,
+                              tripStartDate,
+                              tripEndDate,
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--copper))] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[hsl(var(--copper))]/90 transition"
+                          >
+                            <Plane className="size-3.5" />
+                            Book your flight
+                          </a>
                         </div>
                       )}
                       {/* GOLF SELF-BOOK — the customer reserves their own tee
@@ -1229,7 +1298,11 @@ export function BookingStatusPanel({
         totalCents={bookable
           .filter((r) => r.kind === "pending" || r.kind === "failed")
           .reduce((sum, r) => sum + (r.item.cost ?? 0), 0)}
-        paymentNote="Flights are charged now; hotels settle at booking or at the property. Tee times you book yourself, at the time you choose. Every confirmation is saved right here on your trip."
+        paymentNote={
+          flightAutoBook
+            ? "Flights are charged now; hotels settle at booking or at the property. Tee times you book yourself, at the time you choose. Every confirmation is saved right here on your trip."
+            : "Hotels settle at booking or at the property. Flights and tee times you book yourself, at the time you choose — your card pays the airline/course directly. Every confirmation is saved right here on your trip."
+        }
         confirmLabel="Confirm & book all"
         busy={bookingAll}
         onConfirm={() => void bookAll()}
