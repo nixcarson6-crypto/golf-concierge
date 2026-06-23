@@ -1,0 +1,93 @@
+<!--
+  Pyltrix — branded SIGN-IN VERIFICATION CODE email (the one-time code a
+  customer gets when they sign in / verify their account).
+
+  THIS IS NOT A BOOKING EMAIL. Pyltrix does not email customers about
+  bookings — the hotels and airlines send those. This template is ONLY the
+  account verification code, which Clerk sends on your behalf.
+
+  HOW TO USE IT (≈2 minutes, no code):
+    1. Go to dashboard.clerk.com → your Pyltrix application.
+    2. Left sidebar: "Customization" → "Emails".
+    3. Open the "Verification code" template (sometimes labelled
+       "OTP" / "Sign-in code").
+    4. Switch the editor to HTML mode and paste EVERYTHING below.
+    5. Make sure the code line keeps the {{otp_code}} variable exactly —
+       Clerk swaps it for the real 6-digit code at send time.
+    6. Subject line (set it in the same screen):
+         Your Pyltrix sign-in code
+    7. Save. Send yourself a test sign-in to see it live.
+
+  The {{otp_code}} token is a Clerk variable — leave it exactly as-is.
+  Everything is inline-styled so it renders in every mail client.
+-->
+<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#EFECE3;-webkit-font-smoothing:antialiased;">
+    <!-- Preheader (hidden preview text) -->
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+      Your one-time Pyltrix sign-in code.
+    </div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EFECE3;padding:40px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#FFFDF8;border:1px solid #E3E0D5;border-radius:22px;overflow:hidden;">
+            <!-- Brand header -->
+            <tr>
+              <td style="padding:34px 40px 0;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="vertical-align:middle;">
+                      <span style="display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;background:#1E4030;border-radius:10px;color:#F6F4EE;font-size:16px;">&#10022;</span>
+                    </td>
+                    <td style="vertical-align:middle;padding-left:11px;">
+                      <span style="font-family:Georgia,'Times New Roman',serif;font-weight:600;font-size:22px;letter-spacing:-0.01em;color:#16150F;">Pyltrix</span>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <!-- Body -->
+            <tr>
+              <td style="padding:26px 40px 36px;">
+                <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#1E4030;margin:0 0 12px;">
+                  Sign-in code
+                </p>
+                <h1 style="font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:27px;letter-spacing:-0.02em;color:#16150F;margin:0 0 14px;line-height:1.15;">
+                  Here&apos;s your sign-in code
+                </h1>
+                <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#57534a;line-height:1.6;margin:0 0 26px;">
+                  Enter this code to finish signing in to your Pyltrix account. It expires in 10 minutes.
+                </p>
+
+                <!-- The code -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;">
+                  <tr>
+                    <td align="center" style="background:#F2F5F2;border:1px solid #D5E0D8;border-radius:16px;padding:22px 0;">
+                      <span style="font-family:'Courier New',ui-monospace,monospace;font-size:38px;font-weight:700;letter-spacing:0.32em;color:#1E4030;padding-left:0.32em;">{{otp_code}}</span>
+                    </td>
+                  </tr>
+                </table>
+
+                <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#8a8576;line-height:1.6;margin:0;">
+                  Didn&apos;t try to sign in? You can safely ignore this email — no one can access your account without this code.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td style="padding:22px 40px;border-top:1px solid #EFECE3;background:#F6F4EE;">
+                <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b6658;line-height:1.7;">
+                  Pyltrix — AI luxury golf-travel concierge<br>
+                  <a href="https://pyltrix.com" style="color:#1E4030;text-decoration:none;">pyltrix.com</a> &nbsp;&middot;&nbsp; <a href="mailto:support@pyltrix.com" style="color:#1E4030;text-decoration:none;">support@pyltrix.com</a>
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
