@@ -1524,7 +1524,7 @@ export async function runStagehandBooking(
             outcome: {
               status: "needs_review",
               failureReason: "members_only",
-              message: `${stay.name} reserves tee times for resort guests — and you're staying there. Pyltrix is booking your tee time together with your ${stay.name} stay so it's confirmed under your reservation. Nothing for you to do — you'll get it by email.`,
+              message: `${stay.name} reserves tee times for resort guests — and you're staying there. Pyltrix is booking your tee time together with your ${stay.name} stay so it's confirmed under your reservation. Nothing for you to do — the confirmation will show up right here on your trip.`,
             },
             sessionUrl,
             finalScreenshot: null,
@@ -2702,6 +2702,37 @@ export async function runStagehandBooking(
     // honestly with a reason so the customer sees "couldn't auto-book — book
     // direct / concierge", never a frozen screen or a false promise. Maps to
     // form_not_found, which the panel renders as the clear book-direct reason.
+    //
+    // FIRST, though: if the run ended sitting on a CARD STEP (a credit-card
+    // field is on the page), the agent actually FILLED the whole reservation
+    // and reached payment — the best outcome available until Stripe is wired.
+    // Report THAT (needs_review → concierge completes the payment), not "the
+    // site stalled", so it reads as "filled, ready for payment", not a failure.
+    // Cheap DOM check that's only true on a real card step, and it does NOT
+    // change WHEN the run stopped — it only labels the outcome correctly.
+    if (aborted) {
+      const activeForCard = stagehand.context.activePage();
+      const endedAtCard = activeForCard
+        ? await detectCardFieldPresent(
+            await bookingFrame(activeForCard).catch(() => activeForCard),
+          ).catch(() => false)
+        : false;
+      if (endedAtCard) {
+        console.log(
+          `[stagehand] ✓ run ended at the card step — reporting reached-card (${elapsed()})`,
+        );
+        return {
+          outcome: {
+            status: "needs_review",
+            failureReason: "timeout",
+            message:
+              "Pyltrix filled in your whole reservation and reached the payment step — our concierge completes the payment, and your confirmation shows up right here on your trip.",
+          },
+          sessionUrl: null,
+          finalScreenshot: null,
+        };
+      }
+    }
     if (aborted && stallAbort) {
       return {
         outcome: {
@@ -2725,7 +2756,7 @@ export async function runStagehandBooking(
           status: "needs_review",
           failureReason: "timeout",
           message:
-            "Pyltrix is finalizing this booking — this venue's site is an unusually slow one, so our concierge is completing it. You'll get the confirmation by email.",
+            "Pyltrix is finalizing this booking — this venue's site is an unusually slow one, so our concierge is completing it. The confirmation will show up right here on your trip.",
         },
         sessionUrl: null,
         finalScreenshot: null,

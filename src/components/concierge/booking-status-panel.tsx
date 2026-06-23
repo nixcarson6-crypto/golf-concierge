@@ -1007,8 +1007,8 @@ export function BookingStatusPanel({
                               <p className="text-[11px] text-foreground/80 leading-snug">
                                 This venue&apos;s booking site is an unusually
                                 slow one, so Pyltrix&apos;s concierge is finishing
-                                it for you. Nothing for you to do — you&apos;ll
-                                get the confirmation by email shortly.
+                                it for you. Nothing for you to do — the
+                                confirmation will show up right here shortly.
                               </p>
                               {screenshotUrl && (
                                 <ScreenshotProof
@@ -1029,7 +1029,7 @@ export function BookingStatusPanel({
                                 with the{" "}
                                 {(item.title.split(/[—–-]/)[0] || "resort").trim()}{" "}
                                 pro shop as part of your stay. Nothing for you to
-                                do — you&apos;ll get the confirmation by email.
+                                do — the confirmation will show up right here.
                               </p>
                             </>
                           ) : failureReason === "enquiry_sent" ? (
@@ -1065,8 +1065,8 @@ export function BookingStatusPanel({
                               {hasSavedCard ? (
                                 <p className="text-[11px] text-muted-foreground leading-snug">
                                   Pyltrix is completing the payment with your
-                                  saved card — you&apos;ll get the confirmation
-                                  by email.
+                                  saved card — the confirmation will appear right
+                                  here when it&apos;s done.
                                 </p>
                               ) : (
                                 <SaveCardButton
@@ -1124,8 +1124,10 @@ export function BookingStatusPanel({
                             </div>
                             <p className="text-[10px] text-muted-foreground leading-snug pt-0.5">
                               {code
-                                ? `The venue is emailing your confirmation — you can look up #${code} on their site anytime.`
-                                : "The venue is emailing your confirmation directly."}
+                                ? item.type === "FLIGHT"
+                                  ? `Confirmed under #${code} — look it up on the airline's site or app anytime. It's saved right here too.`
+                                  : `Confirmed under #${code} — your reservation is in ${item.type === "LODGING" ? "the hotel's" : "the venue's"} system; reference that number with them anytime. It's saved right here.`
+                                : "Your reservation is confirmed and saved right here."}
                             </p>
                           </div>
                           {screenshotUrl && (
@@ -1184,7 +1186,7 @@ export function BookingStatusPanel({
           <div className="min-w-0">
             <p className="text-[13px] font-medium">You&apos;re all set</p>
             <p className="text-[11px] text-muted-foreground leading-snug">
-              Confirmations are on their way to your inbox.
+              Every confirmation is saved right here — open this page anytime.
             </p>
           </div>
         </footer>
@@ -1227,7 +1229,7 @@ export function BookingStatusPanel({
         totalCents={bookable
           .filter((r) => r.kind === "pending" || r.kind === "failed")
           .reduce((sum, r) => sum + (r.item.cost ?? 0), 0)}
-        paymentNote="Flights are charged now; hotels settle at booking or at the property. Tee times you book yourself, at the time you choose. You'll get every confirmation by email."
+        paymentNote="Flights are charged now; hotels settle at booking or at the property. Tee times you book yourself, at the time you choose. Every confirmation is saved right here on your trip."
         confirmLabel="Confirm & book all"
         busy={bookingAll}
         onConfirm={() => void bookAll()}

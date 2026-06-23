@@ -411,7 +411,7 @@ function BookAllPanel({
         heading="Review your trip"
         lines={confirmLines}
         totalCents={confirmTotal}
-        paymentNote="Flights are charged now; hotels, golf, and most venues settle at the property. You'll get every confirmation by email."
+        paymentNote="Flights are charged now; hotels, golf, and most venues settle at the property. Every confirmation is saved right here on your trip."
         confirmLabel="Confirm & book all"
         busy={submitting}
         onConfirm={bookAll}

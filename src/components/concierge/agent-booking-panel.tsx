@@ -344,8 +344,8 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
               {amount != null ? ` · charged $${amount.toLocaleString()}` : ""}
             </p>
             <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
-              The venue is emailing you a confirmation directly. Bring your
-              name to the door — they have your reservation.
+              Your confirmation is saved right here, and the venue has your
+              reservation. Just bring your name to the door.
             </p>
           </div>
         </div>
