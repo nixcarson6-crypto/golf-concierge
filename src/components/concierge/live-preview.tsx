@@ -47,6 +47,7 @@ import { FlightBookingModal } from "./flight-booking-modal";
 import { TravelerProfileModal } from "./traveler-profile-modal";
 import { SetOriginBanner } from "./set-origin-banner";
 import { tripDisplayLabel } from "@/lib/trip-display";
+import { tripTotals } from "@/lib/payments/pricing";
 import { buildUberDeepLink } from "@/lib/uber-deep-link";
 import type {
   WorkspaceBooking,
@@ -1157,7 +1158,14 @@ function TotalsBanner({
   );
   const flightProvision =
     hasBookedFlight || hasPlannedFlightCost ? 0 : cheapestSuggestedFlight;
-  const grandTotal = itineraryTotal + flightProvision;
+  // Vendor (real booking) subtotal, then the transparent Pyltrix concierge fee
+  // ON TOP (10%, 8% over $25k, $250 floor — single source of truth in
+  // lib/payments/pricing). The headline shows the ALL-IN total the customer
+  // pays; the breakdown line shows the fee so it's never a hidden markup.
+  const vendorSubtotal = itineraryTotal + flightProvision;
+  const { feeCents, totalCents: allInTotal, feeRate } =
+    tripTotals(vendorSubtotal);
+  const grandTotal = allInTotal;
 
   // How many bookable items still have NO confirmed price? Only count the
   // types that can EVER carry a hard price — FLIGHT / LODGING / TEE_TIME.
@@ -1195,6 +1203,12 @@ function TotalsBanner({
             <p className="mt-1 text-[11px] text-muted-foreground">
               {unpricedCount} more item{unpricedCount === 1 ? "" : "s"} still
               being priced — total will rise
+            </p>
+          )}
+          {feeCents > 0 && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Includes ${Math.round(feeCents / 100).toLocaleString()} Pyltrix
+              concierge fee{feeRate ? ` (${Math.round(feeRate * 100)}%)` : ""}
             </p>
           )}
         </div>

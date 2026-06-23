@@ -102,6 +102,10 @@ export function buildCardProviderForBooking(args: {
         reason: `The checkout total we read ($${Math.round(observed / 100)}) is far above the expected budget — pausing to avoid overcharging. Call report_outcome with status 'needs_review'.`,
       };
     }
+    // Pyltrix concierge fee — single source of truth in lib/payments/pricing
+    // (10% standard, tapering to 8% over $25k). Per-item; the $250 floor is a
+    // trip-level display minimum, not applied here (would over-charge a small
+    // golf round).
     const fee = serviceFeeCents(vendorAmount);
     const customerChargeCents = vendorAmount + fee;
     // Persist the real total onto the booking so the <2s auth webhook can
