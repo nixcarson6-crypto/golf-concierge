@@ -24,6 +24,7 @@
 
 import { db } from "@/lib/db";
 import { optionalEnv } from "@/lib/env";
+import { stripeConfigured } from "@/lib/stripe";
 import { sendEmail, renderBookingConfirmationEmail } from "@/lib/email";
 import { audit } from "@/lib/audit";
 import { withAgentRun } from "@/lib/ai/orchestrator";
@@ -629,6 +630,7 @@ async function runBrowserBookingInner(args: {
       const hotelArgs = {
         bookingId: booking.id,
         itineraryItemId: item.id,
+        userId: args.userId,
         hotelName: item.title,
         location: item.address ?? item.location,
         checkin: task.isoDate,
@@ -639,11 +641,18 @@ async function runBrowserBookingInner(args: {
       const { tryLiteApiHotelBooking } = await import("../liteapi-hotel");
       const { tryHotelbedsHotelBooking } = await import("../hotelbeds-hotel");
       const { tryRateHawkHotelBooking } = await import("../ratehawk-hotel");
-      const providers = [
-        { name: "LiteAPI", fn: tryLiteApiHotelBooking },
-        { name: "Hotelbeds", fn: tryHotelbedsHotelBooking },
-        { name: "RateHawk", fn: tryRateHawkHotelBooking },
+      // chargesCustomer = this provider charges the customer via Stripe before
+      // committing. When Stripe is configured we ONLY use those (never front
+      // from a bedbank wallet); the others are skipped until they're charge-
+      // wired, so their hotels link/agent instead of auto-booking on our money.
+      const allProviders = [
+        { name: "LiteAPI", fn: tryLiteApiHotelBooking, chargesCustomer: true },
+        { name: "Hotelbeds", fn: tryHotelbedsHotelBooking, chargesCustomer: false },
+        { name: "RateHawk", fn: tryRateHawkHotelBooking, chargesCustomer: false },
       ];
+      const providers = stripeConfigured()
+        ? allProviders.filter((p) => p.chargesCustomer)
+        : allProviders;
       for (const p of providers) {
         const api = await p.fn(hotelArgs);
         if (api.booked) {
@@ -651,6 +660,22 @@ async function runBrowserBookingInner(args: {
           try {
             await postInternalNudge({ tripId: args.tripId });
           } catch {}
+          return;
+        }
+        // The provider found the hotel + locked a rate but the customer has no
+        // saved card. Don't fall through to the wallet/agent — stop and prompt
+        // them to add a card (Stripe Checkout), then Book All charges + books.
+        if (api.reason === "needs_card") {
+          console.log(`[book] ${item.title} needs a saved card — prompting.`);
+          await markBookingFailed({
+            booking,
+            itemId: item.id,
+            tripId: args.tripId,
+            failureReason: "needs_card",
+            message:
+              "Add a card to book this hotel — we charge your card for the trip, not ours.",
+            fallbackContact: { website: null, phone: null },
+          });
           return;
         }
         console.log(`[book] ${p.name} didn't book ${item.title} (${api.reason}).`);

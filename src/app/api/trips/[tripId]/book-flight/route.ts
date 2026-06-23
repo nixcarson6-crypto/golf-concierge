@@ -66,6 +66,17 @@ export async function POST(
     offerId,
     passengers,
   });
+  if (outcome.mode === "needs_card") {
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        needsCard: true,
+        error:
+          "Add a card to book — we charge your card for the trip (your card pays for it, not ours).",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  }
   if (outcome.mode === "self_book") {
     const sf = (trip.constraints as Record<string, unknown> | null)
       ?.suggestedFlights as

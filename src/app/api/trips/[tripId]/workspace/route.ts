@@ -5,6 +5,7 @@ import {
   flightAutoBookEnabled,
   isDuffelSandbox,
 } from "@/lib/bookings/flight-payment";
+import { stripeConfigured } from "@/lib/stripe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -129,11 +130,13 @@ export async function GET(
       suggestedFlights:
         (trip.constraints as Record<string, unknown> | null)?.suggestedFlights ??
         null,
-      // Whether flights auto-book through Duffel or are SELF-BOOK. Sandbox
-      // (Duffel test key) auto-books too — test money, free, so the flow is
-      // testable; the UI must agree with what Book All actually does. LIVE is
-      // gated (charge customer first / self-book). See flight-payment.ts.
-      flightAutoBook: flightAutoBookEnabled() || isDuffelSandbox(),
+      // Whether flights auto-book (we charge the customer + book) or are
+      // SELF-BOOK. True when Stripe is configured (we charge the customer's
+      // card first — sandbox or live) OR a Duffel test key (free sandbox
+      // booking). Only a LIVE Duffel key with NO Stripe self-books. The UI
+      // must agree with what Book All actually does. See flight-payment.ts.
+      flightAutoBook:
+        stripeConfigured() || isDuffelSandbox() || flightAutoBookEnabled(),
       // Multi-destination leg breakdown. Length 1 = single-destination
       // trip; length > 1 = the user requested multiple stops. UI can
       // group itinerary items by metadata.legIndex to render per-leg.

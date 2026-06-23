@@ -2055,7 +2055,11 @@ function ItineraryItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-0 overflow-hidden">
+      {/* max-h + overflow-y-auto so the whole dialog SCROLLS on phones —
+          the cost/alternatives can run past the viewport and were getting
+          clipped with no way to scroll down (Carson: "i can't find scroll
+          down"). overscroll-contain keeps the scroll inside the dialog. */}
+      <DialogContent className="max-w-md p-0 overflow-y-auto overscroll-contain max-h-[90dvh]">
         {/* Hero photo from Google Places — only renders when we got
             one back. Skeleton while loading; nothing if the place
             didn't match or photos are disabled. */}

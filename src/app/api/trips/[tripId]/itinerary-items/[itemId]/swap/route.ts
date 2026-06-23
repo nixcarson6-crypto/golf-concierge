@@ -199,6 +199,27 @@ export async function POST(
   }
   const choice = parsed.data;
 
+  // Don't silently swap a venue that's ALREADY BOOKED. The old code only
+  // cleared non-confirmed bookings, so swapping a confirmed item left the real
+  // reservation attached — the new venue then showed as "Booked" under the old
+  // confirmation (Carson: "I switched the hotel and it auto-booked it").
+  // Releasing a real reservation needs a provider cancel + refund (not wired
+  // for every provider yet), so refuse and tell them to remove it first
+  // (Remove DOES cancel + refund). Honest + safe.
+  const confirmed = await db.booking.findFirst({
+    where: { itineraryItemId: item.id, status: "CONFIRMED" },
+    select: { id: true },
+  });
+  if (confirmed) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "This one's already booked — remove it from your trip first, then add a different one.",
+      }),
+      { status: 409, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   const meta = (item.metadata ?? {}) as Record<string, unknown>;
   await db.itineraryItem.update({
     where: { id: item.id },

@@ -14,6 +14,9 @@
 
 import { db } from "@/lib/db";
 import { optionalEnv } from "@/lib/env";
+import { stripe, stripeConfigured } from "@/lib/stripe";
+import { chargeCustomer } from "@/lib/payments/customer-charge";
+import { serviceFeeCents } from "@/lib/payments/pricing";
 import {
   liteapiConfigured,
   resolveHotelId,
@@ -146,6 +149,8 @@ export type LiteApiBookingResult = { booked: boolean; reason?: string };
 export async function tryLiteApiHotelBooking(args: {
   bookingId: string;
   itineraryItemId: string;
+  /** Whose card we charge (the trip owner / customer). */
+  userId: string;
   hotelName: string;
   location: string | null;
   checkin: string | null; // YYYY-MM-DD (check-in)
@@ -167,6 +172,9 @@ export async function tryLiteApiHotelBooking(args: {
     return { booked: false, reason: "couldn't parse city/country" };
   }
 
+  // Set when we charge the customer before committing the booking — so if the
+  // commit then fails we can refund (declared out here so the catch sees it).
+  let hotelChargeId: string | null = null;
   try {
     // Resolve a name → hotelId in a given city: English alias first (LiteAPI's
     // index), then the local name.
@@ -298,6 +306,49 @@ export async function tryLiteApiHotelBooking(args: {
     }
     const pre = locked.pre;
     const lockedTotal = locked.total;
+
+    // ── MONEY FLOW: charge the CUSTOMER (Stripe) BEFORE we commit ──────────
+    // The rate is locked now (pre.total), so we charge the customer's saved
+    // card for rate + fee first, THEN call book(). The customer pays (Stripe),
+    // never our LiteAPI wallet. No saved card → don't book; the trip page
+    // sends them to Stripe Checkout to add one (reason "needs_card"). If the
+    // commit then fails we refund. (No Stripe configured at all = dev/no-keys:
+    // fall through and book on the wallet so local dev still works.)
+    if (stripeConfigured()) {
+      const rateCents =
+        pre.total != null
+          ? Math.round(pre.total * 100)
+          : lockedTotal != null
+            ? Math.round(lockedTotal * 100)
+            : null;
+      if (rateCents == null || rateCents <= 0) {
+        return { booked: false, reason: "no lockable rate to charge" };
+      }
+      const payer = await db.user.findUnique({
+        where: { id: args.userId },
+        select: { defaultPaymentMethodId: true },
+      });
+      if (!payer?.defaultPaymentMethodId) {
+        return { booked: false, reason: "needs_card" };
+      }
+      const fee = serviceFeeCents(rateCents);
+      try {
+        const charge = await chargeCustomer({
+          userId: args.userId,
+          amountCents: rateCents + fee,
+          idempotencyKey: `hotel-${args.bookingId}`,
+          description: `Pyltrix hotel booking — ${hotel.name}`,
+          metadata: { bookingId: args.bookingId, kind: "hotel" },
+        });
+        if (charge.status !== "succeeded") {
+          return { booked: false, reason: `charge ${charge.status}` };
+        }
+        hotelChargeId = charge.paymentIntentId;
+      } catch (e) {
+        return { booked: false, reason: `charge failed: ${(e as Error).message}` };
+      }
+    }
+
     const result = await book({
       prebookId: pre.prebookId,
       holder: {
@@ -329,6 +380,9 @@ export async function tryLiteApiHotelBooking(args: {
         confirmationCode: result.confirmationCode,
         confirmedAt: new Date(),
         cost: costCents,
+        // The Stripe charge that paid for this (set when Stripe is configured)
+        // — lets a later cancel/remove refund the customer.
+        stripeChargeId: hotelChargeId ?? undefined,
         metadata: {
           liteapi: {
             bookingId: result.bookingId,
@@ -352,6 +406,19 @@ export async function tryLiteApiHotelBooking(args: {
     );
     return { booked: true };
   } catch (e) {
+    // If we already charged the customer but the commit failed, refund them —
+    // never keep money for a booking that didn't happen.
+    if (hotelChargeId) {
+      try {
+        await stripe().refunds.create({ payment_intent: hotelChargeId });
+      } catch (refundErr) {
+        console.error(
+          "[liteapi-hotel] REFUND FAILED — refund this PaymentIntent by hand:",
+          hotelChargeId,
+          refundErr,
+        );
+      }
+    }
     // Any failure → fall back to the agent. Never a half-broken booking.
     console.warn(`[liteapi-hotel] falling back to agent: ${(e as Error).message}`);
     return { booked: false, reason: (e as Error).message };

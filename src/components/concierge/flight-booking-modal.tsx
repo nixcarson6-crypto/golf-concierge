@@ -161,10 +161,37 @@ export function FlightBookingModal({
       const data = (await res.json().catch(() => null)) as {
         ok?: boolean;
         error?: string;
+        needsCard?: boolean;
         bookingReference?: string;
         airline?: string;
         totalUSD?: number;
       } | null;
+      // No saved card → send them to Stripe Checkout to add one, then they
+      // come back and book. This is the "route me to Stripe" step.
+      if (data?.needsCard) {
+        toast.info("Add a card to book — taking you to secure checkout…");
+        try {
+          const r = await fetch("/api/me/payment-method/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              returnTo:
+                typeof window !== "undefined"
+                  ? window.location.pathname
+                  : "/dashboard",
+            }),
+          });
+          const d = (await r.json().catch(() => null)) as { url?: string } | null;
+          if (d?.url) {
+            window.location.href = d.url;
+            return;
+          }
+        } catch {
+          /* fall through to the error toast */
+        }
+        toast.error("Couldn't start secure card setup — try again.");
+        return;
+      }
       if (!res.ok || !data?.ok || !data.bookingReference) {
         toast.error(data?.error ?? "Booking failed. Try again.");
         return;

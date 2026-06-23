@@ -82,26 +82,27 @@ export function flightSelfBookLink(args: {
 
 export type CustomerFlightOutcome =
   | { mode: "booked"; result: Extract<BookFlightResult, { ok: true }> }
-  | {
-      mode: "self_book";
-      reason:
-        | "autobook_disabled"
-        | "stripe_not_configured"
-        | "no_saved_card"
-        | "no_price"
-        | "charge_failed";
-    }
+  // The customer has no saved card — the UI must send them to Stripe Checkout
+  // (SaveCardButton) to add one, THEN book. We never front the cost.
+  | { mode: "needs_card" }
+  | { mode: "self_book"; reason: "stripe_not_configured" | "no_price" }
   | { mode: "failed"; error: string };
 
 /**
- * Book a flight on behalf of a customer WITHOUT ever fronting the cost.
+ * Book a flight for a customer, routing the money through Stripe.
  *
- * Returns:
- *  - { mode: "self_book" } — we did not (and will not) spend our balance; the
- *    caller should surface a self-book link. This is the default outcome.
- *  - { mode: "booked", result } — charged the customer, then ticketed.
- *  - { mode: "failed", error } — a post-charge booking failure (already
- *    refunded) or a hard error.
+ * THE MONEY FLOW. When Stripe is configured we ALWAYS charge the customer's
+ * saved card (ticket + fee) FIRST, then book the vendor — in sandbox too (a
+ * test charge), so the flow is verifiable end-to-end and we never front the
+ * cost. Outcomes:
+ *  - "booked"     — charged the customer, then ticketed.
+ *  - "needs_card" — no saved card; the UI collects one via Stripe Checkout.
+ *  - "self_book"  — no Stripe configured on a LIVE key (we won't front it), or
+ *                   no price to charge.
+ *  - "failed"     — a post-charge booking failure (already refunded) or error.
+ *
+ * Dev fallback (no Stripe keys at all): sandbox books on the free test balance
+ * so local dev still works; live self-books.
  */
 export async function bookFlightForCustomer(args: {
   userId: string;
@@ -112,46 +113,40 @@ export async function bookFlightForCustomer(args: {
    *  it from Duffel before charging. */
   ticketCents?: number | null;
 }): Promise<CustomerFlightOutcome> {
-  // 0) SANDBOX: Duffel test key ⇒ test money, booking is free. Auto-book so the
-  //    flow works end-to-end in testing (Book All + the per-flight button) and
-  //    the customer sees a real sandbox confirmation. No customer charge here —
-  //    there's no real money to collect. The gate below only matters for LIVE.
-  if (isDuffelSandbox()) {
-    try {
-      const result = await bookFlightOffer({
-        offerId: args.offerId,
-        passengers: args.passengers,
-      });
-      return result.ok
-        ? { mode: "booked", result }
-        : { mode: "failed", error: result.error };
-    } catch (err) {
-      return {
-        mode: "failed",
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  }
-
-  // 1) LIVE — default + master switch: self-book. Never touch our balance.
-  if (!flightAutoBookEnabled()) {
-    return { mode: "self_book", reason: "autobook_disabled" };
-  }
-
-  // 2) Auto-book requires the customer's money in hand first → Stripe + a
-  //    saved card. Missing either ⇒ fall back to self-book (never balance).
+  // ── No Stripe configured at all → dev fallback ──────────────────────────
+  // Sandbox books free (so local dev without Stripe keys still works); a live
+  // key with no Stripe means we can't charge anyone, so we never front it.
   if (!stripeConfigured()) {
+    if (isDuffelSandbox()) {
+      try {
+        const result = await bookFlightOffer({
+          offerId: args.offerId,
+          passengers: args.passengers,
+        });
+        return result.ok
+          ? { mode: "booked", result }
+          : { mode: "failed", error: result.error };
+      } catch (err) {
+        return {
+          mode: "failed",
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }
     return { mode: "self_book", reason: "stripe_not_configured" };
   }
+
+  // ── Stripe configured → ALWAYS charge the customer first ────────────────
+  // 1) Need a saved card. None ⇒ needs_card (UI → Stripe Checkout to add one).
   const user = await db.user.findUnique({
     where: { id: args.userId },
     select: { defaultPaymentMethodId: true },
   });
   if (!user?.defaultPaymentMethodId) {
-    return { mode: "self_book", reason: "no_saved_card" };
+    return { mode: "needs_card" };
   }
 
-  // 3) Determine what to charge. Prefer the caller's price; otherwise fetch the
+  // 2) Determine what to charge. Prefer the caller's price; otherwise fetch the
   //    live offer total. No price ⇒ self-book rather than guess.
   let ticketCents =
     typeof args.ticketCents === "number" && args.ticketCents > 0
@@ -164,7 +159,7 @@ export async function bookFlightForCustomer(args: {
     return { mode: "self_book", reason: "no_price" };
   }
 
-  // 4) Charge the CUSTOMER (ticket + service fee) before we spend a cent.
+  // 3) Charge the CUSTOMER (ticket + service fee) before we spend a cent.
   const fee = serviceFeeCents(ticketCents);
   let chargeId: string;
   try {
@@ -178,14 +173,21 @@ export async function bookFlightForCustomer(args: {
     });
     if (charge.status !== "succeeded") {
       console.warn(
-        `[flight-payment] customer charge status '${charge.status}' — self-book`,
+        `[flight-payment] customer charge status '${charge.status}'`,
       );
-      return { mode: "self_book", reason: "charge_failed" };
+      return {
+        mode: "failed",
+        error: `Your card didn't complete the payment (${charge.status}). Try a different card.`,
+      };
     }
     chargeId = charge.paymentIntentId;
   } catch (err) {
-    console.warn("[flight-payment] customer charge failed — self-book:", err);
-    return { mode: "self_book", reason: "charge_failed" };
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[flight-payment] customer charge failed:", msg);
+    return {
+      mode: "failed",
+      error: `Couldn't charge your card (${msg.slice(0, 120)}).`,
+    };
   }
 
   // 5) Money is in hand → book the ticket from our Duffel balance.

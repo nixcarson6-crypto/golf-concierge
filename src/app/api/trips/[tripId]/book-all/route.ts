@@ -51,7 +51,16 @@ type Outcome = {
   // an item already CONFIRMED on a prior run). "self_book" = we deliberately
   // did NOT spend money — the customer books this one themselves (a direct
   // link is included).
-  status: "booked" | "booking" | "pencilled" | "skipped" | "failed" | "self_book";
+  status:
+    | "booked"
+    | "booking"
+    | "pencilled"
+    | "skipped"
+    | "failed"
+    | "self_book"
+    // The customer needs to add a card (Stripe Checkout) before we can charge
+    // them and book — we never front the cost.
+    | "needs_card";
   title: string;
   detail?: string;
   confirmationCode?: string;
@@ -194,7 +203,15 @@ export async function POST(
             passengers,
             ticketCents: cheapest.totalAmount,
           });
-          if (outcome.mode === "self_book") {
+          if (outcome.mode === "needs_card") {
+            outcomes.push({
+              category: "flight",
+              status: "needs_card",
+              title: `${cheapest.airlineName} flight`,
+              detail:
+                "Add your card to book — we charge your card for the trip; your card pays for it, not ours.",
+            });
+          } else if (outcome.mode === "self_book") {
             const link = flightSelfBookLink({
               origin: suggested!.origin,
               destination: suggested!.destination,

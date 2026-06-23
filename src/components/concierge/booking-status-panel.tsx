@@ -391,7 +391,16 @@ export function BookingStatusPanel({
         data.outcomes?.filter((o) => o.status === "booking").length ?? 0;
       const failed =
         data.outcomes?.filter((o) => o.status === "failed").length ?? 0;
-      if (failed > 0) {
+      const needsCard =
+        data.outcomes?.filter((o) => o.status === "needs_card").length ?? 0;
+      if (needsCard > 0) {
+        // The actionable one: they have no card on file. Send them to add one
+        // (the SaveCardButton below the CTA opens Stripe Checkout), then Book
+        // All charges their card and books.
+        toast.error(
+          "Add your card to book — we charge your card for the trip, not ours. Tap “Save your card” below.",
+        );
+      } else if (failed > 0) {
         toast.error(
           `${failed} couldn't start — check the panel.${booking > 0 ? ` Pyltrix is booking ${booking} more.` : ""}`,
         );
@@ -690,13 +699,19 @@ export function BookingStatusPanel({
             )}
           </button>
         )}
-        {/* Prompt to vault a card when there are agent-bookable items
-            (hotels/golf/cars) and none is saved — without it the agent
-            stops at the payment step instead of finishing the booking. */}
+        {/* Prompt to vault a card when something on this trip needs one and
+            none is saved: an agent-bookable item (hotels/cars), OR a flight we
+            auto-book (we charge the customer's card via Stripe before booking).
+            Without a card those bookings can't complete. */}
         {hasSavedCard === false &&
-          rows.some((r) =>
+          (rows.some((r) =>
             isAgentBookable(r.item.type, r.item.title, r.item.description),
-          ) && <SaveCardButton returnTo={`/trips/${tripId}`} />}
+          ) ||
+            (flightAutoBook &&
+              (!!topFlightOffer ||
+                rows.some((r) => r.item.type === "FLIGHT")))) && (
+            <SaveCardButton returnTo={`/trips/${tripId}`} />
+          )}
       </header>
 
       {/* Grouped rows — collapsible categories so a 40-item trip reads
@@ -797,6 +812,10 @@ export function BookingStatusPanel({
                     item.type === "LODGING" &&
                     kind === "failed" &&
                     failureReason === "form_not_found";
+                  // No saved card — we can book this (API has it) but need a
+                  // card to charge the CUSTOMER first. Prompt to add one.
+                  const isNeedsCard =
+                    kind === "failed" && failureReason === "needs_card";
                   // Sold out for the trip's dates. The venue exists and is
                   // bookable — there's just no inventory — so the concierge
                   // move is to offer a comparable alternative, not a dead end.
@@ -833,13 +852,17 @@ export function BookingStatusPanel({
                     !isWalkIn &&
                     !isPhoneOnly &&
                     !isResortDirectHotel &&
+                    // needs_card has its own Save-card action, not "tap to book"
+                    // (tapping would just fail again for lack of a card).
+                    !isNeedsCard &&
                     (kind === "pending" || kind === "failed");
                   // Contact links (Call + Website) show for any suggestion
                   // venue that takes reservations, and as a fallback on a
                   // failed agent booking — so the customer always has a way
                   // to reach the venue. We don't draft emails or auto-book
                   // these; they reserve directly.
-                  const showContacts = suggestionNeedsContact || kind === "failed";
+                  const showContacts =
+                    (suggestionNeedsContact || kind === "failed") && !isNeedsCard;
                   // There's always a working "Website" link: the venue's
                   // real site when we have it, else a Google search for the
                   // venue so the customer can find it + its number.
@@ -860,6 +883,8 @@ export function BookingStatusPanel({
                     ? "Starting…"
                     : isWalkIn
                       ? "Walk-in · no booking needed"
+                      : isNeedsCard
+                        ? "Add a card to book"
                       : isBookableFlight
                         ? "Tap to book your flight"
                       : isSelfFlight
@@ -1253,13 +1278,28 @@ export function BookingStatusPanel({
                           )}
                         </div>
                       )}
-                      {kind === "failed" && !needsAlternative && !isSelfGolf && (
-                        <div className="pl-9 pr-2.5 pb-1.5 -mt-0.5">
+                      {/* NEEDS CARD — we can book this (the API has it) but
+                          need a card to charge the customer first. Prompt to
+                          add one via Stripe Checkout, then Book All completes. */}
+                      {isNeedsCard && (
+                        <div className="pl-9 pr-2.5 pb-2 -mt-0.5 space-y-1.5">
                           <p className="text-[11px] text-muted-foreground leading-snug">
-                            {failedExplanation}
+                            Add a card to book this — we charge your card for the
+                            trip (your card pays for it, not ours).
                           </p>
+                          <SaveCardButton returnTo={`/trips/${tripId}`} />
                         </div>
                       )}
+                      {kind === "failed" &&
+                        !needsAlternative &&
+                        !isSelfGolf &&
+                        !isNeedsCard && (
+                          <div className="pl-9 pr-2.5 pb-1.5 -mt-0.5">
+                            <p className="text-[11px] text-muted-foreground leading-snug">
+                              {failedExplanation}
+                            </p>
+                          </div>
+                        )}
                       {showContacts && (
                         <div className="flex flex-wrap items-center gap-1.5 pl-9 pr-2.5 pb-2 -mt-0.5">
                           {phone && (
