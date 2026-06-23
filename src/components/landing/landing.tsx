@@ -52,6 +52,18 @@ type Trip = {
 // hotels with `pnpm check:landing-hotels` before trusting this list.
 const TRIPS: Trip[] = [
   {
+    name: "Scottsdale",
+    region: "Arizona",
+    when: "Mar 12–16 · 4 players",
+    total: 4600,
+    items: [
+      { icon: Plane, title: "American · DFW ⇄ PHX", detail: "Nonstop · first class", price: "$840" },
+      { icon: Flag, title: "TPC Scottsdale · Stadium", detail: "Saturday · 8:40 AM", price: "$680" },
+      { icon: BedDouble, title: "Fairmont Princess · 4 nights", detail: "Resort-view suite", price: "$2,720" },
+      { icon: UtensilsCrossed, title: "Mowry & Cotton", detail: "Steakhouse · 7:30 PM", price: "$360" },
+    ],
+  },
+  {
     name: "Algarve",
     region: "Quinta do Lago · Portugal",
     when: "Oct 4–8 · 4 players",
@@ -61,6 +73,18 @@ const TRIPS: Trip[] = [
       { icon: Flag, title: "Quinta do Lago · South", detail: "Saturday · 9:40 AM", price: "$540" },
       { icon: BedDouble, title: "Conrad Algarve · 4 nights", detail: "Deluxe pool suite", price: "$3,280" },
       { icon: UtensilsCrossed, title: "Gusto by Heinz Beck", detail: "Michelin · 8:00 PM", price: "$480" },
+    ],
+  },
+  {
+    name: "Palm Springs",
+    region: "Palm Desert · California",
+    when: "Jan 22–26 · 4 players",
+    total: 4540,
+    items: [
+      { icon: Plane, title: "United · ORD ⇄ PSP", detail: "Nonstop · first class", price: "$1,180" },
+      { icon: Flag, title: "PGA West · Stadium", detail: "Saturday · 9:10 AM", price: "$580" },
+      { icon: BedDouble, title: "JW Marriott · 4 nights", detail: "Desert Springs · suite", price: "$2,360" },
+      { icon: UtensilsCrossed, title: "Cuistot · Palm Desert", detail: "Fine dining · 7:30 PM", price: "$420" },
     ],
   },
   {
@@ -163,12 +187,12 @@ const PROOFS = [
 ];
 
 const DESTINATIONS = [
+  "Scottsdale",
+  "Palm Springs",
   "Algarve",
   "Marbella",
   "Sotogrande",
-  "Quinta do Lago",
-  "Mallorca",
-  "Costa del Sol",
+  "Naples",
 ];
 
 const EASE = [0.16, 1, 0.3, 1] as const;

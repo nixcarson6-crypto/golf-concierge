@@ -22,6 +22,8 @@ const CHECKOUT = "2026-10-08";
 
 // Keep this in sync with the hotels in src/components/landing/landing.tsx.
 const HOTELS = [
+  { label: "Scottsdale", name: "Fairmont Scottsdale Princess", cityName: "Scottsdale", countryCode: "US" },
+  { label: "Palm Springs", name: "JW Marriott Desert Springs Resort & Spa", cityName: "Palm Desert", countryCode: "US" },
   { label: "Algarve", name: "Conrad Algarve", cityName: "Almancil", countryCode: "PT" },
   { label: "Marbella", name: "Puente Romano Beach Resort", cityName: "Marbella", countryCode: "ES" },
 ];
