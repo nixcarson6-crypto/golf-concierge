@@ -1457,6 +1457,19 @@ function FlightRefineChips({ tripId }: { tripId: string }) {
   );
 }
 
+// IATA → friendly name for the honest "that airline isn't available" note.
+// Falls back to the raw code for anything not listed.
+const AIRLINE_NAMES: Record<string, string> = {
+  DL: "Delta", AA: "American", UA: "United", WN: "Southwest", B6: "JetBlue",
+  AS: "Alaska", NK: "Spirit", F9: "Frontier", HA: "Hawaiian", G4: "Allegiant",
+  BA: "British Airways", AF: "Air France", LH: "Lufthansa", KL: "KLM",
+  VS: "Virgin Atlantic", EK: "Emirates", QR: "Qatar Airways", AC: "Air Canada",
+  IB: "Iberia", EI: "Aer Lingus",
+};
+function airlineDisplayName(code: string): string {
+  return AIRLINE_NAMES[code.toUpperCase()] ?? code.toUpperCase();
+}
+
 function ItineraryCategoriesSection({
   tripId,
   itinerary,
@@ -1584,6 +1597,32 @@ function ItineraryCategoriesSection({
                 suggestedFlights &&
                 suggestedFlights.offers.length > 0 && (
                   <FlightRefineChips tripId={tripId} />
+                )}
+              {/* HONEST airline note — when the customer asked for a carrier
+                  Duffel has no flights for on this route, say so instead of
+                  silently leading with a different airline (Carson: don't
+                  mis-sell them their airline). */}
+              {key === "FLIGHTS" &&
+                suggestedFlights &&
+                suggestedFlights.requestedAirline &&
+                suggestedFlights.offers.length > 0 &&
+                !suggestedFlights.offers.some(
+                  (o) =>
+                    o.airlineIataCode?.toUpperCase() ===
+                    suggestedFlights.requestedAirline!.toUpperCase(),
+                ) && (
+                  <div className="mx-1 rounded-xl border border-[hsl(var(--copper))]/30 bg-[hsl(var(--copper))]/8 px-3 py-2">
+                    <p className="text-[11px] text-foreground/85 leading-snug">
+                      <span className="font-semibold">
+                        {airlineDisplayName(suggestedFlights.requestedAirline)}
+                      </span>{" "}
+                      doesn&apos;t fly {suggestedFlights.origin}–
+                      {suggestedFlights.destination} on your dates — so these are
+                      the best flights we can actually book. Tap{" "}
+                      <span className="font-medium">Different airline</span> to
+                      see other carriers.
+                    </p>
+                  </div>
                 )}
               <div className="space-y-3">
                 {(shouldShowDayDividers ? days : [{ dayKey: "_all", dayLabel: "", items }]).map(

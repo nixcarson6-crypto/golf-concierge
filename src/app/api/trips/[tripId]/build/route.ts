@@ -831,6 +831,11 @@ export async function POST(
             : (flightItems[0]?.to ?? preSearch?.airports.first ?? ""),
           cabin,
           passengers: groupSize,
+          // The airline the customer asked for (IATA), so the UI can be honest
+          // when Duffel has no flights for it on this route — "Delta wasn't
+          // available" instead of silently leading with a different carrier.
+          // null when they had no preference / picked "best rate".
+          requestedAirline: preferredAirline ?? null,
           offers: offers.slice(0, 3),
           legs: isMultiLeg
             ? legs.map((leg, i) => ({

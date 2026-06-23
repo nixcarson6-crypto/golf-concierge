@@ -65,6 +65,9 @@ export type WorkspaceTrip = {
     destination: string;
     cabin: string;
     passengers: number;
+    /** IATA the customer asked for; null = no preference. Drives the honest
+     *  "that airline isn't available on this route" note. */
+    requestedAirline?: string | null;
     offers: SuggestedFlightOffer[];
     /** Per-leg breakdown for multi-destination trips. Undefined for
      *  single-destination trips (origin/destination cover everything). */

@@ -37,6 +37,9 @@ type SuggestedFlightsBlock = {
   destination: string;
   cabin: "first" | "business" | "premium_economy" | "economy";
   passengers: number;
+  /** IATA the customer asked for; null = no preference. Preserved across
+   *  refinements so the "airline not available" note stays accurate. */
+  requestedAirline?: string | null;
   offers: FlightOfferSummary[];
 };
 
@@ -216,6 +219,10 @@ export async function POST(
     destination: prior.destination,
     cabin: cabinForSearch,
     passengers: prior.passengers,
+    // "Different airline" intentionally moves OFF the requested carrier, so
+    // drop the note in that case; otherwise keep it accurate across refines.
+    requestedAirline:
+      modifier === "different_airline" ? null : (prior.requestedAirline ?? null),
     offers: filtered.slice(0, 3),
   };
 
