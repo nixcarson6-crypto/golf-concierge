@@ -13,7 +13,6 @@ import {
   ArrowUpRight,
   BadgeCheck,
   BedDouble,
-  Car,
   CheckCheck,
   Flag,
   ListChecks,
@@ -43,7 +42,7 @@ type Trip = {
   name: string;
   region: string;
   when: string;
-  total: string;
+  total: number;
   items: TripItem[];
 };
 
@@ -54,52 +53,48 @@ const TRIPS: Trip[] = [
     name: "Pebble Beach",
     region: "Monterey · California",
     when: "Oct 4–8 · 4 players",
-    total: "$11,800",
+    total: 11270,
     items: [
       { icon: Plane, title: "United · EWR ⇄ MRY", detail: "Nonstop · first class", price: "$3,180" },
       { icon: Flag, title: "Pebble Beach Golf Links", detail: "Saturday · 9:20 AM", price: "$2,950" },
       { icon: BedDouble, title: "The Lodge · 4 nights", detail: "Ocean-view suite", price: "$4,720" },
       { icon: UtensilsCrossed, title: "Stillwater · welcome dinner", detail: "Reserved · 7:30 PM", price: "$420" },
-      { icon: Car, title: "Uber Black · all transfers", detail: "MRY ⇄ resort", price: "$530" },
     ],
   },
   {
     name: "St Andrews",
     region: "Fife · Scotland",
     when: "Jun 12–17 · 2 players",
-    total: "$9,400",
+    total: 8980,
     items: [
       { icon: Plane, title: "Delta · JFK ⇄ EDI", detail: "Nonstop · business", price: "$4,260" },
       { icon: Flag, title: "The Old Course", detail: "Tuesday · 11:40 AM", price: "$1,180" },
       { icon: BedDouble, title: "Old Course Hotel · 5 nights", detail: "Course-view room", price: "$3,300" },
       { icon: UtensilsCrossed, title: "The Seafood Ristorante", detail: "Reserved · 8:00 PM", price: "$240" },
-      { icon: Car, title: "Private transfer", detail: "EDI ⇄ St Andrews", price: "$420" },
     ],
   },
   {
     name: "Bandon Dunes",
     region: "Oregon Coast",
     when: "Sep 8–12 · 4 players",
-    total: "$8,900",
+    total: 5420,
     items: [
       { icon: Plane, title: "Alaska · LAX ⇄ OTH", detail: "First class", price: "$1,840" },
       { icon: Flag, title: "Bandon + Pacific Dunes", detail: "36 holes · Saturday", price: "$640" },
       { icon: BedDouble, title: "The Inn · 4 nights", detail: "Lily Pond suite", price: "$2,560" },
       { icon: UtensilsCrossed, title: "Pacific Grill · dinner", detail: "Reserved · 7:00 PM", price: "$380" },
-      { icon: Car, title: "Resort shuttle + Uber", detail: "OTH ⇄ Bandon", price: "$300" },
     ],
   },
   {
     name: "Adare Manor",
     region: "Co. Limerick · Ireland",
     when: "May 20–24 · 4 players",
-    total: "$13,600",
+    total: 12370,
     items: [
       { icon: Plane, title: "Aer Lingus · BOS ⇄ SNN", detail: "Nonstop · business", price: "$5,120" },
       { icon: Flag, title: "Adare Manor Golf Course", detail: "Ryder Cup '27 host", price: "$1,290" },
       { icon: BedDouble, title: "Adare Manor · 4 nights", detail: "Manor suite", price: "$5,400" },
       { icon: UtensilsCrossed, title: "The Oak Room", detail: "Michelin · 8:00 PM", price: "$560" },
-      { icon: Car, title: "Mercedes transfer", detail: "SNN ⇄ Adare", price: "$340" },
     ],
   },
 ];
@@ -393,6 +388,58 @@ function Hero({ primaryHref }: { primaryHref: string }) {
   );
 }
 
+// Counts a number up to its target with an ease-out, so the trip total ticks
+// when you switch courses instead of just popping in.
+function useCountUp(target: number, reduce: boolean): number {
+  const [val, setVal] = useState(target);
+  const prev = useRef(target);
+  useEffect(() => {
+    if (reduce) {
+      setVal(target);
+      prev.current = target;
+      return;
+    }
+    const from = prev.current;
+    prev.current = target;
+    const start = performance.now();
+    const dur = 650;
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(from + (target - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, reduce]);
+  return val;
+}
+
+// Faint topographic contour lines behind the card header — a course-map /
+// elevation feel, fully abstract so it needs no photography and stays on-brand.
+function ContourLines() {
+  const rows = [12, 28, 44, 60, 76, 92];
+  return (
+    <svg
+      aria-hidden
+      className="absolute inset-0 h-full w-full text-accent/[0.09]"
+      preserveAspectRatio="none"
+      viewBox="0 0 400 104"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.25"
+    >
+      {rows.map((y, i) => (
+        <path
+          key={y}
+          d={`M-20 ${y} C 70 ${y - 10 - i * 1.5} 150 ${y + 12} 220 ${y - 5} S 360 ${y + 11} 420 ${y - 3}`}
+        />
+      ))}
+    </svg>
+  );
+}
+
 function TripCard({
   trip,
   reduce,
@@ -402,49 +449,69 @@ function TripCard({
   reduce: boolean;
   primaryHref: string;
 }) {
+  const total = useCountUp(trip.total, reduce);
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-border bg-background shadow-[0_28px_90px_-28px_rgb(0_0_0/0.22)]">
+    <div className="relative overflow-hidden rounded-3xl border border-border bg-card shadow-[0_28px_90px_-28px_rgb(0_0_0/0.22)]">
+      {/* header — contour texture + destination */}
+      <div className="relative overflow-hidden border-b border-border bg-surface-sunken/40 px-6 pt-6 pb-5 sm:px-7">
+        <ContourLines />
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={trip.name}
+            initial={reduce ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduce ? undefined : { opacity: 0, y: -8 }}
+            transition={{ duration: 0.35, ease: EASE }}
+            className="relative flex items-start justify-between gap-3"
+          >
+            <div>
+              <p className="text-display text-[1.7rem] leading-none tracking-tight">
+                {trip.name}
+              </p>
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <MapPin className="size-3 text-accent" />
+                {trip.region}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full border border-border bg-background/70 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              {trip.when}
+            </span>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* items */}
       <AnimatePresence mode="wait">
         <motion.div
           key={trip.name}
-          initial={reduce ? false : { opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={reduce ? undefined : { opacity: 0, y: -10 }}
-          transition={{ duration: 0.4, ease: EASE }}
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={reduce ? undefined : { opacity: 0 }}
+          transition={{ duration: 0.25 }}
+          className="divide-y divide-border"
         >
-          <div className="flex items-baseline justify-between px-6 pt-6 pb-5 sm:px-7">
-            <div>
-              <p className="text-display text-2xl tracking-tight">{trip.name}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{trip.region}</p>
-            </div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground text-right">
-              {trip.when}
-            </p>
-          </div>
-
-          <div className="divide-y divide-border border-t border-border">
-            {trip.items.map((item, i) => (
-              <motion.div
-                key={item.title}
-                initial={reduce ? false : { opacity: 0, x: 12 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, ease: EASE, delay: 0.05 + i * 0.06 }}
-                className="flex items-center gap-3.5 px-6 py-3.5 sm:px-7"
-              >
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-border bg-surface-sunken/50">
-                  <item.icon className="size-4" strokeWidth={1.75} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium tracking-tight">{item.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{item.detail}</p>
-                </div>
-                <p className="num-tabular text-sm">{item.price}</p>
-              </motion.div>
-            ))}
-          </div>
+          {trip.items.map((item, i) => (
+            <motion.div
+              key={item.title}
+              initial={reduce ? false : { opacity: 0, x: 14 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, ease: EASE, delay: 0.04 + i * 0.07 }}
+              className="group flex items-center gap-3.5 px-6 py-3.5 transition-colors hover:bg-surface-sunken/40 sm:px-7"
+            >
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent transition-transform group-hover:scale-105">
+                <item.icon className="size-4" strokeWidth={1.75} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium tracking-tight">{item.title}</p>
+                <p className="truncate text-xs text-muted-foreground">{item.detail}</p>
+              </div>
+              <p className="num-tabular text-sm font-medium">{item.price}</p>
+            </motion.div>
+          ))}
         </motion.div>
       </AnimatePresence>
 
+      {/* total */}
       <Link
         href={primaryHref}
         className="group flex items-center justify-between gap-3 bg-accent px-6 py-4 text-accent-foreground transition-colors hover:bg-accent/90 sm:px-7"
@@ -452,20 +519,11 @@ function TripCard({
         <span className="text-[11px] uppercase tracking-[0.18em] opacity-75">
           Trip total · estimate
         </span>
-        <span className="flex items-center gap-3">
-          <AnimatePresence mode="popLayout">
-            <motion.span
-              key={trip.total}
-              initial={reduce ? false : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={reduce ? undefined : { opacity: 0, y: -8 }}
-              transition={{ duration: 0.3 }}
-              className="text-display num-tabular text-2xl tracking-tight"
-            >
-              {trip.total}
-            </motion.span>
-          </AnimatePresence>
-          <ArrowRight className="size-4 opacity-80 transition-transform group-hover:translate-x-0.5" />
+        <span className="flex items-center gap-2.5">
+          <span className="text-display num-tabular text-2xl tracking-tight">
+            ${total.toLocaleString("en-US")}
+          </span>
+          <ArrowRight className="size-4 opacity-80 transition-transform group-hover:translate-x-1" />
         </span>
       </Link>
     </div>
