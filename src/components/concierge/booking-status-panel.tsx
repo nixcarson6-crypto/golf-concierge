@@ -57,6 +57,8 @@ import type {
 import { isAgentBookable } from "@/lib/bookings/agent-scope";
 import { SaveCardButton } from "./save-card-button";
 import { ScreenshotProof } from "./screenshot-proof";
+import { FlightBookingModal } from "./flight-booking-modal";
+import type { WorkspaceMe } from "./workspace";
 
 // Types we present as contact-and-book-yourself suggestions, never
 // auto-booked. Each surfaces Call / Visit-site actions. (Carson's call:
@@ -329,6 +331,8 @@ export function BookingStatusPanel({
   suggestedFlights = null,
   tripStartDate = null,
   tripEndDate = null,
+  meProfile,
+  meEmail,
 }: {
   tripId: string;
   itinerary: WorkspaceItinerary | null;
@@ -342,6 +346,9 @@ export function BookingStatusPanel({
   suggestedFlights?: WorkspaceTrip["suggestedFlights"];
   tripStartDate?: string | null;
   tripEndDate?: string | null;
+  /** Saved traveler profile + email — pre-fills the flight booking modal. */
+  meProfile?: WorkspaceMe["profile"];
+  meEmail?: string;
 }) {
   const qc = useQueryClient();
   const [bookingId, setBookingId] = React.useState<string | null>(null);
@@ -352,6 +359,10 @@ export function BookingStatusPanel({
   const [confirmItem, setConfirmItem] =
     React.useState<WorkspaceItineraryItem | null>(null);
   const [confirmAllOpen, setConfirmAllOpen] = React.useState(false);
+  // Flight booking modal — opened by tapping the flight row (when flights
+  // auto-book: sandbox, or live + Stripe). Books offers[0] via /book-flight.
+  const [flightModalOpen, setFlightModalOpen] = React.useState(false);
+  const topFlightOffer = suggestedFlights?.offers?.[0] ?? null;
 
   const bookAll = React.useCallback(async () => {
     if (bookingAll || bookingId) return;
@@ -570,13 +581,26 @@ export function BookingStatusPanel({
     [findingAltId, bookingId, qc, tripId],
   );
   const items = React.useMemo(
-    () => (itinerary?.items ?? []).filter((i) => i.type !== "FREE_TIME"),
+    () =>
+      (itinerary?.items ?? []).filter(
+        (i) =>
+          i.type !== "FREE_TIME" &&
+          // Hide superseded rows — e.g. the flight ESTIMATE placeholder once a
+          // real flight is booked (recordFlightBooking cancels it). Otherwise a
+          // stale "not booked yet" flight lingers beside the confirmed one.
+          i.confirmationState !== "CANCELLED",
+      ),
     [itinerary],
   );
 
   if (!itinerary || items.length === 0) return null;
 
   const rows = items.map((item) => ({ item, ...statusFor(item) }));
+  // Once a flight is confirmed, no flight row should still offer "tap to book"
+  // — guards against double-booking a second ticket on the same trip.
+  const hasConfirmedFlight = rows.some(
+    (r) => r.item.type === "FLIGHT" && r.kind === "confirmed",
+  );
   // Walk-in rows AND suggestion rows (restaurants/activities/nightlife/
   // spa) are shown in the list but EXCLUDED from the counter + progress
   // bar — we don't auto-book them, so counting them as "not confirmed"
@@ -748,6 +772,16 @@ export function BookingStatusPanel({
                   // customer books their own (their card pays the airline). The
                   // row shows a direct "Book your flight" link, like golf.
                   const isSelfFlight = item.type === "FLIGHT" && !flightAutoBook;
+                  // FLIGHT auto-book (sandbox now; live + Stripe later): the
+                  // flight row is tappable to open the booking modal for the
+                  // best-fit offer, so the customer can book the flight without
+                  // waiting for Book All. Only when we actually have an offer.
+                  const isBookableFlight =
+                    item.type === "FLIGHT" &&
+                    flightAutoBook &&
+                    !!topFlightOffer &&
+                    kind === "pending" &&
+                    !hasConfirmedFlight;
                   const isPhoneOnly =
                     kind === "failed" &&
                     failureReason === "form_not_found" &&
@@ -826,6 +860,8 @@ export function BookingStatusPanel({
                     ? "Starting…"
                     : isWalkIn
                       ? "Walk-in · no booking needed"
+                      : isBookableFlight
+                        ? "Tap to book your flight"
                       : isSelfFlight
                         ? "You book this one — your card pays the airline"
                       : isSelfGolf
@@ -851,16 +887,16 @@ export function BookingStatusPanel({
                   // The sold-out / members-only / golf cases have their own
                   // reason blocks already, so this covers hotels + the rest.
                   const failedExplanation = isResortDirectHotel
-                    ? "No travel partner carries this resort, so we couldn't auto-book it for you. Reserve it directly on their site below, or our concierge will lock it in for you."
+                    ? "This resort books directly, not through our travel partners — reserve it on their own site below. Your confirmation saves right here on your trip."
                     : item.type === "LODGING"
                       ? failureReason === "captcha_blocked"
-                        ? "The hotel's site blocked automated booking, so we couldn't finish it. Reserve it directly below, or our concierge will handle it."
+                        ? "The hotel's site blocked automated booking. Reserve it directly below — your confirmation saves right here on your trip."
                         : failureReason === "declined_card"
                           ? "Your card was declined at the hotel's checkout. Update your card and retry, or reserve directly below."
-                          : "We couldn't complete this hotel automatically. Reserve it directly below, or our concierge will finish it for you."
+                          : "We couldn't complete this hotel automatically. Reserve it directly below — your confirmation saves right here on your trip."
                       : failureReason === "declined_card"
                         ? "Your card was declined at checkout. Update your card and try again, or reserve directly below."
-                        : "We couldn't complete this one automatically — reach the venue directly below, or our concierge will help.";
+                        : "We couldn't complete this one automatically — reserve it directly below.";
                   const rowInner = (
                     <>
                       {(isSuggestion || isSelfGolf || isSelfFlight) &&
@@ -899,10 +935,19 @@ export function BookingStatusPanel({
                       </div>
                     </>
                   );
-                  // The main row: a re-book button when the agent can retry,
-                  // otherwise inert. Fallback links (call/site) render BELOW
-                  // it for any failed booking.
-                  const mainRow = canBook ? (
+                  // The main row: a re-book button when the agent can retry, a
+                  // book-flight button for a bookable flight, otherwise inert.
+                  // Fallback links (call/site) render BELOW it for any failure.
+                  const mainRow = isBookableFlight ? (
+                    <button
+                      type="button"
+                      disabled={bookingId !== null}
+                      onClick={() => setFlightModalOpen(true)}
+                      className="w-full flex items-start gap-2.5 text-left rounded-lg px-2.5 py-2 hover:bg-surface-raised transition disabled:opacity-60"
+                    >
+                      {rowInner}
+                    </button>
+                  ) : canBook ? (
                     <button
                       type="button"
                       disabled={bookingId !== null}
@@ -1075,10 +1120,10 @@ export function BookingStatusPanel({
                           ) : failureReason === "timeout" ? (
                             <>
                               <p className="text-[11px] text-foreground/80 leading-snug">
-                                This venue&apos;s booking site is an unusually
-                                slow one, so Pyltrix&apos;s concierge is finishing
-                                it for you. Nothing for you to do — the
-                                confirmation will show up right here shortly.
+                                This venue&apos;s booking site is unusually slow,
+                                so Pyltrix couldn&apos;t finish it automatically.
+                                Reserve it directly on their site to lock it in —
+                                everything Pyltrix filled in is shown below.
                               </p>
                               {screenshotUrl && (
                                 <ScreenshotProof
@@ -1094,12 +1139,11 @@ export function BookingStatusPanel({
                               failureReason === "form_not_found") ? (
                             <>
                               <p className="text-[11px] text-foreground/80 leading-snug">
-                                This course reserves tee times directly for
-                                resort guests — so Pyltrix is arranging yours
-                                with the{" "}
+                                This course reserves tee times only for confirmed
+                                resort guests. Once your stay is booked, reserve
+                                your round directly with the{" "}
                                 {(item.title.split(/[—–-]/)[0] || "resort").trim()}{" "}
-                                pro shop as part of your stay. Nothing for you to
-                                do — the confirmation will show up right here.
+                                pro shop — they&apos;ll be expecting you.
                               </p>
                             </>
                           ) : failureReason === "enquiry_sent" ? (
@@ -1308,6 +1352,25 @@ export function BookingStatusPanel({
         busy={bookingAll}
         onConfirm={() => void bookAll()}
       />
+      {/* Tap-a-flight-row booking. Pre-fills from the saved profile; books the
+          best-fit offer via /book-flight (sandbox auto-books; live charges the
+          customer first). Refetches the workspace so the row flips to Booked. */}
+      {topFlightOffer && meProfile && suggestedFlights && (
+        <FlightBookingModal
+          open={flightModalOpen}
+          onOpenChange={setFlightModalOpen}
+          tripId={tripId}
+          offer={topFlightOffer}
+          passengerCount={suggestedFlights.passengers}
+          cabin={suggestedFlights.cabin}
+          profile={meProfile}
+          defaultEmail={meEmail ?? ""}
+          onBooked={() => {
+            setFlightModalOpen(false);
+            void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+          }}
+        />
+      )}
     </div>
   );
 }

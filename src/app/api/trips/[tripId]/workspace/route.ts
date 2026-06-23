@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireTripAccess, requireUser } from "@/lib/auth";
-import { flightAutoBookEnabled } from "@/lib/bookings/flight-payment";
+import {
+  flightAutoBookEnabled,
+  isDuffelSandbox,
+} from "@/lib/bookings/flight-payment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -126,11 +129,11 @@ export async function GET(
       suggestedFlights:
         (trip.constraints as Record<string, unknown> | null)?.suggestedFlights ??
         null,
-      // Whether flights auto-book through Duffel (charging the customer first)
-      // or are SELF-BOOK. Default false ⇒ the customer books their own flight
-      // (their card pays the airline; we never front it). Drives the self-book
-      // link in the UI. See flight-payment.ts.
-      flightAutoBook: flightAutoBookEnabled(),
+      // Whether flights auto-book through Duffel or are SELF-BOOK. Sandbox
+      // (Duffel test key) auto-books too — test money, free, so the flow is
+      // testable; the UI must agree with what Book All actually does. LIVE is
+      // gated (charge customer first / self-book). See flight-payment.ts.
+      flightAutoBook: flightAutoBookEnabled() || isDuffelSandbox(),
       // Multi-destination leg breakdown. Length 1 = single-destination
       // trip; length > 1 = the user requested multiple stops. UI can
       // group itinerary items by metadata.legIndex to render per-leg.

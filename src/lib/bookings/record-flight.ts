@@ -87,11 +87,16 @@ export async function recordFlightBooking(args: RecordFlightArgs) {
       },
     });
   }
+  // Supersede EVERY prior flight item — not just confirmed ones, but also the
+  // ESTIMATE placeholder the build created. Otherwise booking a flight leaves
+  // the old "estimate / not booked yet" row sitting next to the new "Booked"
+  // one (and, if it's still tappable, invites a double-booking). Replacing it
+  // means exactly one flight row survives: the confirmed one we create below.
   const supersededItems = await db.itineraryItem.findMany({
     where: {
       itinerary: { tripId: args.tripId },
       type: "FLIGHT",
-      confirmationState: "CONFIRMED",
+      confirmationState: { not: "CANCELLED" },
     },
     select: { id: true, metadata: true },
   });

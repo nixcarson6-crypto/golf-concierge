@@ -132,7 +132,7 @@ async function failSafeToReview(
         where: { id: args.itineraryItemId },
         data: {
           confirmationState: "HOLDING",
-          status: "Pyltrix concierge is finalizing this",
+          status: "Finalizing this booking",
         },
       })
       .catch(() => {});
@@ -657,18 +657,20 @@ async function runBrowserBookingInner(args: {
       }
       console.log(`[book] No API carried ${item.title} — trying the browser agent.`);
     }
-    // HOTEL AGENT — TRY EVERY TIME (Carson's flow, June 2026). Hotels
-    // LiteAPI/Hotelbeds cover book API-first above; the uncovered resort-direct
-    // ones reach here and we ALWAYS give the agent a shot. The safety is in the
-    // runner, not a kill switch: the progress-stall watchdog bails in ~90s if
-    // the agent is just staring at a frozen/looping page (→ the honest
-    // "couldn't auto-book — book direct" fallback below), while a booking that's
-    // actually advancing is allowed to finish up to the time ceiling. So a miss
-    // never grinds and never shows a frozen screen. HOTEL_AGENT_DISABLED=true
-    // still hard-forces the link path (skip the agent entirely).
-    if (process.env.HOTEL_AGENT_DISABLED === "true") {
+    // HOTEL AGENT — OFF BY DEFAULT (launch decision, CLAUDE.md). The bedbank
+    // APIs (LiteAPI/Hotelbeds) book the hotels they carry above; the uncovered
+    // resort-direct ones (Streamsong/Pinehurst/Pebble/Aman) reach here and we
+    // LINK them for direct booking instead of grinding the browser agent on a
+    // slow resort engine (Streamsong's Agilysys took ~4.5 min just to pick a
+    // room — a terrible "is it doing anything?" wait). Re-enable the agent on
+    // those sites with HOTEL_AGENT_ENABLED=true once it's reliable; the older
+    // HOTEL_AGENT_DISABLED=true still force-links even if ENABLED is set.
+    const hotelAgentOn =
+      process.env.HOTEL_AGENT_ENABLED === "true" &&
+      process.env.HOTEL_AGENT_DISABLED !== "true";
+    if (!hotelAgentOn) {
       console.log(
-        `[book] HOTEL_AGENT_DISABLED — linking ${item.title} for direct/concierge booking.`,
+        `[book] hotel agent off — linking ${item.title} for direct booking (no API carried it).`,
       );
       await markBookingFailed({
         booking,
@@ -676,7 +678,7 @@ async function runBrowserBookingInner(args: {
         tripId: args.tripId,
         failureReason: "form_not_found",
         message:
-          "This resort books directly, not through our partners — reserve it on their site below, or our concierge will lock it in for you.",
+          "This resort books directly, not through our travel partners — reserve it on their own site below. Your confirmation shows up right here on your trip.",
         fallbackContact: { website: startUrl, phone: places.phone ?? null },
       });
       return;

@@ -261,11 +261,15 @@ export async function POST(
         // input so the agent still sees "the top-rated course in
         // Tennessee" even though cleanDestination rejected the sentence.
         const hintForAgent = userTyped || rawHint;
-        // TRUE "Surprise me" = no place hint at all. Only then do we inject
-        // the server-randomized variety shortlist; a hint ("Italy",
-        // "mountain golf") is a constraint to honor, not something a random
-        // spotlight should override.
-        const openEnded = !hintForAgent;
+        // Inject the variety shortlist when there's no place hint at all OR the
+        // hint is a VIBE, not a place. A real place ("Italy", "Tennessee") is a
+        // constraint to honor. But a style/vibe ("links", "coastal", "good
+        // golf") is NOT a place — left as a bare hint it pins the model to the
+        // famous reflex market for that style (links → Bandon Dunes, every
+        // time). Treating a vibe hint as open-ended rotates the shortlist while
+        // still passing the vibe as a soft preference, so "links" surfaces a
+        // FRESH coastal pick (Kiawah, Streamsong, Sea Island…), not Bandon.
+        const openEnded = !hintForAgent || looksLikeHintNotPlace(hintForAgent);
         const constraintsForAgent = hintForAgent
           ? {
               ...constraints,

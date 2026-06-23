@@ -50,6 +50,17 @@ export function flightAutoBookEnabled(): boolean {
 }
 
 /**
+ * True when DUFFEL_API_KEY is a sandbox/test key (`duffel_test_…`). In sandbox,
+ * Duffel charges a TEST balance — booking costs no real money — so we auto-book
+ * freely: the whole flow is testable end-to-end and the customer sees a real
+ * (sandbox) confirmation. We only fall back to "test" matching; an unknown key
+ * format is treated as LIVE (the safe default — gate it, don't risk real money).
+ */
+export function isDuffelSandbox(): boolean {
+  return (optionalEnv("DUFFEL_API_KEY") ?? "").includes("test");
+}
+
+/**
  * A direct booking link for a flight the customer reserves themselves. Google
  * Flights resolves a plain "flights from X to Y on DATE" query to a real,
  * bookable search, so the customer lands one tap from buying — paying the
@@ -101,7 +112,28 @@ export async function bookFlightForCustomer(args: {
    *  it from Duffel before charging. */
   ticketCents?: number | null;
 }): Promise<CustomerFlightOutcome> {
-  // 1) Default + master switch: self-book. Never touch our balance.
+  // 0) SANDBOX: Duffel test key ⇒ test money, booking is free. Auto-book so the
+  //    flow works end-to-end in testing (Book All + the per-flight button) and
+  //    the customer sees a real sandbox confirmation. No customer charge here —
+  //    there's no real money to collect. The gate below only matters for LIVE.
+  if (isDuffelSandbox()) {
+    try {
+      const result = await bookFlightOffer({
+        offerId: args.offerId,
+        passengers: args.passengers,
+      });
+      return result.ok
+        ? { mode: "booked", result }
+        : { mode: "failed", error: result.error };
+    } catch (err) {
+      return {
+        mode: "failed",
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  // 1) LIVE — default + master switch: self-book. Never touch our balance.
   if (!flightAutoBookEnabled()) {
     return { mode: "self_book", reason: "autobook_disabled" };
   }

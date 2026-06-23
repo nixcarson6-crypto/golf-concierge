@@ -351,15 +351,14 @@ export function FlightBookingModal({
             >
               Cancel
             </Button>
-            {/* Save & close: persist the form to the user profile without
-                booking. Booking happens later via the suggested-flight
-                card → itinerary dialog → real ticketing flow. This modal
-                is now a pure "save my traveler info" surface. */}
+            {/* Save without booking — keeps the "store my traveler info"
+                escape hatch (e.g. profile half-filled, not ready to commit). */}
             <Button
+              variant="ghost"
               size="sm"
               onClick={saveProfileAndClose}
               disabled={submitting || savingProfile}
-              className="shrink-0 bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
+              className="shrink-0"
             >
               {savingProfile ? (
                 <>
@@ -367,7 +366,26 @@ export function FlightBookingModal({
                   Saving…
                 </>
               ) : (
-                "Done"
+                "Just save my info"
+              )}
+            </Button>
+            {/* Primary: actually book the flight. Wired to submit() →
+                /book-flight (which auto-books in Duffel sandbox / charges the
+                customer first when live). Disabled until every required
+                airline field is valid. */}
+            <Button
+              size="sm"
+              onClick={submit}
+              disabled={!allValid || submitting || savingProfile}
+              className="shrink-0 bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="size-3 mr-1.5 animate-spin" />
+                  Booking…
+                </>
+              ) : (
+                `Book this flight — $${total.toLocaleString()}`
               )}
             </Button>
           </section>

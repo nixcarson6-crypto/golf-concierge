@@ -2726,7 +2726,7 @@ export async function runStagehandBooking(
             status: "needs_review",
             failureReason: "timeout",
             message:
-              "Pyltrix filled in your whole reservation and reached the payment step — our concierge completes the payment, and your confirmation shows up right here on your trip.",
+              "Pyltrix filled in your whole reservation and reached the payment step. Finish the payment on the venue's own site below to lock it in — everything else is already done for you.",
           },
           sessionUrl: null,
           finalScreenshot: null,
@@ -2739,7 +2739,7 @@ export async function runStagehandBooking(
           status: "failed",
           failureReason: "form_not_found",
           message:
-            "We couldn't complete this booking automatically — the venue's site stalled with no progress. Reserve it directly via the link below, or our concierge will lock it in for you.",
+            "We couldn't complete this booking automatically — the venue's site stalled with no progress. Reserve it directly via the link below; your confirmation saves right here on your trip.",
         },
         sessionUrl: null,
         finalScreenshot: null,
@@ -2756,7 +2756,7 @@ export async function runStagehandBooking(
           status: "needs_review",
           failureReason: "timeout",
           message:
-            "Pyltrix is finalizing this booking — this venue's site is an unusually slow one, so our concierge is completing it. The confirmation will show up right here on your trip.",
+            "This venue's booking site is unusually slow, so Pyltrix couldn't finish it automatically. Reserve it directly on their own site below — your confirmation saves right here on your trip.",
         },
         sessionUrl: null,
         finalScreenshot: null,
@@ -6252,7 +6252,7 @@ async function detectResortConfirmationGate(page: unknown): Promise<string | nul
           body,
         );
       if (!gate) return null;
-      return "This resort books tee times only for confirmed guests — it asks for your room confirmation number. Our concierge will reserve your tee times together with your resort stay.";
+      return "This resort books tee times only for confirmed guests — it asks for your room confirmation number. Book your tee times directly with the resort once your stay is confirmed.";
     });
   } catch {
     return null;

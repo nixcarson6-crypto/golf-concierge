@@ -2421,7 +2421,7 @@ function ChecklistEmpty() {
         <Sparkles className="size-4" />
       </div>
       <p className="mt-4 text-sm text-muted-foreground max-w-[24ch] mx-auto leading-relaxed">
-        Bookings appear here as the concierge locks them in.
+        Your confirmations appear here as each one is booked.
       </p>
     </div>
   );

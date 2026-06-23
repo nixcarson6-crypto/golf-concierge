@@ -175,6 +175,33 @@ export async function runDestinationAgent(input: DestinationAgentInput) {
         }
       }
 
+      // DETERMINISTIC reflex-default guard (open-ended "Surprise me" only).
+      // The model is stateless and score-driven, so even with the variety
+      // shortlist it sometimes still leads with the highest-base-score market
+      // (Bandon Dunes), which is exactly the "why does it ALWAYS go to Bandon?"
+      // problem. On a variety run we NEVER want a reflex default as #1 — the
+      // customer asked to be surprised. If the model led with one, promote the
+      // first genuinely different option. (Hinted runs are left alone: Pinehurst
+      // for a "North Carolina" hint is the RIGHT answer, not a lazy default.)
+      if (input.variety && raw.options.length > 1) {
+        const REFLEX = ["bandon", "pinehurst", "pebble beach"];
+        const isReflex = (name: string) =>
+          REFLEX.some((r) => name.toLowerCase().includes(r));
+        if (isReflex(raw.options[0]?.name ?? "")) {
+          const altIdx = raw.options.findIndex(
+            (o, i) => i > 0 && !isReflex(o.name),
+          );
+          if (altIdx > 0) {
+            const [alt] = raw.options.splice(altIdx, 1);
+            const dropped = raw.options[0]?.name;
+            raw.options.unshift(alt);
+            console.log(
+              `[destination] reflex-default guard: led with "${dropped}" on a Surprise-me run — promoted "${alt.name}" instead.`,
+            );
+          }
+        }
+      }
+
       // Decorate each option with a hero image URL derived from the AI query.
       // Unsplash 'source' URLs don't require a key and are stable enough
       // for MVP; swap to the Unsplash API + caching pre-launch.

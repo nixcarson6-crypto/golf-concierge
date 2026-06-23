@@ -29,8 +29,8 @@ export function NewTripForm({
         {ownerName ? `Where to, ${ownerName}?` : "Where to?"}
       </h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Give your trip a quick name. You can describe everything else in the
-        chat — your concierge will take it from there.
+        Give your trip a quick name — then answer a few quick questions and
+        we&apos;ll build your whole trip.
       </p>
 
       <div className="mt-7 space-y-2">

@@ -609,6 +609,8 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
       suggestedFlights={snapshot.trip.suggestedFlights}
       tripStartDate={snapshot.trip.startDate}
       tripEndDate={snapshot.trip.endDate}
+      meProfile={snapshot.me.profile}
+      meEmail={snapshot.me.email}
     />
   );
 
