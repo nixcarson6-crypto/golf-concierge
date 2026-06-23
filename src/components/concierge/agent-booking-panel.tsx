@@ -169,17 +169,16 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
 
   // --- State: in progress --------------------------------------------------
   if (IN_PROGRESS_STATUSES.includes(booking.status)) {
-    const progress =
-      booking.agentProgress ?? defaultProgressLabel(booking.status);
+    // Honest in-progress UI: a spinner + "Pyltrix is booking this…". We do NOT
+    // show the agent's self-reported micro-step ("filling your details…") —
+    // if the agent stalls on a screen that text becomes a lie. The timeout
+    // flips a genuinely stuck booking to review.
     return (
       <div className="rounded-2xl border border-foreground/30 bg-foreground/5 px-4 py-3 flex items-center gap-3">
         <Loader2 className="size-5 text-foreground animate-spin shrink-0" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">
-            Pyltrix is booking this…
-          </p>
-          <p className="text-xs text-foreground/70 truncate">{progress}</p>
-        </div>
+        <p className="text-sm font-semibold text-foreground">
+          Pyltrix is booking this…
+        </p>
       </div>
     );
   }
@@ -412,19 +411,6 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
       </div>
     </div>
   );
-}
-
-function defaultProgressLabel(status: WorkspaceItemBooking["status"]): string {
-  switch (status) {
-    case "PENDING":
-      return "Queued…";
-    case "SEARCHING":
-      return "Opening venue site…";
-    case "HELD":
-      return "Holding the reservation…";
-    default:
-      return "Working…";
-  }
 }
 
 function friendlyFailureCopy(code: string | null): string {

@@ -715,7 +715,6 @@ export function BookingStatusPanel({
                   screenshotUrl,
                   agentMessage,
                   quotedPriceCents,
-                  agentProgress,
                 }) => {
                   // Walk-in venues (casual restaurants/activities Google
                   // says don't take reservations) get a distinct label
@@ -839,11 +838,13 @@ export function BookingStatusPanel({
                               ? "Reserve directly with the resort"
                               : canBook
                                 ? "Tap to book"
-                              : // While booking, show the live step ("Checking
-                                // availability…") instead of a flat "Booking…".
-                                kind === "booking"
-                                ? agentProgress || statusLabel(kind)
-                                : statusLabel(kind);
+                              : // In-progress: a neutral, HONEST label. We do
+                                // NOT echo the agent's self-reported micro-step
+                                // ("filling your details…") — if the agent is
+                                // stalled on a screen that text becomes a lie.
+                                // "Booking…" just states an attempt is underway;
+                                // the timeout flips it to review if it stalls.
+                                statusLabel(kind);
                   // WHY a booking couldn't be completed — shown to the customer
                   // above the direct-booking links so a miss is never a bare
                   // "tap to book" caution with no explanation (Carson's ask).
