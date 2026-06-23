@@ -61,20 +61,28 @@ function shell(args: { preheader?: string; bodyHtml: string }) {
   return `
 <!doctype html>
 <html>
-  <body style="margin:0;padding:0;background:#f5f5f5;">
+  <body style="margin:0;padding:0;background:#EFECE3;-webkit-font-smoothing:antialiased;">
     ${args.preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(args.preheader)}</div>` : ""}
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:32px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#EFECE3;padding:36px 0;">
       <tr><td align="center">
-        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border:1px solid #e6e6e6;border-radius:18px;overflow:hidden;">
-          <tr><td style="padding:28px 32px 0;">
-            <span style="font-family:Georgia,'Times New Roman',serif;font-weight:600;font-size:20px;letter-spacing:-0.02em;color:#0a0a0a;">Pyltrix</span>
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#FFFDF8;border:1px solid #E3E0D5;border-radius:20px;overflow:hidden;">
+          <tr><td style="padding:30px 36px 0;">
+            <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+              <td style="vertical-align:middle;">
+                <span style="display:inline-block;width:30px;height:30px;line-height:30px;text-align:center;background:#1E4030;border-radius:9px;color:#F6F4EE;font-size:15px;">&#10022;</span>
+              </td>
+              <td style="vertical-align:middle;padding-left:10px;">
+                <span style="font-family:Georgia,'Times New Roman',serif;font-weight:600;font-size:21px;letter-spacing:-0.01em;color:#16150F;">Pyltrix</span>
+              </td>
+            </tr></table>
           </td></tr>
-          <tr><td style="padding:20px 32px 32px;">
+          <tr><td style="padding:22px 36px 34px;">
             ${args.bodyHtml}
           </td></tr>
-          <tr><td style="padding:20px 32px;border-top:1px solid #f0f0f0;">
-            <p style="margin:0;font-family:Inter,Arial,sans-serif;font-size:12px;color:#8a8a8a;line-height:1.5;">
-              Pyltrix — AI luxury golf-travel concierge · <a href="https://pyltrix.com" style="color:#8a8a8a;">pyltrix.com</a>
+          <tr><td style="padding:22px 36px;border-top:1px solid #EFECE3;background:#F6F4EE;">
+            <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b6658;line-height:1.7;">
+              Pyltrix — AI luxury golf-travel concierge<br>
+              <a href="https://pyltrix.com" style="color:#1E4030;text-decoration:none;">pyltrix.com</a> &nbsp;&middot;&nbsp; <a href="mailto:support@pyltrix.com" style="color:#1E4030;text-decoration:none;">support@pyltrix.com</a>
             </p>
           </td></tr>
         </table>
@@ -85,7 +93,7 @@ function shell(args: { preheader?: string; bodyHtml: string }) {
 }
 
 function button(href: string, label: string) {
-  return `<a href="${href}" style="display:inline-block;background:#0a0a0a;color:#ffffff;text-decoration:none;padding:14px 24px;border-radius:12px;font-family:Inter,Arial,sans-serif;font-weight:600;font-size:14px;">${escapeHtml(label)}</a>`;
+  return `<a href="${href}" style="display:inline-block;background:#1E4030;color:#F6F4EE;text-decoration:none;padding:14px 26px;border-radius:13px;font-family:Arial,Helvetica,sans-serif;font-weight:600;font-size:14px;letter-spacing:0.01em;">${escapeHtml(label)}</a>`;
 }
 
 /**
@@ -101,7 +109,7 @@ export function renderWelcomeEmail(args: { name?: string | null; appUrl: string 
       bodyHtml: `
         <h1 style="font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:26px;letter-spacing:-0.02em;color:#0a0a0a;margin:8px 0 14px;line-height:1.15;">${greeting}.</h1>
         <p style="font-family:Inter,Arial,sans-serif;font-size:15px;color:#525252;line-height:1.6;margin:0 0 22px;">
-          You're in. Answer a few quick questions and our AI builds a complete luxury golf trip — flights, lodging, tee times, dining, and transport — then books the whole thing for you. You just show up.
+          You're in. Answer a few quick questions and our AI designs a complete luxury golf trip — flights, lodging, tee times, dining, and transport — at real prices. We book your flights and your stay, you pick your tee times, and we line up the rest.
         </p>
         ${button(args.appUrl, "Plan my first trip")}
         <p style="font-family:Inter,Arial,sans-serif;font-size:13px;color:#8a8a8a;line-height:1.6;margin:26px 0 0;">
@@ -109,7 +117,7 @@ export function renderWelcomeEmail(args: { name?: string | null; appUrl: string 
         </p>
       `.trim(),
     }),
-    text: `${args.name ? `Welcome, ${args.name.split(" ")[0]}` : "Welcome to Pyltrix"}.\n\nAnswer a few quick questions and our AI builds a complete luxury golf trip — flights, lodging, tee times, dining, transport — then books it for you.\n\nPlan your first trip: ${args.appUrl}`,
+    text: `${args.name ? `Welcome, ${args.name.split(" ")[0]}` : "Welcome to Pyltrix"}.\n\nAnswer a few quick questions and our AI designs a complete luxury golf trip — flights, lodging, tee times, dining, transport — at real prices. We book your flights and stay, you pick your tee times, and we line up the rest.\n\nPlan your first trip: ${args.appUrl}`,
   };
 }
 
@@ -136,20 +144,20 @@ export function renderBookingConfirmationEmail(args: {
   const firstName = args.name ? args.name.split(" ")[0] : null;
   const row = (l: ConfirmationLine) => {
     const code = l.confirmationCode
-      ? `<span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#0a0a0a;background:#f5f5f5;border-radius:6px;padding:3px 8px;white-space:nowrap;">${escapeHtml(l.confirmationCode)}</span>`
-      : "";
+      ? `<span style="display:inline-block;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#1E4030;background:#EAF0EC;border:1px solid #D5E0D8;border-radius:7px;padding:4px 9px;white-space:nowrap;">${escapeHtml(l.confirmationCode)}</span>`
+      : `<span style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#8a8576;">Saved on your trip</span>`;
     const settle =
       l.paymentMode === "pay_at_property"
-        ? `<div style="font-family:Inter,Arial,sans-serif;font-size:11px;color:#8a8a8a;margin-top:3px;">Settles at the property</div>`
+        ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#8a8576;margin-top:3px;">Settles at the property</div>`
         : "";
     return `
       <tr>
-        <td style="padding:13px 0;border-bottom:1px solid #f0f0f0;">
-          <div style="font-family:Inter,Arial,sans-serif;font-size:14px;font-weight:600;color:#0a0a0a;">${escapeHtml(l.title)}</div>
-          ${l.detail ? `<div style="font-family:Inter,Arial,sans-serif;font-size:12.5px;color:#8a8a8a;margin-top:2px;">${escapeHtml(l.detail)}</div>` : ""}
+        <td style="padding:14px 16px;border-bottom:1px solid #EFECE3;">
+          <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:600;color:#16150F;">${escapeHtml(l.title)}</div>
+          ${l.detail ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12.5px;color:#8a8576;margin-top:2px;">${escapeHtml(l.detail)}</div>` : ""}
           ${settle}
         </td>
-        <td align="right" style="padding:13px 0;border-bottom:1px solid #f0f0f0;vertical-align:top;">${code}</td>
+        <td align="right" style="padding:14px 16px;border-bottom:1px solid #EFECE3;vertical-align:top;">${code}</td>
       </tr>`;
   };
 
@@ -158,16 +166,17 @@ export function renderBookingConfirmationEmail(args: {
     html: shell({
       preheader: `Your trip to ${args.tripLabel} is booked. Here are your confirmations.`,
       bodyHtml: `
-        <h1 style="font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:26px;letter-spacing:-0.02em;color:#0a0a0a;margin:8px 0 14px;line-height:1.15;">${firstName ? `${escapeHtml(firstName)}, you&apos;re booked.` : "You&apos;re booked."}</h1>
-        <p style="font-family:Inter,Arial,sans-serif;font-size:15px;color:#525252;line-height:1.6;margin:0 0 22px;">
-          Your trip to <strong style="color:#0a0a0a;">${escapeHtml(args.tripLabel)}</strong> is confirmed. Every reservation below is real — venues hold them under your name, and they'll email you their own confirmations too.
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:#1E4030;margin:6px 0 10px;">Your trip is confirmed</p>
+        <h1 style="font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;letter-spacing:-0.02em;color:#16150F;margin:0 0 14px;line-height:1.12;">${firstName ? `${escapeHtml(firstName)}, you&apos;re booked.` : "You&apos;re booked."}</h1>
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#57534a;line-height:1.6;margin:0 0 24px;">
+          Your trip to <strong style="color:#16150F;">${escapeHtml(args.tripLabel)}</strong> is set. Every reservation below is held under your name — keep this email as your record, with the confirmation numbers you'll need.
         </p>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;border-top:1px solid #e6e6e6;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;border:1px solid #E3E0D5;border-radius:14px;overflow:hidden;">
           ${args.lines.map(row).join("")}
         </table>
         ${button(args.tripUrl, "View your trip")}
-        <p style="font-family:Inter,Arial,sans-serif;font-size:13px;color:#8a8a8a;line-height:1.6;margin:26px 0 0;">
-          Need a change? Reply to this email and we'll handle it.
+        <p style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#8a8576;line-height:1.6;margin:26px 0 0;">
+          Need a change? Just reply — it reaches us at support@pyltrix.com.
         </p>
       `.trim(),
     }),
