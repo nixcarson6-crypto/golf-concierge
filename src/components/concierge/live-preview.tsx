@@ -2094,11 +2094,11 @@ function ItineraryItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {/* max-h + overflow-y-auto so the whole dialog SCROLLS on phones —
-          the cost/alternatives can run past the viewport and were getting
-          clipped with no way to scroll down (Carson: "i can't find scroll
-          down"). overscroll-contain keeps the scroll inside the dialog. */}
-      <DialogContent className="max-w-md p-0 overflow-y-auto overscroll-contain max-h-[90dvh]">
+      {/* max-h + overflow-y-auto so the whole dialog SCROLLS on phones; the
+          cost/alternatives were getting clipped. overflow-x-hidden + a small
+          width margin keep the cards from spilling past the screen edge (the
+          base dialog is a grid that won't shrink on narrow screens). */}
+      <DialogContent className="w-[calc(100%-1.5rem)] max-w-md p-0 overflow-y-auto overflow-x-hidden overscroll-contain max-h-[90dvh]">
         {/* Hero photo from Google Places — only renders when we got
             one back. Skeleton while loading; nothing if the place
             didn't match or photos are disabled. */}
@@ -2435,7 +2435,7 @@ function ItineraryItemDialog({
                       {alt.location}
                     </p>
                   )}
-                  <p className="text-[11px] text-foreground/75 mt-1 leading-snug">
+                  <p className="text-[11px] text-foreground/75 mt-1 leading-snug break-words">
                     {alt.why ?? alt.description}
                   </p>
                 </button>
