@@ -4,16 +4,22 @@ import { AccountButton } from "@/components/account-button";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { SettingsClient } from "./settings-client";
+import { BillingSection } from "@/components/billing-section";
+import { getSavedCard } from "@/lib/payments/saved-card";
+import { stripeConfigured } from "@/lib/stripe";
 import { pushPublicKey } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const subs = await db.pushSubscription.findMany({
-    where: { userId: user.id },
-    select: { id: true, endpoint: true, userAgent: true, createdAt: true },
-  });
+  const [subs, savedCard] = await Promise.all([
+    db.pushSubscription.findMany({
+      where: { userId: user.id },
+      select: { id: true, endpoint: true, userAgent: true, createdAt: true },
+    }),
+    getSavedCard(user.id),
+  ]);
 
   return (
     <div className="min-h-dvh bg-concierge-radial">
@@ -33,7 +39,7 @@ export default async function SettingsPage() {
         </p>
         <h1 className="text-display text-4xl tracking-tight">You</h1>
         <p className="mt-2 text-muted-foreground text-sm">
-          Notification preferences and connected devices.
+          Payment method, notification preferences, and connected devices.
         </p>
 
         <div className="mt-8 space-y-6">
@@ -46,6 +52,11 @@ export default async function SettingsPage() {
               <dd className="num-tabular">{user.email}</dd>
             </dl>
           </section>
+
+          <BillingSection
+            initialCard={savedCard}
+            stripeEnabled={stripeConfigured()}
+          />
 
           <SettingsClient
             vapidKey={pushPublicKey()}

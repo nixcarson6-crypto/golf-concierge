@@ -18,10 +18,13 @@ import { cn } from "@/lib/utils";
 export function SaveCardButton({
   returnTo,
   className,
+  label = "Save your card for one-tap booking",
 }: {
   /** Same-origin path to return to after saving (e.g. the current trip). */
   returnTo?: string;
   className?: string;
+  /** Override the button text (e.g. "Add a card" / "Replace card"). */
+  label?: string;
 }) {
   const [loading, setLoading] = React.useState(false);
 
@@ -73,7 +76,7 @@ export function SaveCardButton({
       ) : (
         <CreditCard className="size-4" />
       )}
-      Save your card for one-tap booking
+      {label}
     </button>
   );
 }

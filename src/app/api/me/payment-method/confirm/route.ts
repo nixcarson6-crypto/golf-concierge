@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { stripe, stripeConfigured } from "@/lib/stripe";
 import { setDefaultPaymentMethod } from "@/lib/payments/customer-charge";
+import { db } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -70,7 +71,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, saved: false });
     }
 
+    // Detach the PREVIOUS card when this one replaces it, so a customer who
+    // updates their card on the billing page doesn't accumulate stale cards on
+    // their Stripe customer (only the current default should remain).
+    const prior = await db.user.findUnique({
+      where: { id: user.id },
+      select: { defaultPaymentMethodId: true },
+    });
+    const oldPm = prior?.defaultPaymentMethodId ?? null;
+
     await setDefaultPaymentMethod(user.id, pm);
+
+    if (oldPm && oldPm !== pm) {
+      try {
+        await stripe().paymentMethods.detach(oldPm);
+      } catch (err) {
+        console.warn("[payment-method/confirm] old card detach failed:", err);
+      }
+    }
     return NextResponse.json({ ok: true, saved: true });
   } catch (err) {
     console.error("[payment-method/confirm] Stripe error:", err);
