@@ -403,7 +403,16 @@ export function BookingStatusPanel({
         data.outcomes?.filter((o) => o.status === "failed").length ?? 0;
       const needsCard =
         data.outcomes?.filter((o) => o.status === "needs_card").length ?? 0;
-      if (needsCard > 0) {
+      const needsTravelers =
+        data.outcomes?.filter((o) => o.status === "needs_travelers").length ?? 0;
+      if (needsTravelers > 0 && topFlightOffer) {
+        // A group flight: we have the lead but need the other travelers' legal
+        // details. Open the flight form (it collects every passenger) so they
+        // fill the group and book all seats in one go, rather than the flight
+        // silently doing nothing.
+        toast.info("Add your group's details to book your flights.");
+        setFlightModalOpen(true);
+      } else if (needsCard > 0) {
         // The actionable one: they have no card on file. Send them to add one
         // (the SaveCardButton below the CTA opens Stripe Checkout), then Book
         // All charges their card and books.
@@ -430,7 +439,7 @@ export function BookingStatusPanel({
       setBookingAll(false);
       setConfirmAllOpen(false);
     }
-  }, [bookingAll, bookingId, qc, tripId]);
+  }, [bookingAll, bookingId, qc, tripId, topFlightOffer]);
 
   // Tap a not-yet-booked row to have the agent book just that one.
   const bookItem = React.useCallback(
@@ -914,7 +923,9 @@ export function BookingStatusPanel({
                       : isFlightNeedsOrigin
                         ? "Set your departure airport to book"
                       : isBookableFlight
-                        ? "Tap to book your flight"
+                        ? (suggestedFlights?.passengers ?? 1) > 1
+                          ? "Tap to add travelers & book"
+                          : "Tap to book your flight"
                       : isSelfFlight
                         ? "You book this one — your card pays the airline"
                       : isSelfGolf

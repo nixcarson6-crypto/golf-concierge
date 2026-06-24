@@ -60,7 +60,11 @@ type Outcome = {
     | "self_book"
     // The customer needs to add a card (Stripe Checkout) before we can charge
     // them and book — we never front the cost.
-    | "needs_card";
+    | "needs_card"
+    // A multi-passenger flight: we have the lead traveler's details but not the
+    // companions'. The client opens the flight form to collect them, then books
+    // all seats. (Companion profiles aren't stored yet — v1 collects per trip.)
+    | "needs_travelers";
   title: string;
   detail?: string;
   confirmationCode?: string;
@@ -184,11 +188,15 @@ export async function POST(
       ];
       const need = suggested?.passengers ?? 1;
       if (need > 1) {
+        // We can't ticket a group from saved data alone — airlines need each
+        // passenger's full legal details and we only store the lead's. Surface
+        // it as an ACTION (the client opens the flight form to collect the
+        // group + book all seats), not a silent skip.
         outcomes.push({
           category: "flight",
-          status: "skipped",
-          title: `Flight (${need} travelers)`,
-          detail: `Need details for ${need - 1} additional traveler(s). Add them via the booking form on each card, then re-run Book All.`,
+          status: "needs_travelers",
+          title: `${cheapest.airlineName} flight · ${need} travelers`,
+          detail: `Add each traveler's details on the flight to book all ${need} seats.`,
         });
       } else {
         try {
