@@ -124,6 +124,7 @@ export async function POST(
       slicesSummary: result.slicesSummary,
       bookedSlices: result.bookedSlices,
       isSandbox: result.isSandbox,
+      stripeChargeId: outcome.chargeId ?? null,
     });
   } catch (err) {
     console.error("[book-flight] persist failed (but ticketed):", err);

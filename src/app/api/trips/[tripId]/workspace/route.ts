@@ -372,7 +372,14 @@ export async function GET(
         cost: b.cost,
         status: b.status,
         isStub: Boolean(meta.isStub),
-        paidAt: (meta.paidAt as string | undefined) ?? null,
+        // Paid when we stamped metadata.paidAt OR when the booking carries a
+        // Stripe charge id (the customer was charged directly at booking time
+        // — a flight/API hotel). Either way it must NOT show as "due now."
+        paidAt:
+          (meta.paidAt as string | undefined) ??
+          (b.stripeChargeId
+            ? (b.confirmedAt?.toISOString() ?? null)
+            : null),
         // pay_at_property → customer settles at the venue (most golf
         // resorts, every restaurant, most courses). pay_now → Pyltrix
         // charges via Stripe upfront (flights, sometimes transport).

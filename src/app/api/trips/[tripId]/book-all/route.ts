@@ -249,6 +249,7 @@ export async function POST(
                 slicesSummary: result.slicesSummary,
                 bookedSlices: result.bookedSlices,
                 isSandbox: result.isSandbox,
+                stripeChargeId: outcome.chargeId ?? null,
               });
             } catch (err) {
               console.warn("[book-all] flight persist failed:", err);

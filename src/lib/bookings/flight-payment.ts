@@ -81,7 +81,15 @@ export function flightSelfBookLink(args: {
 }
 
 export type CustomerFlightOutcome =
-  | { mode: "booked"; result: Extract<BookFlightResult, { ok: true }> }
+  // `chargeId` is the Stripe PaymentIntent that paid for the ticket (set when
+  // Stripe charged the customer; null in the no-Stripe sandbox path). The
+  // caller MUST persist it on the booking so the ticket isn't charged a second
+  // time by the cart, and so a later remove/cancel can refund it.
+  | {
+      mode: "booked";
+      result: Extract<BookFlightResult, { ok: true }>;
+      chargeId?: string | null;
+    }
   // The customer has no saved card — the UI must send them to Stripe Checkout
   // (SaveCardButton) to add one, THEN book. We never front the cost.
   | { mode: "needs_card" }
@@ -209,7 +217,7 @@ export async function bookFlightForCustomer(args: {
     await refundQuietly(chargeId);
     return { mode: "failed", error: result.error };
   }
-  return { mode: "booked", result };
+  return { mode: "booked", result, chargeId };
 }
 
 /** Fetch a Duffel offer's total in cents (for the pre-charge). Null on error. */

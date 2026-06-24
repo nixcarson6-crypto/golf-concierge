@@ -63,7 +63,13 @@ export async function recordTeeTimeBooking(args: RecordTeeTimeArgs) {
       confirmationCode: args.bookingReference,
       cost: args.totalAmount,
       confirmedAt: new Date(),
-      metadata: { courseName: args.courseName, isStub: args.isStub ?? false },
+      // Tee times settle at the course (pay the pro shop) — never charged to
+      // the card by the cart.
+      metadata: {
+        courseName: args.courseName,
+        isStub: args.isStub ?? false,
+        paymentMode: "pay_at_property",
+      },
     },
   });
 

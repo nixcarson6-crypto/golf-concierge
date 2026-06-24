@@ -395,6 +395,12 @@ export async function tryLiteApiHotelBooking(args: {
             hotelName: hotel.name,
             prebookId: pre.prebookId,
           },
+          // A LiteAPI rate is prepaid: when Stripe charged the customer we mark
+          // it PAID (pay_now + paidAt) so the trip shows it as settled and the
+          // cart never charges it again. With no Stripe charge it settles at
+          // the property, so it must never hit the card.
+          paymentMode: hotelChargeId ? "pay_now" : "pay_at_property",
+          ...(hotelChargeId ? { paidAt: new Date().toISOString() } : {}),
         } as object,
       },
     });

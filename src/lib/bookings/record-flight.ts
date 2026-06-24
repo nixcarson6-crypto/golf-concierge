@@ -21,6 +21,10 @@ export type RecordFlightArgs = {
   bookedSlices?: BookedSlice[];
   isSandbox?: boolean;
   rationale?: string;
+  /** Stripe PaymentIntent that already charged the customer for this ticket
+   *  (when Stripe is configured). Persisted so the cart never charges it again
+   *  and a later remove/cancel can refund it. */
+  stripeChargeId?: string | null;
 };
 
 export async function recordFlightBooking(args: RecordFlightArgs) {
@@ -144,6 +148,10 @@ export async function recordFlightBooking(args: RecordFlightArgs) {
       confirmationCode: args.bookingReference,
       cost: args.totalAmount,
       confirmedAt: new Date(),
+      // The Stripe charge that paid for this ticket — lets a later remove/cancel
+      // refund the customer, and (with paidAt below) keeps the cart from
+      // charging it a second time.
+      stripeChargeId: args.stripeChargeId ?? undefined,
       metadata: {
         airline: args.airline,
         airlineCode: args.airlineCode ?? null,
@@ -156,6 +164,11 @@ export async function recordFlightBooking(args: RecordFlightArgs) {
         // Restaurants, most resort hotels, and tee times settle at
         // the venue; those carry paymentMode: "pay_at_property".
         paymentMode: "pay_now",
+        // When we actually charged the customer (Stripe configured), stamp it
+        // PAID so the "Pay" cart never re-charges this already-paid ticket.
+        ...(args.stripeChargeId
+          ? { paidAt: new Date().toISOString() }
+          : {}),
       },
     },
   });

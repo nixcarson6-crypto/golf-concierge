@@ -67,12 +67,25 @@ export async function POST(
     }
   }
 
-  const unpaid = bookings.filter(
-    (b) => !paidBookingIds.has(b.id) && (b.cost ?? 0) > 0,
-  );
+  // Charge the card for PAY-NOW bookings ONLY. Hotels, golf, and dining settle
+  // at the property (paymentMode "pay_at_property" — or, defensively, anything
+  // not explicitly "pay_now") and must NEVER hit the card here — the customer
+  // pays those at the venue. We also skip anything already charged at booking
+  // time (a Stripe charge id, a metadata.paidAt stamp, or a prior succeeded
+  // Payment) so a flight/API-hotel that was paid when it booked can't be
+  // double-charged. Defaulting the absent case to "skip" is deliberate: never
+  // run the customer's card unless we're certain the item is pay-now-unpaid.
+  const unpaid = bookings.filter((b) => {
+    if (paidBookingIds.has(b.id)) return false;
+    if ((b.cost ?? 0) <= 0) return false;
+    if (b.stripeChargeId) return false; // already charged the customer directly
+    const meta = (b.metadata as { paymentMode?: string; paidAt?: string } | null) ?? {};
+    if (meta.paidAt) return false; // already paid at booking time
+    return meta.paymentMode === "pay_now";
+  });
   if (unpaid.length === 0) {
     return NextResponse.json(
-      { error: "Nothing to pay for — every booking on this trip is already paid or has no cost." },
+      { error: "Nothing to pay now — every booking is already paid or settles at the property." },
       { status: 400 },
     );
   }

@@ -66,7 +66,14 @@ export async function recordHotelBooking(args: RecordHotelArgs) {
       confirmationCode: args.bookingReference,
       cost: args.totalAmount,
       confirmedAt: new Date(),
-      metadata: { hotelName: args.hotelName, isStub: args.isStub ?? false },
+      // Hotels recorded here (stub / agent / affiliate, not the charge-first
+      // LiteAPI path) settle at the property — the customer pays the hotel
+      // directly, so this must NEVER be swept onto the card by the cart.
+      metadata: {
+        hotelName: args.hotelName,
+        isStub: args.isStub ?? false,
+        paymentMode: "pay_at_property",
+      },
     },
   });
 
