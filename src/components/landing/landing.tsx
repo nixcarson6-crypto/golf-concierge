@@ -273,7 +273,7 @@ function Hero({ primaryHref }: { primaryHref: string }) {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/40" />
               <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
             </span>
-            Launching soon · invite-only
+            Now booking · luxury golf trips
           </motion.p>
 
           <motion.h1
@@ -641,7 +641,7 @@ export function Landing({
                   <Link href="/sign-in">Sign in</Link>
                 </Button>
                 <Button asChild size="sm">
-                  <Link href="/sign-up">Get early access</Link>
+                  <Link href="/sign-up">Get started</Link>
                 </Button>
               </>
             )}

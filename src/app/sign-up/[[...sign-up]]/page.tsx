@@ -39,7 +39,7 @@ export default function SignUpPage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-foreground/40" />
                 <span className="relative inline-flex size-1.5 rounded-full bg-foreground" />
               </span>
-              Invite-only beta
+              Now booking · luxury golf trips
             </p>
             <h1 className="text-display text-[2rem] tracking-tight text-foreground">
               Plan your trip.
