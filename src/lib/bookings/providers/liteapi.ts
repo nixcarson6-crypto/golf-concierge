@@ -334,9 +334,17 @@ export type LiteBooking = {
 };
 
 /**
- * Complete the booking against a prebookId. `payment.method` defaults to
- * the LiteAPI wallet (sandbox-funded) — swap to a pass-through card model
- * once we route the customer's Stripe charge through here.
+ * Complete the booking against a prebookId.
+ *
+ * Payment method — LiteAPI has NO way to inject an external/virtual card
+ * server-side (the Stripe-Issuing virtual card only works for the browser
+ * agent, which types it into a real checkout). Your options:
+ *  - ACC_CREDIT_CARD (default): charges the card on YOUR LiteAPI account per
+ *    booking — no wallet pre-funding. Put a business CREDIT card on the account
+ *    and Stripe pays you out (~T+2) well before the bill is due (~T+30), so the
+ *    customer's payment covers it and you're never actually out of pocket.
+ *  - WALLET: draw down a prepaid balance you top up in advance.
+ * Override per-deploy with LITEAPI_PAYMENT_METHOD.
  */
 export async function book(args: {
   prebookId: string;
@@ -352,7 +360,12 @@ export async function book(args: {
       prebookId: args.prebookId,
       holder: args.holder,
       guests: args.guests.map((g, i) => ({ occupancyNumber: i + 1, ...g })),
-      payment: { method: args.paymentMethod ?? "WALLET" },
+      payment: {
+        method:
+          args.paymentMethod ??
+          optionalEnv("LITEAPI_PAYMENT_METHOD") ??
+          "ACC_CREDIT_CARD",
+      },
     }),
   });
   const d = json.data ?? {};

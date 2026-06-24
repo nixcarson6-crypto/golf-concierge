@@ -37,6 +37,9 @@ const definitions = {
   // LiteAPI — primary hotel booking API (search + book ~2M properties). The
   // browser agent is the fallback for properties it doesn't cover.
   LITEAPI_KEY: { required: false },
+  // Which LiteAPI payment rail to use: ACC_CREDIT_CARD (default — charges the
+  // card on your LiteAPI account, no wallet pre-funding) or WALLET (prepaid).
+  LITEAPI_PAYMENT_METHOD: { required: false },
 
   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: { required: false },
   GOOGLE_MAPS_SERVER_API_KEY: { required: false },
