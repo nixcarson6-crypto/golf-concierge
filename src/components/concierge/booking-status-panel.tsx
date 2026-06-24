@@ -408,7 +408,7 @@ export function BookingStatusPanel({
         // (the SaveCardButton below the CTA opens Stripe Checkout), then Book
         // All charges their card and books.
         toast.error(
-          "Add your card to book — we charge your card for the trip, not ours. Tap “Save your card” below.",
+          "Add your card so we can book your trip — it's the card we use to pay your hotel and the venues we book for you. Tap “Save your card” below.",
         );
       } else if (failed > 0) {
         toast.error(
@@ -838,9 +838,14 @@ export function BookingStatusPanel({
                     kind === "failed" &&
                     failureReason === "form_not_found";
                   // No saved card — we can book this (API has it) but need a
-                  // card to charge the CUSTOMER first. Prompt to add one.
+                  // card to charge the CUSTOMER first. Prompt to add one. Once
+                  // a card IS saved this clears, so the row flips back to
+                  // "Tap to book" (retry) instead of leaving a stale "add a
+                  // card" prompt stuck under the row.
                   const isNeedsCard =
-                    kind === "failed" && failureReason === "needs_card";
+                    kind === "failed" &&
+                    failureReason === "needs_card" &&
+                    hasSavedCard !== true;
                   // Sold out for the trip's dates. The venue exists and is
                   // bookable — there's just no inventory — so the concierge
                   // move is to offer a comparable alternative, not a dead end.
@@ -896,20 +901,16 @@ export function BookingStatusPanel({
                     `https://www.google.com/search?q=${encodeURIComponent(
                       `${item.title}${item.location ? ` ${item.location}` : ""}`,
                     )}`;
-                  // Self-book golf: link to the course's own site when we have
-                  // it, otherwise a tee-time search that surfaces its booking.
-                  const golfHref =
-                    website ??
-                    `https://www.google.com/search?q=${encodeURIComponent(
-                      `${item.title}${item.location ? ` ${item.location}` : ""} tee times`,
-                    )}`;
+                  // (Self-book golf links to the course's OWN site, resolved
+                  //  in <SelfBookGolfLink> — not the raw-title search this used
+                  //  to build.)
                   const isThisBooking = bookingId === item.id;
                   const statusText = isThisBooking
                     ? "Starting…"
                     : isWalkIn
                       ? "Walk-in · no booking needed"
                       : isNeedsCard
-                        ? "Add a card to book"
+                        ? "Add your card to book"
                       : isFlightNeedsOrigin
                         ? "Set your departure airport to book"
                       : isBookableFlight
@@ -1117,15 +1118,10 @@ export function BookingStatusPanel({
                             group — reserve your tee time directly with the
                             course.
                           </p>
-                          <a
-                            href={golfHref}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--copper))] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[hsl(var(--copper))]/90 transition"
-                          >
-                            <Flag className="size-3.5" />
-                            Book your tee time
-                          </a>
+                          <SelfBookGolfLink
+                            title={item.title}
+                            location={item.location ?? null}
+                          />
                         </div>
                       )}
                       {/* REVIEW — the agent reached a real page and stopped.
@@ -1315,8 +1311,8 @@ export function BookingStatusPanel({
                       {isNeedsCard && (
                         <div className="pl-9 pr-2.5 pb-2 -mt-0.5 space-y-1.5">
                           <p className="text-[11px] text-muted-foreground leading-snug">
-                            Add a card to book this — we charge your card for the
-                            trip (your card pays for it, not ours).
+                            Add your card so we can book this for you — it's the
+                            card we use to pay the hotel and venues on your trip.
                           </p>
                           <SaveCardButton returnTo={`/trips/${tripId}`} />
                         </div>
@@ -1443,6 +1439,69 @@ export function BookingStatusPanel({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Self-book golf "Book your tee time" link. The customer reserves their own
+ * round, so this must take them to the COURSE'S OWN SITE — not a search box.
+ * We resolve the real website from Google Places (the course name + location)
+ * and link straight to it; while that loads, or if Places has no site on file,
+ * we fall back to a CLEAN "<course> tee times" search (never the raw item
+ * title, which carried "— 2 players" + a duplicated address and dumped a junk
+ * string into Google — Carson: "it searches the whole message into the search
+ * bar... just make sure it goes to their website").
+ */
+function SelfBookGolfLink({
+  title,
+  location,
+}: {
+  title: string;
+  location: string | null;
+}) {
+  // Strip the player-count suffix / parenthetical so we query just the course.
+  const courseName = React.useMemo(
+    () =>
+      title
+        .split(/\s+[—–·|]\s+/)[0]
+        .replace(/\s*\(.*$/, "")
+        .trim() || title.trim(),
+    [title],
+  );
+  const searchHref = `https://www.google.com/search?q=${encodeURIComponent(
+    `${courseName} tee times`,
+  )}`;
+  const [href, setHref] = React.useState(searchHref);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams({ q: courseName });
+    if (location) params.set("loc", location);
+    fetch(`/api/places/contact?${params.toString()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { website?: string | null } | null) => {
+        if (!cancelled && typeof data?.website === "string" && data.website) {
+          setHref(data.website);
+        }
+      })
+      .catch(() => {
+        /* keep the clean-search fallback */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [courseName, location]);
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--copper))] px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-[hsl(var(--copper))]/90 transition"
+    >
+      <Flag className="size-3.5" />
+      Book your tee time
+    </a>
   );
 }
 
