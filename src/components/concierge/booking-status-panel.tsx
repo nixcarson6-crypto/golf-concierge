@@ -412,7 +412,7 @@ export function BookingStatusPanel({
         );
       } else if (failed > 0) {
         toast.error(
-          `${failed} couldn't start — check the panel.${booking > 0 ? ` Pyltrix is booking ${booking} more.` : ""}`,
+          `${failed} need your attention below.${booking > 0 ? ` Pyltrix is booking ${booking} more.` : ""}`,
         );
       } else if (booking > 0) {
         toast.success(
@@ -420,7 +420,7 @@ export function BookingStatusPanel({
         );
       } else {
         toast.success(
-          booked > 0 ? `Trip locked in: ${booked} confirmed.` : "Nothing left to book.",
+          booked > 0 ? `${booked} confirmed — you're set.` : "Nothing left to book.",
         );
       }
       void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
@@ -977,13 +977,13 @@ export function BookingStatusPanel({
                         >
                           {item.title}
                         </p>
-                        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <span>{statusText}</span>
+                        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground min-w-0">
+                          <span className="truncate">{statusText}</span>
                           {code && (
-                            <span className="tabular-nums">· #{code}</span>
+                            <span className="tabular-nums shrink-0">· #{code}</span>
                           )}
                           {amountCents != null && amountCents > 0 && (
-                            <span className="tabular-nums">
+                            <span className="tabular-nums shrink-0">
                               · ${Math.round(amountCents / 100).toLocaleString()}
                             </span>
                           )}
@@ -1336,10 +1336,10 @@ export function BookingStatusPanel({
                           {phone && (
                             <a
                               href={`tel:${phone.replace(/[^\d+]/g, "")}`}
-                              className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-[11px] font-medium text-foreground/90 hover:bg-surface-raised hover:border-border transition"
+                              className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-border/70 bg-background/60 px-2.5 py-1 text-[11px] font-medium text-foreground/90 hover:bg-surface-raised hover:border-border transition"
                             >
-                              <Phone className="size-3 text-muted-foreground" />
-                              <span className="tabular-nums">{phone}</span>
+                              <Phone className="size-3 text-muted-foreground shrink-0" />
+                              <span className="tabular-nums truncate">{phone}</span>
                             </a>
                           )}
                           <a
@@ -1393,7 +1393,7 @@ export function BookingStatusPanel({
           ]}
           paymentNote={
             typeof confirmItem.cost === "number"
-              ? "Paid securely by Pyltrix when the venue charges online; otherwise it settles at the property."
+              ? "If the venue charges online, your card is charged securely; many luxury hotels and courses settle at the property."
               : "Most venues like this settle at the property — nothing is charged up front."
           }
           busy={bookingId !== null}

@@ -179,7 +179,7 @@ export function TravelerProfileModal({
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
-                Lead traveller (you)
+                Lead traveler (you)
               </p>
               {profile.legalGivenName && profile.dateOfBirth && (
                 <span className="text-[10px] text-[hsl(var(--emerald))] inline-flex items-center gap-1">
@@ -234,7 +234,7 @@ export function TravelerProfileModal({
                 type="email"
                 value={form.email}
                 onChange={(v) => update("email", v)}
-                placeholder="confirmations sent here"
+                placeholder="you@email.com"
               />
               <Field
                 label="Phone (with country code)"

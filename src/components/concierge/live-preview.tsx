@@ -47,7 +47,7 @@ import { FlightBookingModal } from "./flight-booking-modal";
 import { TravelerProfileModal } from "./traveler-profile-modal";
 import { SetOriginBanner } from "./set-origin-banner";
 import { tripDisplayLabel } from "@/lib/trip-display";
-import { tripTotals } from "@/lib/payments/pricing";
+import { tripTotals, serviceFeeCents } from "@/lib/payments/pricing";
 import { buildUberDeepLink } from "@/lib/uber-deep-link";
 import type {
   WorkspaceBooking,
@@ -206,8 +206,7 @@ export function LivePreview({
                   {buildError}
                 </p>
                 <p className="text-[11px] text-muted-foreground pt-1">
-                  Your answers are still saved. Tweak them and try again, or
-                  ask us in your own words below.
+                  Your answers are still saved — tweak them and try again.
                 </p>
               </div>
               <button
@@ -401,11 +400,11 @@ function BookAllPanel({
         data.outcomes?.filter((o) => o.status === "failed").length ?? 0;
       if (failed > 0) {
         toast.error(
-          `Booked ${booked}, pencilled ${pencilled}, ${failed} failed — check the workspace.`,
+          `${booked} confirmed${pencilled > 0 ? `, ${pencilled} held to finish` : ""} — ${failed} need your attention below.`,
         );
       } else {
         toast.success(
-          `Trip locked in: ${booked} confirmed${pencilled > 0 ? `, ${pencilled} pencilled` : ""}.`,
+          `${booked} confirmed${pencilled > 0 ? `, ${pencilled} held to finish` : ""}.`,
         );
       }
       void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
@@ -462,7 +461,7 @@ function BookAllPanel({
         heading="Review your trip"
         lines={confirmLines}
         totalCents={confirmTotal}
-        paymentNote="Flights are charged now; hotels, golf, and most venues settle at the property. Every confirmation is saved right here on your trip."
+        paymentNote="Flights are charged now; hotels settle at booking or at the property. You book tee times yourself, at the time you choose. Every confirmation is saved right here on your trip."
         confirmLabel="Confirm & book all"
         busy={submitting}
         onConfirm={bookAll}
@@ -1018,7 +1017,7 @@ function SuggestedFlightsSection({
           <p className="text-[10px] text-muted-foreground tabular-nums">
             {suggested.origin} ⇄ {suggested.destination} ·{" "}
             {suggested.passengers}{" "}
-            {suggested.passengers === 1 ? "pax" : "pax"} ·{" "}
+            {suggested.passengers === 1 ? "traveler" : "travelers"} ·{" "}
             {suggested.cabin.replace("_", " ")}
           </p>
         </div>
@@ -1061,18 +1060,18 @@ function SuggestedFlightsSection({
             className="w-full flex items-center justify-between gap-2 rounded-2xl border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/8 px-4 py-3 hover:bg-[hsl(var(--copper))]/12 transition"
           >
             <div className="min-w-0 text-left">
-              <p className="text-sm font-semibold">
+              <p className="text-sm font-semibold truncate">
                 {suggested.offers[0].airlineName} ·{" "}
                 <span className="text-[hsl(var(--copper))]">
                   ${Math.round(suggested.offers[0].totalAmount / 100).toLocaleString()}
                 </span>
               </p>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground truncate">
                 $
                 {Math.round(
                   suggested.offers[0].perPassengerAmount / 100,
                 ).toLocaleString()}{" "}
-                per traveller · {suggested.origin} ⇄ {suggested.destination}
+                per traveler · {suggested.origin} ⇄ {suggested.destination}
               </p>
             </div>
             <span className="shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full bg-[hsl(var(--copper))] text-white">
@@ -2315,7 +2314,7 @@ function ItineraryItemDialog({
               <div className="flex items-start gap-2">
                 <Flag className="size-4 text-[hsl(var(--copper))] mt-0.5 shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold leading-snug">
+                  <p className="text-sm font-semibold leading-snug break-words">
                     Your courses are about {repickPrompt.distanceMi} miles from{" "}
                     {repickPrompt.hotelName}
                   </p>
@@ -2661,6 +2660,11 @@ function CartFooter({
   );
   const total = payNow.reduce((sum, b) => sum + (b.cost ?? 0), 0);
   const venueTotal = payAtVenue.reduce((sum, b) => sum + (b.cost ?? 0), 0);
+  // The cart charges vendor subtotal + the concierge fee (same source of
+  // truth, no floor — matches checkout/cart/route.ts exactly). Show the
+  // ALL-IN number on the button so it reconciles with the Stripe page.
+  const payNowFee = serviceFeeCents(total);
+  const dueNow = total + payNowFee;
 
   if (payNow.length === 0 && payAtVenue.length === 0) return null;
 
@@ -2694,8 +2698,14 @@ function CartFooter({
             Due now
           </p>
           <p className="text-display text-lg num-tabular leading-tight">
-            {formatCurrency(total / 100)}
+            {formatCurrency(dueNow / 100)}
           </p>
+          {payNow.length > 0 && payNowFee > 0 && (
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              {formatCurrency(total / 100)} +{" "}
+              {formatCurrency(payNowFee / 100)} concierge fee
+            </p>
+          )}
         </div>
         {payNow.length > 0 ? (
           <Button
@@ -2710,7 +2720,7 @@ function CartFooter({
                 <Loader2 className="size-4 animate-spin" /> Starting…
               </>
             ) : (
-              <>Pay {formatCurrency(total / 100)}</>
+              <>Pay {formatCurrency(dueNow / 100)}</>
             )}
           </Button>
         ) : (

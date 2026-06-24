@@ -157,7 +157,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
           ]}
           paymentNote={
             typeof item.cost === "number"
-              ? "Paid securely by Pyltrix when the venue charges online; otherwise it settles at the property."
+              ? "If the venue charges online, your card is charged securely; many luxury hotels and courses settle at the property."
               : "Most venues like this settle at the property — nothing is charged up front."
           }
           busy={submitting}
@@ -303,12 +303,12 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-4 text-foreground" />
           <p className="text-sm font-semibold text-foreground">
-            Pyltrix concierge reviewing
+            Confirming this booking
           </p>
         </div>
         <p className="text-xs text-foreground/80">
           {summary ||
-            "We're double-checking this booking before confirming it. You'll get an email the moment it's locked."}
+            "This booking needs one more step before it's confirmed — it'll update right here on your trip."}
         </p>
         {booking.screenshotUrl && (
           <ScreenshotProof
@@ -344,7 +344,7 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
             </p>
             <p className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
               Your confirmation is saved right here, and the venue has your
-              reservation. Just bring your name to the door.
+              reservation.
             </p>
           </div>
         </div>
@@ -393,9 +393,9 @@ export function AgentBookingPanel({ tripId, item, fallback }: Props) {
         {fallbackPhone && (
           <a
             href={`tel:${fallbackPhone.replace(/[^+\d]/g, "")}`}
-            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 rounded-xl border border-foreground/40 bg-foreground/5 text-foreground text-xs font-semibold px-3 py-2 hover:bg-foreground/10"
+            className="flex-1 min-w-0 inline-flex items-center justify-center gap-2 rounded-xl border border-foreground/40 bg-foreground/5 text-foreground text-xs font-semibold px-3 py-2 hover:bg-foreground/10"
           >
-            Call {fallbackPhone}
+            <span className="truncate">Call {fallbackPhone}</span>
           </a>
         )}
         <Button

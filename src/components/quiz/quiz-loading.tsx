@@ -3,7 +3,7 @@
 import * as React from "react";
 
 const FALLBACK_STATUSES = [
-  "Analysing your preferences…",
+  "Analyzing your preferences…",
   "Matching destinations…",
   "Pulling live flight inventory…",
   "Checking course availability…",

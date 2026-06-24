@@ -165,6 +165,7 @@ export function FlightBookingModal({
         bookingReference?: string;
         airline?: string;
         totalUSD?: number;
+        isSandbox?: boolean;
       } | null;
       // No saved card → send them to Stripe Checkout to add one, then they
       // come back and book. This is the "route me to Stripe" step.
@@ -196,8 +197,11 @@ export function FlightBookingModal({
         toast.error(data?.error ?? "Booking failed. Try again.");
         return;
       }
+      // Be honest in sandbox: a test PNR is NOT a real airline reservation.
       toast.success(
-        `Booked ${data.airline} — confirmation ${data.bookingReference}`,
+        data.isSandbox
+          ? `Test booking created — ${data.airline} (sandbox ref ${data.bookingReference})`
+          : `Booked ${data.airline} — confirmation ${data.bookingReference}`,
       );
       onBooked({
         bookingReference: data.bookingReference,
@@ -275,12 +279,12 @@ export function FlightBookingModal({
                 <Plane className="size-4" />
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none mb-1">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground leading-none mb-1 truncate">
                   Book {offer.airlineName} · {cabin.replace("_", " ")}
                 </p>
                 <DialogTitle className="text-base font-semibold leading-tight truncate">
                   ${total.toLocaleString()} total · {passengerCount}{" "}
-                  {passengerCount === 1 ? "traveller" : "travellers"}
+                  {passengerCount === 1 ? "traveler" : "travelers"}
                 </DialogTitle>
               </div>
             </div>
@@ -299,7 +303,7 @@ export function FlightBookingModal({
             <section key={idx} className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
-                  {idx === 0 ? "Lead traveller" : `Traveller ${idx + 1}`}
+                  {idx === 0 ? "Lead traveler" : `Traveler ${idx + 1}`}
                 </p>
                 {idx === 0 &&
                   profile.legalGivenName &&
@@ -356,7 +360,7 @@ export function FlightBookingModal({
                   type="email"
                   value={p.email}
                   onChange={(v) => updateField(idx, "email", v)}
-                  placeholder="confirmations sent here"
+                  placeholder="you@email.com"
                 />
                 <Field
                   label="Phone (with country code)"

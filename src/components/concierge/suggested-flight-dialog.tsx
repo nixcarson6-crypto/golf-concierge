@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plane, Clock, ExternalLink, Luggage } from "lucide-react";
+import { Plane, Clock, Luggage } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -70,7 +70,7 @@ export function SuggestedFlightDialog({
                 ${total.toLocaleString()}
               </p>
               <p className="text-[10px] text-muted-foreground">
-                total · {passengers} {passengers === 1 ? "pax" : "pax"}
+                total · {passengers} {passengers === 1 ? "traveler" : "travelers"}
               </p>
             </div>
           </div>
@@ -91,14 +91,14 @@ export function SuggestedFlightDialog({
           {/* Pricing breakdown */}
           <section className="rounded-2xl border border-border/60 bg-surface-raised/50 px-4 py-3 space-y-1.5">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Per traveller</span>
+              <span className="text-muted-foreground">Per traveler</span>
               <span className="tabular-nums font-medium">
                 ${perPax.toLocaleString()}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">
-                × {passengers} {passengers === 1 ? "traveller" : "travellers"}
+                × {passengers} {passengers === 1 ? "traveler" : "travelers"}
               </span>
               <span className="tabular-nums">
                 ${total.toLocaleString()}
@@ -153,7 +153,6 @@ export function SuggestedFlightDialog({
               className="bg-[hsl(var(--copper))] text-white hover:bg-[hsl(var(--copper))]/90"
             >
               Book this flight
-              <ExternalLink className="size-3 ml-1.5" />
             </Button>
           </section>
         </div>
