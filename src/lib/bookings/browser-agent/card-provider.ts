@@ -18,7 +18,7 @@ import {
   createSingleUseCard,
   revealCard,
 } from "@/lib/payments/issuing";
-import { chargeCustomer } from "@/lib/payments/customer-charge";
+import { chargeCustomer, refundCharge } from "@/lib/payments/customer-charge";
 import { serviceFeeCents } from "@/lib/payments/pricing";
 import type { CardProvider } from "./agent";
 
@@ -138,14 +138,18 @@ export function buildCardProviderForBooking(args: {
       };
     }
 
-    // Mint the single-use virtual card the agent will type.
+    // From here on the customer is ALREADY CHARGED — any failure to produce a
+    // usable virtual card means no booking will happen, so we must REFUND the
+    // charge before bailing, or the customer is charged for nothing. (Earlier
+    // the runner comment claimed "customer not charged" on this path — it was.)
     let cardholderId: string;
     try {
       cardholderId = await ensureCardholder(args.userId);
     } catch (err) {
+      await refundCharge(chargeId);
       return {
         status: "unavailable",
-        reason: `Couldn't prepare a virtual card (${err instanceof Error ? err.message : String(err)}). Call report_outcome with 'needs_review'.`,
+        reason: `Couldn't prepare a virtual card (${err instanceof Error ? err.message : String(err)}) — refunded the customer. Call report_outcome with 'needs_review'.`,
       };
     }
     let cardId: string;
@@ -161,9 +165,10 @@ export function buildCardProviderForBooking(args: {
         tripId: args.tripId,
       });
     } catch (err) {
+      await refundCharge(chargeId);
       return {
         status: "unavailable",
-        reason: `Couldn't mint a single-use card (${err instanceof Error ? err.message : String(err)}). Call report_outcome with 'needs_review'.`,
+        reason: `Couldn't mint a single-use card (${err instanceof Error ? err.message : String(err)}) — refunded the customer. Call report_outcome with 'needs_review'.`,
       };
     }
 
@@ -183,9 +188,10 @@ export function buildCardProviderForBooking(args: {
     try {
       revealed = await revealCard(cardId);
     } catch (err) {
+      await refundCharge(chargeId);
       return {
         status: "unavailable",
-        reason: `Couldn't reveal the virtual card (${err instanceof Error ? err.message : String(err)}). Call report_outcome with 'needs_review'.`,
+        reason: `Couldn't reveal the virtual card (${err instanceof Error ? err.message : String(err)}) — refunded the customer. Call report_outcome with 'needs_review'.`,
       };
     }
     return {

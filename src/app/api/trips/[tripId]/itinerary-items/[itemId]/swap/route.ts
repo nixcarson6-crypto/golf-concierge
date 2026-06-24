@@ -18,6 +18,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { nudge } from "@/lib/events";
 import { anthropic, modelFor } from "@/lib/ai/client";
+import { refundCharge } from "@/lib/payments/customer-charge";
 
 const altSchema = z.object({
   name: z.string(),
@@ -246,8 +247,16 @@ export async function POST(
 
   // The old booking attempt was for the venue we just replaced — it's stale.
   // Clear any non-confirmed booking so the row starts clean on the new venue.
-  // (itineraryItemId is unique, so this is at most one row; never touches a
-  // genuinely CONFIRMED booking.)
+  // But a NEEDS_REVIEW/HELD booking may already carry a customer CHARGE (the
+  // agent reached the card step and charged before stopping) — refund it FIRST,
+  // or deleting the row orphans the money with nothing to reconcile.
+  const stale = await db.booking.findMany({
+    where: { itineraryItemId: item.id, status: { not: "CONFIRMED" } },
+    select: { id: true, stripeChargeId: true },
+  });
+  for (const b of stale) {
+    if (b.stripeChargeId) await refundCharge(b.stripeChargeId);
+  }
   await db.booking.deleteMany({
     where: { itineraryItemId: item.id, status: { not: "CONFIRMED" } },
   });

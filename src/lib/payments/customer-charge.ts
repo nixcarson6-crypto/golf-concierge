@@ -134,3 +134,27 @@ export async function chargeCustomer(args: {
     amountCents: intent.amount,
   };
 }
+
+/**
+ * Refund a customer charge by PaymentIntent id. Best-effort and safe to call
+ * when Stripe is unset or the id is null (no-op). Logs LOUDLY on failure so a
+ * stuck refund can be settled by hand. Returns true only if a refund was
+ * actually created. Use this anywhere a charge must be unwound — a removed or
+ * swapped booking, or a post-charge failure that didn't result in a booking.
+ */
+export async function refundCharge(
+  paymentIntentId: string | null | undefined,
+): Promise<boolean> {
+  if (!paymentIntentId || !stripeConfigured()) return false;
+  try {
+    await stripe().refunds.create({ payment_intent: paymentIntentId });
+    return true;
+  } catch (err) {
+    console.error(
+      "[refund] FAILED — refund this PaymentIntent BY HAND:",
+      paymentIntentId,
+      err,
+    );
+    return false;
+  }
+}

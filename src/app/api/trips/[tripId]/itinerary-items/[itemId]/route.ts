@@ -13,6 +13,7 @@ import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { nudge } from "@/lib/events";
+import { refundCharge } from "@/lib/payments/customer-charge";
 
 export async function DELETE(
   _req: NextRequest,
@@ -53,6 +54,7 @@ export async function DELETE(
       status: true,
       type: true,
       metadata: true,
+      stripeChargeId: true,
     },
   });
 
@@ -79,6 +81,26 @@ export async function DELETE(
       }
     } catch (err) {
       console.warn("[itinerary-delete] Duffel cancel threw:", err);
+    }
+  }
+
+  // Refund any customer charge tied to this booking — removing something the
+  // customer PAID for must return their money, or they're charged for nothing.
+  // Best-effort (logs loudly on failure). For a CONFIRMED bedbank hotel we can
+  // refund the customer, but the vendor-side ROOM cancel isn't automated for
+  // every provider yet — so we log it for manual release rather than leave the
+  // customer silently charged. (Confirmed Duffel flights are already released
+  // by the cancelOrder call above, so refunding them is clean.)
+  if (booking?.stripeChargeId) {
+    await refundCharge(booking.stripeChargeId);
+    if (
+      booking.status === "CONFIRMED" &&
+      booking.provider &&
+      ["LITEAPI", "HOTELBEDS", "RATEHAWK"].includes(booking.provider)
+    ) {
+      console.warn(
+        `[itinerary-delete] refunded the customer for ${booking.provider} booking ${booking.id}, but the VENDOR room cancel is not automated — release ref ${booking.providerReference ?? "?"} by hand.`,
+      );
     }
   }
 

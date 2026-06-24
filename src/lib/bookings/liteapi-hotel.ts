@@ -175,6 +175,10 @@ export async function tryLiteApiHotelBooking(args: {
   // Set when we charge the customer before committing the booking — so if the
   // commit then fails we can refund (declared out here so the catch sees it).
   let hotelChargeId: string | null = null;
+  // True once the vendor room is actually committed — past this point a DB
+  // hiccup must NOT refund (room is booked + paid) and must NOT report a miss
+  // (a retry would double-book).
+  let bookCommitted = false;
   try {
     // Resolve a name → hotelId in a given city: English alias first (LiteAPI's
     // index), then the local name.
@@ -364,6 +368,7 @@ export async function tryLiteApiHotelBooking(args: {
         },
       ],
     });
+    bookCommitted = true; // vendor room is now reserved + the card is charged
 
     const costCents =
       pre.total != null
@@ -406,8 +411,19 @@ export async function tryLiteApiHotelBooking(args: {
     );
     return { booked: true };
   } catch (e) {
-    // If we already charged the customer but the commit failed, refund them —
-    // never keep money for a booking that didn't happen.
+    // If the vendor room was ALREADY committed (DB write hiccup after book()),
+    // do NOT refund (room is booked + paid) and do NOT report a miss (a retry
+    // would double-book). Log loudly for manual reconciliation and report it as
+    // booked so the caller stops here. The booking row just didn't flip to
+    // CONFIRMED — a backfill fixes that.
+    if (bookCommitted) {
+      console.error(
+        `[liteapi-hotel] COMMITTED at vendor but persistence failed for booking ${args.bookingId} — backfill CONFIRMED by hand. Cause: ${(e as Error).message}`,
+      );
+      return { booked: true };
+    }
+    // Pre-commit failure: if we charged the customer, refund them — never keep
+    // money for a booking that didn't happen.
     if (hotelChargeId) {
       try {
         await stripe().refunds.create({ payment_intent: hotelChargeId });
