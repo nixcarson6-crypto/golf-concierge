@@ -103,9 +103,22 @@ export function QuizContainer({ tripId }: { tripId: string }) {
   const total = visibleQuestions.length;
   const progressPct = ((currentStep + 1) / (total + 1)) * 100; // +1 for the "generating" final step
 
+  // Live refs so a DELAYED advance() (the ~180ms auto-advance fired after a
+  // single-select tap) reads the CURRENT visible-question count + submit, NOT a
+  // stale closure from the render the tap happened in. Tapping an option can
+  // add/remove later questions (changing which step is last), so an old closure
+  // could submit one question early or silently skip one. Reading via refs +
+  // a functional setStepIdx makes any captured advance() instance correct.
+  const visibleCountRef = React.useRef(visibleQuestions.length);
+  visibleCountRef.current = visibleQuestions.length;
+  const submitRef = React.useRef<() => void>(() => {});
+
   const goBack = () => {
+    // Step-0 Back = leave the quiz. Go to the trips LIST, not /dashboard —
+    // /dashboard auto-redirects to the most recent draft (this same quiz),
+    // which trapped first-time users in a back-button loop.
     if (currentStep === 0) {
-      router.push("/dashboard");
+      router.push("/trips");
       return;
     }
     setStepIdx((s) => Math.max(0, s - 1));
@@ -116,22 +129,26 @@ export function QuizContainer({ tripId }: { tripId: string }) {
   };
 
   const advance = React.useCallback(() => {
-    if (isLast) {
-      void submit();
-      return;
-    }
-    setStepIdx((s) => s + 1);
-  }, [isLast]);
+    setStepIdx((s) => {
+      // Last visible step? submit. Read the LIVE count via ref so a delayed
+      // call can't act on a stale "isLast".
+      if (s >= visibleCountRef.current - 1) {
+        void submitRef.current();
+        return s;
+      }
+      return s + 1;
+    });
+  }, []);
 
   const submit = async () => {
     setSubmitting(true);
-    // 12-minute client-side hard ceiling. Big multi-leg trips (3-4 stops)
-    // legitimately need several minutes of itinerary generation, and on a
-    // slow DB / far-away region the round-trip + writes add more. Keeping
-    // the client generous prevents falsely killing a build that would
-    // otherwise finish — premature abort is way more user-hostile than a
-    // long spinner with clear progress text. (Server maxDuration is the
-    // hard cap in production; this just stops the browser giving up early.)
+    // 6-minute client-side ceiling — comfortably above the server's
+    // maxDuration (300s) so the SERVER decides the real cap; this only stops
+    // the browser hanging forever if the response is lost. Big multi-leg trips
+    // legitimately need a few minutes, so we stay generous: a premature abort
+    // is more user-hostile than a long spinner with live progress text. If we
+    // do abort, the catch below polls /progress to recover a build that
+    // actually finished server-side before the browser gave up.
     const controller = new AbortController();
     const abortTimer = setTimeout(() => controller.abort(), 6 * 60 * 1000);
     // One silent auto-retry on transient server failures (502, network
@@ -165,7 +182,16 @@ export function QuizContainer({ tripId }: { tripId: string }) {
           const json = JSON.parse(txt) as { error?: string };
           if (json.error) friendly = json.error;
         } catch {
-          if (txt) friendly = txt.slice(0, 240);
+          // NOT our JSON — likely a platform HTML error page (a 504 gateway
+          // timeout renders an HTML body). Never slice raw HTML into the
+          // banner; use a clean, honest message instead.
+          const looksHtml = /^\s*<|<html|<!doctype/i.test(txt);
+          if (res.status === 504 || res.status === 502 || looksHtml) {
+            friendly =
+              "This took longer than expected and timed out. Please try again — it usually works on the second attempt.";
+          } else if (txt) {
+            friendly = txt.slice(0, 240);
+          }
         }
         throw new Error(friendly);
       }
@@ -204,12 +230,20 @@ export function QuizContainer({ tripId }: { tripId: string }) {
         !wasAborted &&
         (err instanceof TypeError ||
           (err instanceof Error && /failed to fetch|networkerror|load failed/i.test(err.message)));
-      if (wasNetworkDrop) {
+      // Recover a build that finished server-side even though the browser gave
+      // up — a dropped connection OR our own 6-min abort. Poll /progress; the
+      // moment the itinerary exists, land on the trip. Abort gets a short
+      // window (the server's 300s cap already settled the outcome); a network
+      // drop gets longer in case the user is still reconnecting.
+      const shouldRecover = wasNetworkDrop || wasAborted;
+      if (shouldRecover) {
         toast.message(
-          "Connection hiccup — your trip is still being built. Hang tight…",
+          wasAborted
+            ? "Almost there — checking on your trip…"
+            : "Connection hiccup — your trip is still being built. Hang tight…",
         );
         const recovered = await (async (): Promise<boolean> => {
-          const deadline = Date.now() + 6 * 60 * 1000;
+          const deadline = Date.now() + (wasAborted ? 45_000 : 6 * 60 * 1000);
           while (Date.now() < deadline) {
             await new Promise((r) => setTimeout(r, 5000));
             try {
@@ -263,6 +297,11 @@ export function QuizContainer({ tripId }: { tripId: string }) {
       clearTimeout(abortTimer);
     }
   };
+
+  // Keep the ref pointed at the LATEST submit each render, so a delayed
+  // advance() (which calls submitRef.current()) always submits with the most
+  // recent answers — including the final tap that triggered it.
+  submitRef.current = submit;
 
   if (submitting) {
     return <QuizLoading tripId={tripId} />;

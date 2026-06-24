@@ -162,9 +162,12 @@ export async function POST(
     rankMode: modifier === "cheaper" ? "price" : "quality",
   });
   if (!result.ok) {
+    console.warn("[refine-flights] flight search failed:", result.error);
     return new Response(
-      JSON.stringify({ error: result.error }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      JSON.stringify({
+        error: "Couldn't refresh flight options right now — try again.",
+      }),
+      { status: 502, headers: { "Content-Type": "application/json" } },
     );
   }
 

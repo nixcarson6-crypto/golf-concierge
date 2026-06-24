@@ -69,33 +69,45 @@ export async function POST(
 
   const sk = stripe();
   const appUrl = env("NEXT_PUBLIC_APP_URL");
-  const session = await sk.checkout.sessions.create({
-    mode: "payment",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price_data: {
-          currency: trip.currency.toLowerCase(),
-          product_data: {
-            name: `${trip.title} — ${
-              body.data.paymentType === "DEPOSIT" ? "Deposit · " : ""
-            }${member.name ?? member.email}`,
+  let session;
+  try {
+    session = await sk.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: trip.currency.toLowerCase(),
+            product_data: {
+              name: `${trip.title} — ${
+                body.data.paymentType === "DEPOSIT" ? "Deposit · " : ""
+              }${member.name ?? member.email}`,
+            },
+            unit_amount: amount,
           },
-          unit_amount: amount,
+          quantity: 1,
         },
-        quantity: 1,
+      ],
+      customer_email: member.email,
+      metadata: {
+        tripId,
+        memberId: member.id,
+        itineraryId: it.id,
+        paymentType: body.data.paymentType,
       },
-    ],
-    customer_email: member.email,
-    metadata: {
-      tripId,
-      memberId: member.id,
-      itineraryId: it.id,
-      paymentType: body.data.paymentType,
-    },
-    success_url: `${appUrl}/checkout/success?trip=${tripId}`,
-    cancel_url: `${appUrl}/checkout/cancel?trip=${tripId}`,
-  });
+      success_url: `${appUrl}/checkout/success?trip=${tripId}`,
+      cancel_url: `${appUrl}/checkout/cancel?trip=${tripId}`,
+    });
+  } catch (err) {
+    console.error("[payments/checkout] Stripe error:", err);
+    return NextResponse.json(
+      {
+        error:
+          "Payments are temporarily unavailable — please try again in a moment.",
+      },
+      { status: 502 },
+    );
+  }
 
   await db.payment.create({
     data: {

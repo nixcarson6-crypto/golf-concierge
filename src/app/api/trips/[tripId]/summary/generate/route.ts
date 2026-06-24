@@ -30,27 +30,36 @@ export async function POST(
     return NextResponse.json({ error: "no approved itinerary" }, { status: 400 });
   }
 
-  const summary = await runSummaryAgent({
-    tripId,
-    context: {
-      title: trip.title,
-      destination: trip.destination,
-      startDate: trip.startDate?.toISOString() ?? null,
-      endDate: trip.endDate?.toISOString() ?? null,
-      groupSize: trip.groupSize,
-      totalCost: it.totalCost,
-      perPersonCost: it.perPersonCost,
-      items: it.items.map((i) => ({
-        type: i.type,
-        title: i.title,
-        startTime: i.startTime?.toISOString() ?? null,
-        cost: i.cost,
-        status: i.status ?? null,
-        confirmationCode: i.booking?.confirmationCode ?? null,
-      })),
-      substitutions: ((it.diff as { changes?: string[] } | null)?.changes) ?? [],
-    },
-  });
+  let summary;
+  try {
+    summary = await runSummaryAgent({
+      tripId,
+      context: {
+        title: trip.title,
+        destination: trip.destination,
+        startDate: trip.startDate?.toISOString() ?? null,
+        endDate: trip.endDate?.toISOString() ?? null,
+        groupSize: trip.groupSize,
+        totalCost: it.totalCost,
+        perPersonCost: it.perPersonCost,
+        items: it.items.map((i) => ({
+          type: i.type,
+          title: i.title,
+          startTime: i.startTime?.toISOString() ?? null,
+          cost: i.cost,
+          status: i.status ?? null,
+          confirmationCode: i.booking?.confirmationCode ?? null,
+        })),
+        substitutions: ((it.diff as { changes?: string[] } | null)?.changes) ?? [],
+      },
+    });
+  } catch (err) {
+    console.error("[summary/generate] AI error:", err);
+    return NextResponse.json(
+      { error: "Couldn't generate the summary right now — try again shortly." },
+      { status: 502 },
+    );
+  }
 
   await db.tripSummary.upsert({
     where: { tripId },

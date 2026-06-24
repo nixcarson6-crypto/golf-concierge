@@ -89,9 +89,18 @@ export function DashboardClient({
         toast.error("Couldn't clone that trip.");
         return;
       }
-      const { tripId: newId } = await res.json();
+      const data = (await res.json().catch(() => null)) as {
+        tripId?: string;
+      } | null;
+      const newId = data?.tripId;
+      if (!newId) {
+        toast.error("Couldn't clone that trip.");
+        return;
+      }
       toast.success("Cloned. Tell the concierge what to change.");
       router.push(`/trips/${newId}`);
+    } catch {
+      toast.error("Something went wrong — try again.");
     } finally {
       setCloningId(null);
     }
@@ -108,6 +117,8 @@ export function DashboardClient({
       }
       toast.success("Trip deleted.");
       router.refresh();
+    } catch {
+      toast.error("Something went wrong — try again.");
     } finally {
       setDeletingId(null);
     }

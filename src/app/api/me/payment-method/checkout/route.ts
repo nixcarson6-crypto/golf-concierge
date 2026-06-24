@@ -38,21 +38,30 @@ export async function POST(req: NextRequest) {
       ? body.returnTo
       : "/dashboard";
 
-  const customerId = await ensureCustomer(user.id);
-  const session = await stripe().checkout.sessions.create({
-    mode: "setup",
-    customer: customerId,
-    payment_method_types: ["card"],
-    success_url: `${appUrl}${returnPath}${returnPath.includes("?") ? "&" : "?"}card_saved=1`,
-    cancel_url: `${appUrl}${returnPath}`,
-    metadata: { appUserId: user.id },
-  });
-
-  if (!session.url) {
+  // Wrap the live Stripe calls — a bad/expired key, rate-limit, or network blip
+  // would otherwise throw an unhandled 500 on the launch-critical Save-card flow.
+  try {
+    const customerId = await ensureCustomer(user.id);
+    const session = await stripe().checkout.sessions.create({
+      mode: "setup",
+      customer: customerId,
+      payment_method_types: ["card"],
+      success_url: `${appUrl}${returnPath}${returnPath.includes("?") ? "&" : "?"}card_saved=1`,
+      cancel_url: `${appUrl}${returnPath}`,
+      metadata: { appUserId: user.id },
+    });
+    if (!session.url) {
+      return NextResponse.json(
+        { error: "Couldn't start secure card setup — please try again." },
+        { status: 502 },
+      );
+    }
+    return NextResponse.json({ url: session.url });
+  } catch (err) {
+    console.error("[payment-method/checkout] Stripe error:", err);
     return NextResponse.json(
-      { error: "Stripe didn't return a checkout URL." },
+      { error: "Couldn't start secure card setup — please try again in a moment." },
       { status: 502 },
     );
   }
-  return NextResponse.json({ url: session.url });
 }

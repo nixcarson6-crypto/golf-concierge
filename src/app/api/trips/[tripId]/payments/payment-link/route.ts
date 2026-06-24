@@ -41,42 +41,65 @@ export async function POST(
   const sk = stripe();
   const appUrl = env("NEXT_PUBLIC_APP_URL");
   const results: Array<{ memberId: string; url: string }> = [];
+  let failed = 0;
 
   for (const m of members) {
     // One Stripe Checkout Session per member — works with deferred payment.
-    const session = await sk.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: trip.currency.toLowerCase(),
-            product_data: { name: `${trip.title} — ${m.name ?? m.email}` },
-            unit_amount: itinerary.perPersonCost,
+    // A single Stripe failure must not abort the whole batch: log it, skip
+    // that member, and keep generating links for the rest.
+    try {
+      const session = await sk.checkout.sessions.create({
+        mode: "payment",
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: trip.currency.toLowerCase(),
+              product_data: { name: `${trip.title} — ${m.name ?? m.email}` },
+              unit_amount: itinerary.perPersonCost,
+            },
+            quantity: 1,
           },
-          quantity: 1,
+        ],
+        customer_email: m.email,
+        metadata: { tripId, memberId: m.id, itineraryId: itinerary.id },
+        success_url: `${appUrl}/checkout/success?trip=${tripId}`,
+        cancel_url: `${appUrl}/checkout/cancel?trip=${tripId}`,
+      });
+
+      await db.payment.create({
+        data: {
+          tripId,
+          memberId: m.id,
+          amount: itinerary.perPersonCost,
+          currency: trip.currency,
+          status: "PENDING",
+          paymentType: "FULL",
+          stripeCheckoutSessionId: session.id,
+          metadata: { url: session.url },
         },
-      ],
-      customer_email: m.email,
-      metadata: { tripId, memberId: m.id, itineraryId: itinerary.id },
-      success_url: `${appUrl}/checkout/success?trip=${tripId}`,
-      cancel_url: `${appUrl}/checkout/cancel?trip=${tripId}`,
-    });
+      });
 
-    await db.payment.create({
-      data: {
-        tripId,
-        memberId: m.id,
-        amount: itinerary.perPersonCost,
-        currency: trip.currency,
-        status: "PENDING",
-        paymentType: "FULL",
-        stripeCheckoutSessionId: session.id,
-        metadata: { url: session.url },
+      if (session.url) results.push({ memberId: m.id, url: session.url });
+    } catch (err) {
+      failed += 1;
+      console.error(
+        `[payments/payment-link] Stripe error for member ${m.id}:`,
+        err,
+      );
+    }
+  }
+
+  // If every member failed (e.g. a bad/expired key or Stripe outage), there's
+  // nothing useful to return — surface it as a transient 502.
+  if (results.length === 0 && failed > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Payments are temporarily unavailable — please try again in a moment.",
       },
-    });
-
-    if (session.url) results.push({ memberId: m.id, url: session.url });
+      { status: 502 },
+    );
   }
 
   return NextResponse.json({ ok: true, links: results });
