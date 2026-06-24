@@ -101,6 +101,56 @@ export function LivePreview({
   const [profileModalOpen, setProfileModalOpen] = React.useState(false);
   const qcForProfile = useQueryClient();
 
+  // Confirm a saved card SYNCHRONOUSLY on return from Stripe Checkout.
+  // The save-card flow sends the customer to Stripe, then back here with
+  // `?card_saved=<checkoutSessionId>`. The webhook that normally records the
+  // card CAN'T reach localhost — so without this, the card silently never
+  // saves in dev (Carson: "i saved a test card in there and it didnt save").
+  // We post the session id; the endpoint reads it from Stripe and records the
+  // card, then we refresh the workspace so `hasSavedCard` flips true.
+  const cardSaveHandled = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const sessionId = topLevelSearchParams?.get("card_saved");
+    if (!sessionId || cardSaveHandled.current === sessionId) return;
+    cardSaveHandled.current = sessionId;
+
+    // Strip the param right away so a refresh / back-button doesn't re-fire it.
+    const url = new URL(window.location.href);
+    url.searchParams.delete("card_saved");
+    router.replace(url.pathname + url.search);
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/me/payment-method/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          saved?: boolean;
+        };
+        if (res.ok && data.saved) {
+          await qcForProfile.invalidateQueries({
+            queryKey: ["workspace", tripId],
+          });
+          toast.success("Card saved — you're set to book.");
+        } else if (res.ok) {
+          // Stripe hadn't finished provisioning yet; the webhook (prod) still
+          // catches it. Refresh so it shows up once it lands.
+          await qcForProfile.invalidateQueries({
+            queryKey: ["workspace", tripId],
+          });
+        } else {
+          toast.error("Couldn't confirm your saved card — please try again.");
+        }
+      } catch {
+        toast.error("Couldn't confirm your saved card — please try again.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topLevelSearchParams, tripId]);
+
   const datesLine = trip.startDate
     ? formatDateRange(
         new Date(trip.startDate),

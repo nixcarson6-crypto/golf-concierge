@@ -46,7 +46,11 @@ export async function POST(req: NextRequest) {
       mode: "setup",
       customer: customerId,
       payment_method_types: ["card"],
-      success_url: `${appUrl}${returnPath}${returnPath.includes("?") ? "&" : "?"}card_saved=1`,
+      // Pass the session id back so the trip page can CONFIRM the saved card
+      // synchronously on return — the webhook (which normally records it) can't
+      // reach localhost, and even in prod a synchronous confirm is instant +
+      // more reliable. {CHECKOUT_SESSION_ID} is a literal Stripe template token.
+      success_url: `${appUrl}${returnPath}${returnPath.includes("?") ? "&" : "?"}card_saved={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}${returnPath}`,
       metadata: { appUserId: user.id },
     });
