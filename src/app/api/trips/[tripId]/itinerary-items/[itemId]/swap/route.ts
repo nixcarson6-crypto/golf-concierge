@@ -19,6 +19,7 @@ import { requireUser } from "@/lib/auth";
 import { nudge } from "@/lib/events";
 import { anthropic, modelFor } from "@/lib/ai/client";
 import { refundCharge } from "@/lib/payments/customer-charge";
+import { assessCourseProximity } from "@/lib/course-proximity";
 
 const altSchema = z.object({
   name: z.string(),
@@ -262,7 +263,38 @@ export async function POST(
   });
   nudge(tripId);
 
-  return new Response(JSON.stringify({ ok: true }), {
+  // If they swapped their HOTEL, check whether the trip's golf courses are
+  // still close to where they're now staying. A hotel in a different town
+  // leaves the AI's original courses stranded an hour away — so we surface
+  // that and let them choose to re-pick courses nearby (Carson: "if the
+  // course is not close... the courses need to change too. but if the
+  // courses are close to it it shouldnt change"). We only PROMPT here; the
+  // actual re-pick is a separate, explicitly-confirmed step.
+  let coursesFar:
+    | { hotelName: string; courseNames: string[]; distanceMi: number }
+    | undefined;
+  if (item.type === "LODGING") {
+    try {
+      const { hotelGeocoded, far } = await assessCourseProximity({
+        tripId,
+        hotelName: choice.name,
+        hotelLocation: choice.location ?? item.location ?? null,
+      });
+      if (hotelGeocoded && far.length > 0) {
+        coursesFar = {
+          hotelName: choice.name,
+          courseNames: far.map((c) => c.title),
+          // Report the farthest course so the message reflects the worst gap.
+          distanceMi: Math.max(...far.map((c) => c.distanceMi)),
+        };
+      }
+    } catch (err) {
+      // Proximity is a nicety — never fail the swap over it.
+      console.warn("[swap] course proximity check failed:", err);
+    }
+  }
+
+  return new Response(JSON.stringify({ ok: true, coursesFar }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

@@ -1972,6 +1972,19 @@ function ItineraryItemDialog({
   >(null);
   const qc = useQueryClient();
 
+  // When a HOTEL swap leaves the trip's golf courses far from the new
+  // property, the swap endpoint returns `coursesFar`. We hold it here to ask
+  // the customer whether to re-pick courses nearby BEFORE closing the dialog
+  // (Carson: "if the course is not close... the courses need to change too...
+  // but if the courses are close to it it shouldnt change" + "it should
+  // probably ask them").
+  const [repickPrompt, setRepickPrompt] = React.useState<{
+    hotelName: string;
+    courseNames: string[];
+    distanceMi: number;
+  } | null>(null);
+  const [repicking, setRepicking] = React.useState(false);
+
   // tier === null → full 3-up "cheaper / comparable / nicer" drawer
   // tier === "cheaper" or "nicer" → single targeted suggestion from the
   // inline quick-action chips, so the user gets one focused option to
@@ -2012,19 +2025,75 @@ function ItineraryItemDialog({
           body: JSON.stringify(alt),
         },
       );
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        coursesFar?: {
+          hotelName: string;
+          courseNames: string[];
+          distanceMi: number;
+        };
+      } | null;
       if (!res.ok) {
         toast.error("Couldn't apply the swap.");
         return;
       }
       toast.success(`Swapped to ${alt.name}.`);
       setSwapAlternatives(null);
-      onOpenChange(false);
       void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+      // If the new hotel left the courses far away, ask before re-picking —
+      // keep the dialog open so the prompt shows. Otherwise close as usual.
+      if (data?.coursesFar && data.coursesFar.courseNames.length > 0) {
+        setRepickPrompt(data.coursesFar);
+      } else {
+        onOpenChange(false);
+      }
     } catch {
       toast.error("Network error — try again.");
     } finally {
       setSwapApplying(false);
     }
+  };
+
+  // Customer said "yes, find courses near my new hotel." Authoritative re-pick
+  // lives server-side; we just trigger it, refresh, and close.
+  const runRepick = async () => {
+    if (repicking) return;
+    setRepicking(true);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/repick-courses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hotelItemId: item.id }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        repicked?: { from: string; to: string }[];
+        error?: string;
+      } | null;
+      if (!res.ok || !data?.ok) {
+        toast.error(data?.error ?? "Couldn't re-pick courses — try again.");
+        return;
+      }
+      const n = data.repicked?.length ?? 0;
+      toast.success(
+        n > 0
+          ? `Found ${n} course${n > 1 ? "s" : ""} near ${repickPrompt?.hotelName ?? "your hotel"}.`
+          : "Your courses are already close by.",
+      );
+      void qc.invalidateQueries({ queryKey: ["workspace", tripId] });
+      setRepickPrompt(null);
+      onOpenChange(false);
+    } catch {
+      toast.error("Network error — try again.");
+    } finally {
+      setRepicking(false);
+    }
+  };
+
+  // "No, keep my courses." Dismiss the prompt and close.
+  const dismissRepick = () => {
+    setRepickPrompt(null);
+    onOpenChange(false);
   };
 
   // Fetch a Google Places hero photo when the dialog opens. We bias the
@@ -2241,6 +2310,52 @@ function ItineraryItemDialog({
         </header>
 
         <div className="px-6 py-5 space-y-4">
+          {repickPrompt && (
+            <section className="rounded-2xl border border-[hsl(var(--copper))]/40 bg-[hsl(var(--copper))]/8 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <Flag className="size-4 text-[hsl(var(--copper))] mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold leading-snug">
+                    Your courses are about {repickPrompt.distanceMi} miles from{" "}
+                    {repickPrompt.hotelName}
+                  </p>
+                  <p className="text-[12px] text-muted-foreground mt-1 leading-snug break-words">
+                    {repickPrompt.courseNames.join(", ")}
+                    {repickPrompt.courseNames.length === 1
+                      ? " is"
+                      : " are"}{" "}
+                    a fair drive from your new hotel. Want me to swap in
+                    course{repickPrompt.courseNames.length === 1 ? "" : "s"}{" "}
+                    closer by? Rounds you&apos;ve already booked stay put.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="copper"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => void runRepick()}
+                  disabled={repicking}
+                >
+                  {repicking ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    "Find courses nearby"
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1"
+                  onClick={dismissRepick}
+                  disabled={repicking}
+                >
+                  Keep my courses
+                </Button>
+              </div>
+            </section>
+          )}
           {(item.location || startTime) && (
             <div className="text-sm space-y-1">
               {startTime && (
