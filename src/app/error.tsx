@@ -53,6 +53,11 @@ export default function Error({
           <Button asChild variant="outline">
             <Link href="/dashboard">Back to dashboard</Link>
           </Button>
+          {/* Home link so a signed-out visitor isn't dumped at the sign-in
+              wall (dashboard redirects there when unauthenticated). */}
+          <Button asChild variant="ghost">
+            <Link href="/">Go home</Link>
+          </Button>
         </div>
       </div>
     </div>

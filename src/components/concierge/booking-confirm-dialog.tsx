@@ -80,7 +80,7 @@ export function BookingConfirmDialog({
                 ) : null}
               </div>
               <p className="text-sm tabular-nums shrink-0">
-                {typeof l.costCents === "number"
+                {typeof l.costCents === "number" && l.costCents > 0
                   ? `$${Math.round(l.costCents / 100).toLocaleString()}`
                   : "at checkout"}
               </p>

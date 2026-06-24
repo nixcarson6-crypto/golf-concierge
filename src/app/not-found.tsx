@@ -14,9 +14,16 @@ export default function NotFound() {
         <p className="mt-3 text-muted-foreground">
           The page may have moved, or you may not have access.
         </p>
-        <Button asChild variant="navy" className="mt-6">
-          <Link href="/dashboard">Back to dashboard</Link>
-        </Button>
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <Button asChild variant="navy">
+            <Link href="/dashboard">Back to dashboard</Link>
+          </Button>
+          {/* A Home link for signed-out visitors — "dashboard" alone sends
+              them to the sign-in wall with no way to the marketing site. */}
+          <Button asChild variant="ghost">
+            <Link href="/">Go home</Link>
+          </Button>
+        </div>
       </div>
     </div>
   );

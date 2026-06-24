@@ -262,7 +262,10 @@ function fmtBookedWhen(item: WorkspaceItineraryItem): string | null {
     return `${day(item.startTime)} → ${day(item.endTime)}`;
   }
   if (item.type === "FLIGHT" || item.type === "TEE_TIME") {
-    return `${day(item.startTime)} · ${time(item.startTime)}`;
+    const t = time(item.startTime);
+    // Items stored without a real clock time default to midnight — don't render
+    // "· 12:00 AM" on the receipt, it reads as a real (wrong) departure time.
+    return t === "12:00 AM" ? day(item.startTime) : `${day(item.startTime)} · ${t}`;
   }
   return day(item.startTime);
 }
@@ -363,6 +366,13 @@ export function BookingStatusPanel({
   // auto-book: sandbox, or live + Stripe). Books offers[0] via /book-flight.
   const [flightModalOpen, setFlightModalOpen] = React.useState(false);
   const topFlightOffer = suggestedFlights?.offers?.[0] ?? null;
+  // A bookable/linkable flight needs a real route (origin + destination). With
+  // no departure airport set, Duffel never ran → no offer AND no route, so a
+  // FLIGHT row can neither be booked nor self-booked from here (the customer
+  // sets their airport via the SetOriginBanner on the itinerary side).
+  const hasFlightRoute = !!(
+    suggestedFlights?.origin && suggestedFlights?.destination
+  );
 
   const bookAll = React.useCallback(async () => {
     if (bookingAll || bookingId) return;
@@ -627,10 +637,16 @@ export function BookingStatusPanel({
         r.item.type === "TEE_TIME" &&
         !isAgentBookable(r.item.type, r.item.title, r.item.description)
       ) &&
-      // Flights are self-book by default (the customer books their own;
-      // their card pays the airline). Exclude them from the counter too, for
-      // the same reason — otherwise a self-book flight reads as never done.
-      !(r.item.type === "FLIGHT" && !flightAutoBook),
+      // Count a FLIGHT only when it's actually actionable from THIS panel:
+      // confirmed, or auto-bookable (we have an offer to book). Self-book
+      // flights, and "no departure airport set yet" flights (no offer + no
+      // route), aren't booked here — counting them as unconfirmed would make
+      // the trip read permanently incomplete.
+      !(
+        r.item.type === "FLIGHT" &&
+        r.kind !== "confirmed" &&
+        !(flightAutoBook && !!topFlightOffer)
+      ),
   );
   const total = bookable.length;
   const confirmed = bookable.filter((r) => r.kind === "confirmed").length;
@@ -786,7 +802,8 @@ export function BookingStatusPanel({
                   // FLIGHT self-book (default): we never front a flight, so the
                   // customer books their own (their card pays the airline). The
                   // row shows a direct "Book your flight" link, like golf.
-                  const isSelfFlight = item.type === "FLIGHT" && !flightAutoBook;
+                  const isSelfFlight =
+                    item.type === "FLIGHT" && !flightAutoBook && hasFlightRoute;
                   // FLIGHT auto-book (sandbox now; live + Stripe later): the
                   // flight row is tappable to open the booking modal for the
                   // best-fit offer, so the customer can book the flight without
@@ -797,6 +814,14 @@ export function BookingStatusPanel({
                     !!topFlightOffer &&
                     kind === "pending" &&
                     !hasConfirmedFlight;
+                  // FLIGHT with no offer AND no route = the customer never set
+                  // a departure airport, so it can't be booked or linked here.
+                  // Show a neutral "set your airport" hint, not a dead row.
+                  const isFlightNeedsOrigin =
+                    item.type === "FLIGHT" &&
+                    !topFlightOffer &&
+                    !hasFlightRoute &&
+                    kind === "pending";
                   const isPhoneOnly =
                     kind === "failed" &&
                     failureReason === "form_not_found" &&
@@ -885,6 +910,8 @@ export function BookingStatusPanel({
                       ? "Walk-in · no booking needed"
                       : isNeedsCard
                         ? "Add a card to book"
+                      : isFlightNeedsOrigin
+                        ? "Set your departure airport to book"
                       : isBookableFlight
                         ? "Tap to book your flight"
                       : isSelfFlight
@@ -924,11 +951,15 @@ export function BookingStatusPanel({
                         : "We couldn't complete this one automatically — reserve it directly below.";
                   const rowInner = (
                     <>
-                      {(isSuggestion || isSelfGolf || isSelfFlight) &&
+                      {(isSuggestion ||
+                        isSelfGolf ||
+                        isSelfFlight ||
+                        isFlightNeedsOrigin) &&
                       !isThisBooking ? (
-                        // Suggestions + self-book golf/flights aren't a Pyltrix
-                        // booking task — show the type icon, not a to-do circle
-                        // that would read as "unbooked" forever.
+                        // Suggestions + self-book golf/flights + a flight that
+                        // needs an airport aren't a Pyltrix booking task — show
+                        // the type icon, not a to-do circle that reads as
+                        // "unbooked" forever.
                         <span className="grid size-5 place-items-center shrink-0">
                           <TypeIcon type={item.type} />
                         </span>

@@ -12,6 +12,18 @@ export const dynamic = "force-dynamic";
  */
 export default async function NewTripPage() {
   const user = await requireUser();
+
+  // Reuse an existing EMPTY draft (one whose quiz never built an itinerary)
+  // instead of minting a fresh "Untitled trip" on every visit — otherwise the
+  // trips list fills up with abandoned drafts. The quiz resumes from where it
+  // left off (its state is keyed per-trip).
+  const existingDraft = await db.trip.findFirst({
+    where: { ownerId: user.id, status: "DRAFT", itineraries: { none: {} } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (existingDraft) redirect(`/build/${existingDraft.id}`);
+
   const trip = await db.trip.create({
     data: {
       ownerId: user.id,
