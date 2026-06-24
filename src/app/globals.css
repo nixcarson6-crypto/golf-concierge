@@ -69,6 +69,12 @@
   html,
   body {
     height: 100%;
+    /* Mobile safety net: a single too-wide element should never make the whole
+     * page scroll sideways (the "everything's cut off / shifted" look on a
+     * phone). `clip` (not `hidden`) stops horizontal overflow WITHOUT creating
+     * a scroll container, so `position: sticky` headers keep working. */
+    overflow-x: clip;
+    max-width: 100%;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     -webkit-font-smoothing: antialiased;

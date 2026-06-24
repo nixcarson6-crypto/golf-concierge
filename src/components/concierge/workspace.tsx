@@ -640,16 +640,21 @@ export function ConciergeWorkspace({ tripId, vapidPublicKey }: Props) {
 
       <div className="container py-5">
         {hasStatusPanel ? (
+          // Desktop: a fixed-height two-column grid with each pane scrolling
+          // internally. Mobile (< lg): NO fixed heights — the panes stack and
+          // grow with their content so the whole PAGE scrolls. Cramming the
+          // itinerary + booking panel into fixed viewport boxes was what made
+          // the cards look cut off on a phone.
           <div className="mx-auto max-w-6xl lg:h-[calc(100dvh-7rem)] lg:grid lg:grid-cols-12 lg:gap-5">
-            <div className="lg:col-span-8 h-[calc(100dvh-7rem)] lg:h-full">
-              {preview}
-            </div>
-            <div className="lg:col-span-4 mt-5 lg:mt-0 h-[60vh] lg:h-full">
+            <div className="lg:col-span-8 lg:h-full">{preview}</div>
+            <div className="lg:col-span-4 mt-5 lg:mt-0 lg:h-full">
               {bookingStatus}
             </div>
           </div>
         ) : (
-          <div className="mx-auto max-w-3xl h-[calc(100dvh-7rem)]">{preview}</div>
+          <div className="mx-auto max-w-3xl lg:h-[calc(100dvh-7rem)]">
+            {preview}
+          </div>
         )}
       </div>
     </>

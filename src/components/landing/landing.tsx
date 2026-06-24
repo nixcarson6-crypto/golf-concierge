@@ -280,7 +280,7 @@ function Hero({ primaryHref }: { primaryHref: string }) {
             initial={reduce ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: EASE, delay: 0.08 }}
-            className="mt-7 text-display text-[2.7rem] leading-[1.03] tracking-[-0.035em] sm:text-6xl lg:text-[4.4rem]"
+            className="mt-7 text-display text-4xl leading-[1.05] tracking-[-0.03em] sm:text-6xl sm:leading-[1.03] sm:tracking-[-0.035em] lg:text-[4.4rem]"
           >
             Your dream golf trip, planned to the last detail —
             <em className="text-accent font-light"> in minutes.</em>
@@ -338,8 +338,9 @@ function Hero({ primaryHref }: { primaryHref: string }) {
           className="relative mx-auto w-full max-w-[480px] lg:max-w-none"
           onMouseEnter={() => setPaused(true)}
         >
-          {/* tap-a-course switcher */}
-          <div className="mb-4 flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          {/* tap-a-course switcher — wrap on mobile so no pill is hidden off
+              the edge (the hidden-scrollbar row read as "cut off" on a phone). */}
+          <div className="mb-4 flex flex-wrap gap-2 sm:flex-nowrap sm:overflow-x-auto sm:no-scrollbar pb-1">
             {TRIPS.map((t, i) => {
               const on = i === active;
               return (
@@ -588,12 +589,11 @@ function BuildDemo() {
               <span className="w-9 shrink-0 text-[#5d6157]">
                 {String(i + 1).padStart(2, "0")}
               </span>
-              <span className="text-[#69b489]">{last ? "★" : "✓"}</span>
+              <span className="shrink-0 text-[#69b489]">{last ? "★" : "✓"}</span>
               <span
                 className={
-                  last
-                    ? "font-medium text-[#f2f1ea]"
-                    : "text-[#c9ccc0]"
+                  "min-w-0 break-words " +
+                  (last ? "font-medium text-[#f2f1ea]" : "text-[#c9ccc0]")
                 }
               >
                 {msg}

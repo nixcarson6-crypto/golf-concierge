@@ -349,7 +349,7 @@ export function QuizContainer({ tripId }: { tripId: string }) {
               {currentStep + 1} / {total}
             </p>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4 text-[11px] uppercase tracking-widest pl-12">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-4 text-[11px] uppercase tracking-widest pl-4 sm:pl-12">
             {sectionState.map((s) => (
               <span
                 key={s.id}

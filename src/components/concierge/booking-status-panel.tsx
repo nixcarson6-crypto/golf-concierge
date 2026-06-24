@@ -668,7 +668,7 @@ export function BookingStatusPanel({
   }, [rows]);
 
   return (
-    <div className="h-full flex flex-col rounded-3xl glass overflow-hidden">
+    <div className="lg:h-full flex flex-col rounded-3xl glass lg:overflow-hidden">
       {/* Header — title + counter + progress + primary "Book all" CTA */}
       <header className="px-5 py-4 border-b border-border/60 space-y-3">
         <div className="flex items-center justify-between gap-2">
@@ -733,7 +733,7 @@ export function BookingStatusPanel({
       {/* Grouped rows — collapsible categories so a 40-item trip reads
           as 5 sections of 5-10 things each instead of one overwhelming
           wall. Visible scrollbar on the outer scroll. */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2 space-y-1">
+      <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto px-2.5 py-2 space-y-1">
         {grouped.map(({ key, items: groupItems }) => {
           const groupConfirmed = groupItems.filter(
             (r) => r.kind === "confirmed",

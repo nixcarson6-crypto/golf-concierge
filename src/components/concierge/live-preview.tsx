@@ -165,7 +165,10 @@ export function LivePreview({
   const groups = React.useMemo(() => groupBookings(bookings), [bookings]);
 
   return (
-    <div className="h-full flex flex-col rounded-3xl glass overflow-hidden">
+    // Desktop: fill the fixed-height column and scroll the body internally.
+    // Mobile (< lg): natural height so the page itself scrolls — no internal
+    // clip, so long itineraries aren't cut off in a cramped box.
+    <div className="lg:h-full flex flex-col rounded-3xl glass lg:overflow-hidden">
       <header className="px-5 py-4 border-b border-border/60">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
@@ -194,7 +197,7 @@ export function LivePreview({
         )}
       </header>
 
-      <ScrollArea className="flex-1 min-h-0">
+      <ScrollArea className="lg:flex-1 lg:min-h-0">
         {buildError && (
           <div className="mx-4 mt-4 rounded-2xl border border-red-500/30 bg-red-500/8 p-4">
             <div className="flex items-start justify-between gap-3">

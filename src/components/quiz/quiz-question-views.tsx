@@ -261,7 +261,7 @@ export function SliderView({
   return (
     <div className="max-w-xl mx-auto w-full space-y-6">
       <div className="text-center space-y-2">
-        <p className="text-display text-6xl tracking-tight tabular-nums text-foreground">
+        <p className="text-display text-4xl sm:text-6xl tracking-tight tabular-nums text-foreground break-words">
           {display}
         </p>
       </div>
