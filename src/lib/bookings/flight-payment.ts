@@ -93,7 +93,10 @@ export type CustomerFlightOutcome =
   // The customer has no saved card — the UI must send them to Stripe Checkout
   // (SaveCardButton) to add one, THEN book. We never front the cost.
   | { mode: "needs_card" }
-  | { mode: "self_book"; reason: "stripe_not_configured" | "no_price" }
+  | {
+      mode: "self_book";
+      reason: "stripe_not_configured" | "no_price" | "autobook_disabled";
+    }
   | { mode: "failed"; error: string };
 
 /**
@@ -121,6 +124,17 @@ export async function bookFlightForCustomer(args: {
    *  it from Duffel before charging. */
   ticketCents?: number | null;
 }): Promise<CustomerFlightOutcome> {
+  // ── Master switch: flights SELF-BOOK by default ─────────────────────────
+  // FLIGHT_AUTOBOOK_ENABLED is the single gate, and it lives HERE so every
+  // caller (book-all, per-card) is covered. OFF (default, launch posture) ⇒ we
+  // never charge a card or spend our Duffel balance; the caller renders a
+  // self-book link instead. Without this guard a live Stripe key would charge
+  // the customer's real card for a (still-sandbox) Duffel ticket. Flip the flag
+  // to auto-book through Duffel — and even then we charge the customer first.
+  if (!flightAutoBookEnabled()) {
+    return { mode: "self_book", reason: "autobook_disabled" };
+  }
+
   // ── No Stripe configured at all → dev fallback ──────────────────────────
   // Sandbox books free (so local dev without Stripe keys still works); a live
   // key with no Stripe means we can't charge anyone, so we never front it.

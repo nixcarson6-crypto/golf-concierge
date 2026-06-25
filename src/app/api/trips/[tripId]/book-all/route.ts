@@ -361,6 +361,15 @@ export async function POST(
     if (hasInngestWorker()) {
       for (const job of agentJobs) await triggerAgentRun(job);
     } else {
+      // In production there is no worker that survives the HTTP response —
+      // Vercel freezes the function the instant we return, killing these runs
+      // and stranding the bookings in SEARCHING. Loudly flag the
+      // misconfiguration instead of failing silently.
+      if (process.env.NODE_ENV === "production") {
+        console.error(
+          `[book-all] ${agentJobs.length} agent booking(s) dispatched WITHOUT an Inngest worker in production — they will NOT complete. Set INNGEST_EVENT_KEY + INNGEST_SIGNING_KEY and register /api/inngest in the Inngest dashboard.`,
+        );
+      }
       runAgentBatchSequentiallyInBackground(agentJobs);
     }
   }

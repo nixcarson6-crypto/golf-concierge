@@ -30,8 +30,17 @@ export async function POST(req: NextRequest) {
   const user = await requireUser();
 
   const body = (await req.json().catch(() => ({}))) as { returnTo?: string };
+  // NEXT_PUBLIC_APP_URL's env default is localhost (for dev). In production an
+  // unset/localhost value would point Stripe's return URL at localhost and
+  // silently break card-save, so fall back to the real domain when running in
+  // prod. (Still set NEXT_PUBLIC_APP_URL in Vercel — this is just a safety net.)
+  const configuredUrl = optionalEnv("NEXT_PUBLIC_APP_URL");
   const appUrl =
-    optionalEnv("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000";
+    configuredUrl && !configuredUrl.includes("localhost")
+      ? configuredUrl
+      : process.env.NODE_ENV === "production"
+        ? "https://pyltrix.com"
+        : "http://localhost:3000";
   // Only allow same-origin relative return paths, to avoid an open redirect.
   const returnPath =
     typeof body.returnTo === "string" && body.returnTo.startsWith("/")

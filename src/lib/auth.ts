@@ -34,24 +34,44 @@ export async function getOrCreateUser() {
     clerk.username ||
     null;
 
-  const existingByEmail = await db.user.findUnique({
-    where: { email: primaryEmail },
-  });
-  if (existingByEmail) {
-    return db.user.update({
-      where: { id: existingByEmail.id },
-      data: { clerkUserId: userId, name, imageUrl: clerk.imageUrl },
+  try {
+    const existingByEmail = await db.user.findUnique({
+      where: { email: primaryEmail },
     });
-  }
+    if (existingByEmail) {
+      return await db.user.update({
+        where: { id: existingByEmail.id },
+        data: { clerkUserId: userId, name, imageUrl: clerk.imageUrl },
+      });
+    }
 
-  return db.user.create({
-    data: {
-      clerkUserId: userId,
-      email: primaryEmail,
-      name,
-      imageUrl: clerk.imageUrl,
-    },
-  });
+    return await db.user.create({
+      data: {
+        clerkUserId: userId,
+        email: primaryEmail,
+        name,
+        imageUrl: clerk.imageUrl,
+      },
+    });
+  } catch (err) {
+    // A concurrent request OR the Clerk `user.created` webhook can create the
+    // same user (same email / clerkUserId) in the gap between our findUnique
+    // and our write → a unique-constraint violation (P2002). That's not a real
+    // error: the other path already made the row. Re-read and return it rather
+    // than 500-ing a brand-new customer on their very first page load.
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code?: string }).code === "P2002"
+    ) {
+      const winner =
+        (await db.user.findUnique({ where: { clerkUserId: userId } })) ??
+        (await db.user.findUnique({ where: { email: primaryEmail } }));
+      if (winner) return winner;
+    }
+    throw err;
+  }
 }
 
 export async function requireUser() {

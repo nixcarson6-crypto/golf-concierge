@@ -5,6 +5,10 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/invite/(.*)",
+  // Public, token-gated share pages — knowledge of the share token grants
+  // read access; recipients are usually not signed-in users, so this must
+  // stay outside Clerk's protect() or the whole share feature dead-ends.
+  "/s/(.*)",
   "/api/webhooks/(.*)",
   "/api/inngest(.*)",
   // Internal server-to-server bridge for the browser-agent's live
