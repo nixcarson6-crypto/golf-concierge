@@ -51,6 +51,8 @@ export default function SignUpPage() {
           </div>
 
           <SignUp
+            fallbackRedirectUrl="/trips/new"
+            signInUrl="/sign-in"
             appearance={{
               elements: { rootBox: "w-full" },
             }}

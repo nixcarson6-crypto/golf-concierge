@@ -637,7 +637,7 @@ export function Landing({
               </Button>
             ) : (
               <>
-                <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+                <Button asChild variant="ghost" size="sm">
                   <Link href="/sign-in">Sign in</Link>
                 </Button>
                 <Button asChild size="sm">
