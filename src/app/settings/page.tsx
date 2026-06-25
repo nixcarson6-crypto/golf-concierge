@@ -40,9 +40,9 @@ export default async function SettingsPage() {
         <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
           Settings
         </p>
-        <h1 className="text-display text-4xl tracking-tight">You</h1>
+        <h1 className="text-display text-4xl tracking-tight">Your account</h1>
         <p className="mt-2 text-muted-foreground text-sm">
-          Your traveler details, payment method, and account.
+          Traveler details, payment method, and notifications.
         </p>
 
         <div className="mt-8 space-y-6">
