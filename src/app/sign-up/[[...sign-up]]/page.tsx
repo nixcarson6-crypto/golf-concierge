@@ -54,7 +54,13 @@ export default function SignUpPage() {
             fallbackRedirectUrl="/trips/new"
             signInUrl="/sign-in"
             appearance={{
-              elements: { rootBox: "w-full" },
+              variables: { colorPrimary: "#1E4030", borderRadius: "0.75rem" },
+              elements: {
+                rootBox: "w-full flex justify-center",
+                cardBox: "mx-auto",
+                formButtonPrimary:
+                  "bg-[#1E4030] hover:bg-[#16352a] text-white",
+              },
             }}
           />
 

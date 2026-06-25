@@ -1,6 +1,6 @@
 import { SignIn } from "@clerk/nextjs";
 import Link from "next/link";
-import { LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
+import { ShieldCheck, Sparkles } from "lucide-react";
 
 export default function SignInPage() {
   return (
@@ -34,9 +34,12 @@ export default function SignInPage() {
       <main className="relative z-10 flex-1 grid place-items-center px-4 pb-14 pt-10">
         <div className="w-full max-w-md flex flex-col items-center gap-7">
           <div className="text-center space-y-2.5">
-            <p className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
-              <LockKeyhole className="size-3" strokeWidth={2} />
-              Members
+            <p className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3.5 py-1.5 text-[11px] uppercase tracking-[0.28em] text-accent">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/40" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
+              </span>
+              AI luxury golf travel
             </p>
             <h1 className="text-display text-[2rem] tracking-tight text-foreground">
               Welcome back.
@@ -50,7 +53,13 @@ export default function SignInPage() {
             fallbackRedirectUrl="/dashboard"
             signUpUrl="/sign-up"
             appearance={{
-              elements: { rootBox: "w-full" },
+              variables: { colorPrimary: "#1E4030", borderRadius: "0.75rem" },
+              elements: {
+                rootBox: "w-full flex justify-center",
+                cardBox: "mx-auto",
+                formButtonPrimary:
+                  "bg-[#1E4030] hover:bg-[#16352a] text-white",
+              },
             }}
           />
 
