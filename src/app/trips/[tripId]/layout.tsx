@@ -70,7 +70,7 @@ export default async function TripLayout({
             </h1>
           </div>
           <div className="shrink-0">
-            <AccountButton />
+            <AccountButton name={user.name} email={user.email} />
           </div>
         </div>
         <TripTabs trips={trips} activeId={tripId} />

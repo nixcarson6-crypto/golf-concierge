@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { SignOutButton } from "@clerk/nextjs";
 import { AccountButton } from "@/components/account-button";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { SettingsClient } from "./settings-client";
 import { BillingSection } from "@/components/billing-section";
+import { TravelerSection } from "@/components/settings/traveler-section";
+import { DangerZone } from "@/components/settings/danger-zone";
 import { getSavedCard } from "@/lib/payments/saved-card";
 import { stripeConfigured } from "@/lib/stripe";
 import { pushPublicKey } from "@/lib/push";
@@ -30,7 +33,7 @@ export default async function SettingsPage() {
         >
           <ChevronLeft className="size-4" /> Dashboard
         </Link>
-        <AccountButton />
+        <AccountButton name={user.name} email={user.email} />
       </header>
 
       <main className="container pb-24 max-w-2xl">
@@ -39,12 +42,22 @@ export default async function SettingsPage() {
         </p>
         <h1 className="text-display text-4xl tracking-tight">You</h1>
         <p className="mt-2 text-muted-foreground text-sm">
-          Payment method, notification preferences, and connected devices.
+          Your traveler details, payment method, and account.
         </p>
 
         <div className="mt-8 space-y-6">
           <section className="glass rounded-2xl p-6">
-            <h2 className="text-sm font-medium">Account</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-medium">Account</h2>
+              <SignOutButton redirectUrl="/">
+                <button
+                  type="button"
+                  className="text-xs font-medium text-muted-foreground hover:text-foreground transition"
+                >
+                  Sign out
+                </button>
+              </SignOutButton>
+            </div>
             <dl className="mt-4 grid grid-cols-2 gap-y-2 text-sm">
               <dt className="text-muted-foreground">Name</dt>
               <dd>{user.name ?? "—"}</dd>
@@ -52,6 +65,24 @@ export default async function SettingsPage() {
               <dd className="num-tabular">{user.email}</dd>
             </dl>
           </section>
+
+          <TravelerSection
+            profile={{
+              legalGivenName: user.legalGivenName,
+              legalFamilyName: user.legalFamilyName,
+              dateOfBirth: user.dateOfBirth
+                ? user.dateOfBirth.toISOString().slice(0, 10)
+                : null,
+              gender: user.gender,
+              phone: user.phone,
+              addressLine1: user.addressLine1,
+              addressCity: user.addressCity,
+              addressState: user.addressState,
+              addressPostalCode: user.addressPostalCode,
+              addressCountry: user.addressCountry,
+              defaultOriginAirport: user.defaultOriginAirport,
+            }}
+          />
 
           <BillingSection
             initialCard={savedCard}
@@ -67,6 +98,8 @@ export default async function SettingsPage() {
               createdAt: s.createdAt.toISOString(),
             }))}
           />
+
+          <DangerZone />
         </div>
       </main>
     </div>

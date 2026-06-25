@@ -22,6 +22,7 @@ const bodySchema = z.object({
   addressState: z.string().min(1).max(80).optional(),
   addressPostalCode: z.string().min(1).max(20).optional(),
   addressCountry: z.string().length(2).optional(),
+  defaultOriginAirport: z.string().regex(/^[A-Za-z]{3}$/).optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -34,12 +35,17 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const { dateOfBirth, ...rest } = parsed.data;
+  const { dateOfBirth, defaultOriginAirport, addressCountry, ...rest } =
+    parsed.data;
   await db.user.update({
     where: { id: user.id },
     data: {
       ...rest,
       ...(dateOfBirth ? { dateOfBirth: new Date(dateOfBirth) } : {}),
+      ...(addressCountry ? { addressCountry: addressCountry.toUpperCase() } : {}),
+      ...(defaultOriginAirport
+        ? { defaultOriginAirport: defaultOriginAirport.toUpperCase() }
+        : {}),
     },
   });
 

@@ -34,7 +34,7 @@ export default async function TripsListPage() {
         <Link href="/" className="text-display text-xl tracking-tight">
           Pyltrix
         </Link>
-        <AccountButton />
+        <AccountButton name={user.name} email={user.email} />
       </header>
 
       <main className="container pb-24">
