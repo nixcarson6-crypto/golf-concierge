@@ -273,7 +273,7 @@ function Hero({ primaryHref }: { primaryHref: string }) {
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent/40" />
               <span className="relative inline-flex size-1.5 rounded-full bg-accent" />
             </span>
-            Now booking · luxury golf trips
+            AI luxury golf travel
           </motion.p>
 
           <motion.h1
